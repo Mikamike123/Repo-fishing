@@ -7,10 +7,22 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dépendances et construction
 node_modules
-dist
-dist-ssr
+/dist
+/dist-ssr
+/out-tsc  # Dossier de compilation TypeScript si utilisé séparément
 *.local
+
+# Dossiers et fichiers de build de Vite
+# /dist est déjà là, mais pour être exhaustif :
+# .vite n'est pas nécessaire, mais peut être utile pour certains caches.
+.vite/
+/coverage
+
+# Cache du moteur de template de Vite et fichiers de sortie
+temp
+.temp
 
 # Editor directories and files
 .vscode/*
@@ -22,3 +34,20 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environnement virtuel Python
+venv/
+
+# Variables d'environnement locales (clés API, secrets, etc.)
+# Ceci est CRUCIAL pour la sécurité !
+# Le fichier .env simple doit aussi être ignoré s'il contient des secrets
+/.env
+/.env.*.local
+/.env.local
+/config.js  # Si vous générez un fichier de config à partir des .env
+
+# Firebase / Cloud Functions
+# Si vous configurez des Cloud Functions dans un sous-dossier:
+/functions/node_modules
+/functions/lib # Dossier de sortie de la compilation TypeScript des fonctions
+/functions/dist
