@@ -14,6 +14,7 @@ export interface WeatherSnapshot {
 export interface HydroSnapshot {
     flow: number; // m3/s
     level: number; // m <<< Ajouté pour supporter la Hauteur d'eau
+    waterTemp?: number | null; // <<< NOUVEAU : Ajout de la température de l'eau
 }
 
 // Combined conditions for the Bio Oracle
@@ -80,7 +81,7 @@ export interface Session {
     endTime?: string;
     durationMinutes?: number;
     weather?: WeatherSnapshot | null; // <<< CORRIGÉ
-    hydro?: HydroSnapshot | null;     // <<< CORRIGÉ
+    hydro?: HydroSnapshot | null;     // <<< CORRIGÉ
     bioScore?: number;
     notes?: string;
     weatherDescription?: string;

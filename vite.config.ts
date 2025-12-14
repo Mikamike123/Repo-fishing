@@ -8,29 +8,8 @@ export default defineConfig(({ mode }) => {
         server: {
             port: 3000,
             host: '0.0.0.0',
-            // NOUVEAU: Configuration du Proxy pour contourner CORS Hubeau
-            proxy: {
-                // Intercepter les requêtes commençant par /hubeau-proxy
-                '/hubeau-proxy': {
-                    target: 'https://hubeau.eaufrance.fr',
-                    changeOrigin: true, // Crucial pour que Hubeau accepte la requête
-                    
-                    // NOUVEAU: Ajout d'en-têtes pour simuler un appel direct et contourner le 403
-                    headers: {
-                        // Simuler l'en-tête Referer comme si la requête venait de Hubeau
-                        'Referer': 'https://hubeau.eaufrance.fr/', 
-                        // Simuler un navigateur classique
-                        'User-Agent': 'Mozilla/5.0',
-                        'host': 'hubeau.eaufrance.fr' 
-                    },
-
-                    // CORRECTION DU REWRITE : Utiliser un remplacement simple (la cause du 404/403 est ailleurs)
-                    rewrite: (path) => path.replace('/hubeau-proxy', ''),
-                    
-                    // Sécurité : autoriser les appels HTTPS
-                    secure: true, 
-                },
-            },
+            // La configuration du proxy Hubeau a été retirée, 
+            // car nous utilisons désormais une Cloud Function pour contourner le 403.
         },
         plugins: [react()],
         define: {

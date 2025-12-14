@@ -2,17 +2,18 @@
 
 import { db } from "./firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
+// NOTE: La Cloud Function nous renvoie maintenant une HydroSnapshot qui inclut la température
 import { HydroSnapshot } from '../types'; 
 
-// Code de la station hydro-météo de Paris Austerlitz (Seul point à modifier si vous changez de lieu)
+// --- NOUVEAU: URL DE LA CLOUD FUNCTION (Proxy côté serveur) ---
+// Utilise l'URL locale de l'émulateur pour le développement (port 5001 par défaut)
+// Pour la production, vous utiliserez l'URL réelle: 'https://[REGION]-[PROJECT_ID].cloudfunctions.net/fetchHubeauData'
+const CLOUD_FUNCTION_URL = (process.env.NODE_ENV === 'development') 
+    ? 'http://127.0.0.1:5001/mysupstack/us-central1/fetchHubeauData' 
+    : 'https://[VOTRE_REGION]-[VOTRE_PROJECT_ID].cloudfunctions.net/fetchHubeauData';
+
+// STATION_CODE est conservé pour l'info mais n'est plus utilisé dans ce fichier Front-end.
 const STATION_CODE = 'F700000103'; 
-
-// CORRECTION CRITIQUE : Utiliser le chemin de proxy RELATIF /hubeau-proxy
-const BASE_TEMP_URL = `/hubeau-proxy/api/v1/qualite_rivieres/analyse_spatiale?code_station=${STATION_CODE}&code_parametre=1307&size=1`;
-
-// CORRECTION CRITIQUE : Utiliser le chemin de proxy RELATIF /hubeau-proxy
-const BASE_HYDRO_URL = `/hubeau-proxy/api/v1/hydrometrie/observations_tr?code_station=${STATION_CODE}&grandeur_hydro=QmJ&grandeur_hydro=H&sort=desc&size=2`;
-
 
 /**
  * Interface pour les données de température de l'eau que nous allons stocker.
@@ -25,146 +26,93 @@ export interface WaterTempData {
 
 /**
  * Interface de retour pour Hydrométrie pour inclure le statut précis.
+ * (Nous conservons la signature pour la compatibilité avec environmental-service.ts)
  */
 export interface HydroResult {
-    data: HydroSnapshot; // Contient { flow: number, level: number } (utilisera 0 en cas d'échec)
-    message: string; // Message de statut précis (Erreur HTTP, Données vides, OK, Erreur Réseau)
+    data: HydroSnapshot; // Contient { flow: number, level: number, waterTemp: number | null }
+    message: string; // Message de statut précis
 }
+
+// ------------------------------------------------------------------------------------------------
+// --- NOUVELLES FONCTIONS D'APPEL DE LA CLOUD FUNCTION ---
+// ------------------------------------------------------------------------------------------------
 
 
 /**
- * Appelle l'API Hubeau pour récupérer la température de l'eau.
+ * Appelle la Cloud Function pour récupérer le Débit et la Hauteur en temps réel.
+ * CF Query: type=realtime
  */
-export const fetchWaterTemperature = async (dateString: string | null = null): Promise<WaterTempData | null> => {
-    let dateParam: string;
+export const fetchHydroRealtime = async (): Promise<HydroResult> => {
     
-    // Utilisation de BASE_TEMP_URL pour la requête
-    const BASE_API_URL = BASE_TEMP_URL;
-
-    if (dateString) {
-        dateParam = dateString;
-    } else {
-        const today = new Date();
-        const yesterday = new Date(today);
-        yesterday.setDate(today.getDate() - 1);
-        dateParam = yesterday.toISOString().split('T')[0];
-    }
+    const queryUrl = `${CLOUD_FUNCTION_URL}?type=realtime`;
     
-    const queryUrl = `${BASE_API_URL}&date_debut_analyse=${dateParam}&date_fin_analyse=${dateParam}`;
-
     try {
         const response = await fetch(queryUrl);
         if (!response.ok) {
-            console.error(`Erreur Hubeau Température (Code: ${response.status}): ${response.statusText}`);
-            return null;
+            const errorText = response.statusText; 
+            console.error(`❌ Erreur CF Hydrométrie Temps Réel (Code: ${response.status}): ${errorText}`);
+            return { 
+                data: { flow: 0, level: 0, waterTemp: null }, // Ajout de waterTemp: null pour sécurité
+                message: `CF ERREUR HTTP ${response.status}: ${errorText}`
+            }; 
         }
 
-        const data = await response.json();
-
-        if (data.count === 0 || !data.data || data.data.length === 0) {
-            console.log(`Hubeau: Aucune donnée de température trouvée pour le ${dateParam}.`);
-            return null;
-        }
-
-        const latestData = data.data[0];
+        // La Cloud Function renvoie HydroResult (flow, level et message)
+        const result: HydroResult = await response.json();
         
-        const waterTemp: WaterTempData = {
-            date: latestData.date_prelevement.split('T')[0], // AAAA-MM-JJ
-            temperature: latestData.resultat_analyse,
-            unit: latestData.symbole_unite,
-        };
-        
-        console.log(`✅ Température de l'eau [${waterTemp.date}]: ${waterTemp.temperature}°C`);
-        return waterTemp;
+        console.log(`✅ CF Hydro Temps Réel: Débit=${result.data.flow} m³/s, Niveau=${result.data.level} m`);
+        return result;
 
     } catch (error) {
-        console.error("❌ Erreur lors de l'appel à l'API Hubeau Température:", error);
+        const errorMessage = error instanceof Error ? error.message : 'Connexion impossible.';
+        console.error("❌ Erreur Réseau lors de l'appel CF Hydrométrie Temps Réel:", errorMessage);
+        
+        return { 
+            data: { flow: 0, level: 0, waterTemp: null }, 
+            message: `CF ERREUR RÉSEAU: ${errorMessage}`
+        }; 
+    }
+};
+
+
+/**
+ * Appelle la Cloud Function pour récupérer la Température de l'Eau J-1 (historique).
+ * CF Query: type=watertemp
+ */
+export const fetchWaterTempJMinus1 = async (): Promise<WaterTempData | null> => {
+    
+    const queryUrl = `${CLOUD_FUNCTION_URL}?type=watertemp`;
+    
+    try {
+        const response = await fetch(queryUrl);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`❌ Erreur CF Température J-1 (Code: ${response.status}): ${errorText}`);
+            return null;
+        }
+
+        // La Cloud Function renvoie soit WaterTempData, soit null
+        const data: WaterTempData | null = await response.json();
+
+        if (data) {
+            console.log(`✅ CF Température J-1: [${data.date}]: ${data.temperature}°C`);
+        } else {
+             console.log(`CF Température J-1: Aucune donnée trouvée.`);
+        }
+        
+        return data;
+
+    } catch (error) {
+        console.error("❌ Erreur Réseau lors de l'appel CF Température J-1:", error);
         return null;
     }
 };
 
 
-/**
- * Récupère le Débit (flow) et la Hauteur (level) les plus récents à Austerlitz.
- * Hydrométrie Temps Réel.
- */
-export const fetchAusterlitzHydro = async (): Promise<HydroResult> => {
-    try {
-        const response = await fetch(BASE_HYDRO_URL);
-        
-        if (!response.ok) {
-            const errorText = response.statusText; // Pas besoin d'await pour statusText
-            console.error(`❌ Erreur Hubeau Hydrométrie (Code: ${response.status}): ${errorText}`);
-            // Retourne l'erreur HTTP, avec des valeurs à 0.0
-            return { 
-                data: { flow: 0, level: 0 }, 
-                message: `ERREUR HTTP ${response.status}: ${errorText}`
-            }; 
-        }
-
-        const data = await response.json();
-        const observations = data.data || [];
-        
-        console.log("🌊 Hubeau Hydro Raw Data:", observations); // LOGGING DES DONNÉES BRUTES
-
-        if (observations.length === 0) {
-            console.log("Hubeau Hydrométrie: Aucune observation trouvée pour Débit/Niveau.");
-            // 200 OK mais données vides
-            return { 
-                data: { flow: 0, level: 0 }, 
-                message: "INFO 200: Données temps réel de débit/niveau (QmJ/H) indisponibles ou vides."
-            };
-        }
-
-        let flow: number | undefined;
-        let level: number | undefined;
-        let flowDate: string | undefined;
-        let levelDate: string | undefined;
-
-        // On parcourt les observations
-        for (const obs of observations) {
-            const val = parseFloat(obs.resultat_obs); // Tenter de convertir en float
-            const obsTime = obs.date_obs;
-
-            if (obs.grandeur_hydro === 'QmJ' && flow === undefined && !isNaN(val)) {
-                flow = val;
-                flowDate = obsTime;
-            }
-            if (obs.grandeur_hydro === 'H' && level === undefined && !isNaN(val)) {
-                level = val;
-                levelDate = obsTime;
-            }
-            
-            if (flow !== undefined && level !== undefined) {
-                break; 
-            }
-        }
-
-        const hydroSnapshot: HydroSnapshot = {
-            flow: flow ?? 0, 
-            level: level ?? 0,
-        };
-        
-        console.log(`✅ Hubeau Hydro Snapshot : Débit=${hydroSnapshot.flow} m³/s (Obs: ${flowDate ?? 'N/A'}), Niveau=${hydroSnapshot.level} m (Obs: ${levelDate ?? 'N/A'})`);
-
-        return { 
-            data: hydroSnapshot, 
-            message: "200 OK: Données récupérées et fusionnées."
-        };
-
-    } catch (error) {
-        // C'est ICI que l'erreur "Failed to fetch" est attrapée (erreur réseau)
-        const errorMessage = error instanceof Error ? error.message : 'Connexion impossible.';
-        console.error("❌ Erreur lors de l'appel à l'API Hubeau Hydrométrie:", errorMessage);
-        
-        // Erreur réseau/catch
-        return { 
-            data: { flow: 0, level: 0 }, 
-            message: `ERREUR RÉSEAU: ${errorMessage}`
-        }; 
-    }
-};
-
+// ------------------------------------------------------------------------------------------------
+// --- FONCTIONS DE CACHE (Inchangées) ---
+// ------------------------------------------------------------------------------------------------
 
 /**
  * Lit la dernière température de l'eau mise en cache dans Firestore (dans un document 'cache').
@@ -194,3 +142,5 @@ export const updateWaterTempCache = async (data: WaterTempData) => {
         console.error("Erreur de mise à jour du cache de température:", error);
     }
 };
+
+// --- FIN LIB/HUBEAUD-SERVICE.TS ---
