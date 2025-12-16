@@ -1,4 +1,4 @@
-// functions/src/index.ts (Vigicrues TR + Fallback Température Saisonnière - CORRIGÉ ESLINT)
+// functions/src/index.ts (Vigicrues Optimisé + Fallback Température Saisonnière)
 
 import {setGlobalOptions} from "firebase-functions";
 import {onRequest} from "firebase-functions/https";
@@ -8,7 +8,7 @@ import axios, {AxiosResponse} from "axios";
 setGlobalOptions({maxInstances: 10});
 
 // --- CONFIGURATION ---
-const STATION_CODE_HYDRO = "F700000103"; // Paris-Austerlitz (Référence Débit)
+const STATION_CODE_HYDRO = "F700000103"; 
 const VIGICRUES_BASE_URL = "https://www.vigicrues.gouv.fr/services/observations.json";
 
 // --- TYPES ---
@@ -26,15 +26,18 @@ interface VigicruesResult {
 
 // --- FONCTIONS HELPERS ---
 
-// 1. Récupération Débit/Niveau (Vigicrues - TEMPS RÉEL)
 const fetchVigicruesData = async (grandeur: "Q" | "H"): Promise<number> => {
-    const url = `${VIGICRUES_BASE_URL}?CdStationHydro=${STATION_CODE_HYDRO}&GrdSerie=${grandeur}&FormatDate=iso`;
+    // AJOUT DU PARAMÈTRE MaxObs=200 : 
+    // On limite aux ~200 derniers points (suffisant pour avoir le TR et le J-1h/J-24h)
+    const url = `${VIGICRUES_BASE_URL}?CdStationHydro=${STATION_CODE_HYDRO}&GrdSerie=${grandeur}&FormatDate=iso&MaxObs=200`;
+    
     try {
         const response: AxiosResponse<VigicruesResult> = await axios.get(url);
         const observations = response.data?.Serie?.ObssHydro;
+        
         if (!observations || observations.length === 0) return 0;
         
-        // Dernier point de mesure
+        // On récupère toujours le DERNIER point pour le temps réel
         return observations[observations.length - 1].ResObsHydro;
     } catch (error: any) {
         logger.error(`Erreur Vigicrues (${grandeur}): ${error.message}`);
@@ -42,29 +45,24 @@ const fetchVigicruesData = async (grandeur: "Q" | "H"): Promise<number> => {
     }
 };
 
-// 2. Estimation Température (Modèle Mathématique Seine)
 const getSeasonalWaterTemp = (): {date: string, temperature: number, unit: string} => {
     const now = new Date();
     const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 1000 / 60 / 60 / 24);
-    
-    // Modèle sinusoïdal calé sur la Seine (Min ~5°C en Fév, Max ~24°C en Août)
     const average = 14.5;
     const amplitude = 9.5;
-    const phaseShift = 110; // Décalage pour pic en été
-
+    const phaseShift = 110; 
     const tempEstim = average + amplitude * Math.sin(2 * Math.PI * (dayOfYear - phaseShift) / 365);
     
     return {
         date: now.toISOString().split("T")[0],
-        temperature: parseFloat(tempEstim.toFixed(1)), // Arrondi à 1 décimale
-        unit: "°C (Est.)", // On indique que c'est une estimation
+        temperature: parseFloat(tempEstim.toFixed(1)),
+        unit: "°C (Est.)",
     };
 };
 
 // --- POINT D'ENTRÉE ---
 
 export const fetchHubeauData = onRequest(async (request, response) => {
-    
     response.set("Access-Control-Allow-Origin", "*");
     response.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
     
@@ -76,13 +74,12 @@ export const fetchHubeauData = onRequest(async (request, response) => {
     const dataType = request.query.type as string;
     
     if (dataType === "realtime") {
-        // Vigicrues pour le débit (Critique)
         const [flow, level] = await Promise.all([
             fetchVigicruesData("Q"),
             fetchVigicruesData("H"),
         ]);
         
-        const message = (flow > 0) ? "200 OK: Vigicrues Online" : "WARN: Vigicrues Offline";
+        const message = (flow > 0) ? "200 OK: Vigicrues (Limited)" : "WARN: Vigicrues Offline";
 
         response.status(200).json({
             data: {flow, level},
@@ -90,7 +87,6 @@ export const fetchHubeauData = onRequest(async (request, response) => {
         });
 
     } else if (dataType === "watertemp") {
-        // Fallback mathématique immédiat (Plus d'erreur 404)
         const data = getSeasonalWaterTemp();
         response.status(200).json(data);
     } else {

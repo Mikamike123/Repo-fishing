@@ -41,7 +41,8 @@ export interface Catch {
     technique: TechniqueType;
     lure: string;
     zone: ZoneType; 
-    timestamp: Date;
+    timestamp: Date; 
+    photoUrls?: string[]; // << AJOUTER CETTE LIGNE (Optionnel, tableau de liens)
 }
 
 export interface Miss {

@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ScrollText, Anchor } from 'lucide-react';
 import { Session } from '../types';
 import SessionCard from './SessionCard';
+import SessionDetailModal from './SessionDetailModal'; // << AJOUTÉ
 
 interface HistoryViewProps {
   sessions: Session[];
@@ -11,6 +12,16 @@ interface HistoryViewProps {
 const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession }) => {
   // Sort sessions by date descending (newest first)
   const sortedSessions = [...sessions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  // --- ÉTATS MODAL DÉTAIL ---
+  const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+
+  // HANDLER OUVERTURE DÉTAIL
+  const handleOpenDetail = (session: Session) => {
+      setSelectedSession(session);
+      setIsDetailOpen(true);
+  };
 
   return (
     <div className="pb-24 animate-in fade-in duration-300">
@@ -32,7 +43,13 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession }) 
       <div className="space-y-4">
         {sortedSessions.length > 0 ? (
           sortedSessions.map((session) => (
-            <SessionCard key={session.id} session={session} onDelete={onDeleteSession} />
+            <div 
+                key={session.id} 
+                onClick={() => handleOpenDetail(session)} // << AJOUTÉ
+                className="cursor-pointer transition-transform hover:scale-[1.01] active:scale-[0.99]"
+            >
+                <SessionCard session={session} onDelete={onDeleteSession} />
+            </div>
           ))
         ) : (
           <div className="flex flex-col items-center justify-center py-16 px-4 text-center border-2 border-dashed border-stone-200 rounded-3xl bg-stone-50/50">
@@ -46,6 +63,13 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession }) 
           </div>
         )}
       </div>
+
+      {/* MODAL DÉTAIL */}
+      <SessionDetailModal 
+        session={selectedSession} 
+        isOpen={isDetailOpen} 
+        onClose={() => setIsDetailOpen(false)} 
+      />
 
     </div>
   );

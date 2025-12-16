@@ -8,9 +8,7 @@ import { HydroSnapshot } from '../types';
 // --- NOUVEAU: URL DE LA CLOUD FUNCTION (Proxy côté serveur) ---
 // Utilise l'URL locale de l'émulateur pour le développement (port 5001 par défaut)
 // Pour la production, vous utiliserez l'URL réelle: 'https://[REGION]-[PROJECT_ID].cloudfunctions.net/fetchHubeauData'
-const CLOUD_FUNCTION_URL = (process.env.NODE_ENV === 'development') 
-    ? 'http://127.0.0.1:5001/mysupstack/us-central1/fetchHubeauData' 
-    : 'https://[VOTRE_REGION]-[VOTRE_PROJECT_ID].cloudfunctions.net/fetchHubeauData';
+const CLOUD_FUNCTION_URL = import.meta.env.VITE_CLOUD_FUNCTION_URL;
 
 // STATION_CODE est conservé pour l'info mais n'est plus utilisé dans ce fichier Front-end.
 const STATION_CODE = 'F700000103'; 

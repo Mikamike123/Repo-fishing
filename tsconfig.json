@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "experimentalDecorators": true,
-    "useDefineForClassFields": false,
+    "useDefineForClassFields": true,
     "module": "ESNext",
     "lib": [
       "ES2022",
@@ -29,6 +29,7 @@
   },
   "include": [
     "src", 
-    "vite-env.d.ts" // <-- NOUVEAU: Inclut votre fichier de types d'environnement
+    "lib",
+    "vite-env.d.ts"
   ]
 }

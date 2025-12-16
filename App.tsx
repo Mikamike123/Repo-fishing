@@ -14,7 +14,7 @@ import HistoryView from './components/HistoryView';
 import ArsenalView from './components/ArsenalView';
 import CoachView from './components/CoachView'; 
 import { Session, ArsenalConfig } from './types'; 
-// <<< CHANGEMENT : Import de clearChatHistory pour la réinitialisation UX
+// Import de clearChatHistory pour la réinitialisation UX
 import { sessionsCollection, configDocRef, clearChatHistory } from './lib/firebase'; 
 
 
@@ -82,6 +82,15 @@ const App: React.FC = () => {
                     misses: data.misses || [],
                     
                     weather: data.weather, 
+                    waterTemp: data.waterTemp,      // Ajout lecture waterTemp
+                    cloudCoverage: data.cloudCoverage, // Ajout lecture cloudCoverage
+                    hydro: data.hydro,              // Ajout lecture hydro
+                    bioScore: data.bioScore,        // Ajout lecture bioScore
+
+                    startTime: data.startTime,      // Ajout lecture horaires
+                    endTime: data.endTime,
+                    durationMinutes: data.durationMinutes,
+
                     catchCount: data.catchCount || 0,
                     notes: data.notes || '',
                     feelingScore: data.feelingScore || 5,
@@ -156,8 +165,19 @@ const App: React.FC = () => {
     };
 
 
-    // --- HANDLERS FOR CONFIGURATION (AVEC PROTECTION ANTI-UNDEFINED) ---
+    // --- HANDLERS FOR CONFIGURATION (AVEC MODIFICATION) ---
     
+    // Fonction générique pour renommer un item
+    const handleEditItem = (field: keyof ArsenalConfig, oldValue: string, newValue: string) => {
+        // On force le typage ici avec (as string[]) pour rassurer TypeScript
+        const currentList = (arsenalConfig[field] as string[]) ?? [];
+        
+        // On type explicitement 'item' en string
+        const newList = currentList.map((item: string) => item === oldValue ? newValue : item);
+        
+        updateArsenal(field, newList);
+    };
+
     const handleAddZone = (zone: string) => {
         const currentZones = arsenalConfig.zones ?? []; 
         if (!currentZones.includes(zone)) {
@@ -170,6 +190,8 @@ const App: React.FC = () => {
         const newZones = currentZones.filter(z => z !== zone);
         updateArsenal('zones', newZones);
     }; 
+    // NOUVEAU
+    const handleEditZone = (oldVal: string, newVal: string) => handleEditItem('zones', oldVal, newVal);
 
     const handleAddSetup = (setup: string) => {
         const currentSetups = arsenalConfig.setups ?? [];
@@ -183,6 +205,8 @@ const App: React.FC = () => {
         const newSetups = currentSetups.filter(s => s !== setup);
         updateArsenal('setups', newSetups);
     }; 
+    // NOUVEAU
+    const handleEditSetup = (oldVal: string, newVal: string) => handleEditItem('setups', oldVal, newVal);
 
     const handleAddTechnique = (tech: string) => {
         const currentTechniques = arsenalConfig.techniques ?? [];
@@ -196,6 +220,8 @@ const App: React.FC = () => {
         const newTechniques = currentTechniques.filter(t => t !== tech);
         updateArsenal('techniques', newTechniques);
     }; 
+    // NOUVEAU
+    const handleEditTechnique = (oldVal: string, newVal: string) => handleEditItem('techniques', oldVal, newVal);
     // --- FIN HANDLERS ARSENAL ---
 
 
@@ -262,9 +288,9 @@ const App: React.FC = () => {
             case 'arsenal':
                 return ( 
                     <ArsenalView 
-                        zones={arsenalConfig.zones} onAddZone={handleAddZone} onDeleteZone={handleDeleteZone}
-                        setups={arsenalConfig.setups} onAddSetup={handleAddSetup} onDeleteSetup={handleDeleteSetup}
-                        techniques={arsenalConfig.techniques} onAddTechnique={handleAddTechnique} onDeleteTechnique={handleDeleteTechnique}
+                        zones={arsenalConfig.zones} onAddZone={handleAddZone} onDeleteZone={handleDeleteZone} onEditZone={handleEditZone}
+                        setups={arsenalConfig.setups} onAddSetup={handleAddSetup} onDeleteSetup={handleDeleteSetup} onEditSetup={handleEditSetup}
+                        techniques={arsenalConfig.techniques} onAddTechnique={handleAddTechnique} onDeleteTechnique={handleDeleteTechnique} onEditTechnique={handleEditTechnique}
                     />
                 );
             case 'coach': 

@@ -78,6 +78,9 @@ const SessionForm: React.FC<SessionFormProps> = ({
     const [setup, setSetup] = useState<string>(availableSetups[0] || "Default");
     const [feeling, setFeeling] = useState<number>(5);
 
+    // NOUVEL ÉTAT pour l'erreur de validation horaire
+    const [timeError, setTimeError] = useState<string | null>(null);
+
     // Catch & Miss State (Inchangé)
     const [catches, setCatches] = useState<Catch[]>([]);
     const [misses, setMisses] = useState<Miss[]>([]);
@@ -175,12 +178,20 @@ const SessionForm: React.FC<SessionFormProps> = ({
     // Handler (Inchangé dans sa structure)
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        setTimeError(null); // Reset erreur
 
-        // Si les données environnementales critiques sont manquantes, on peut alerter ou continuer avec les données partielles
+        // Sécurité : On force la vérification des données avant l'envoi pour éviter le N/A dans le modal
         if (isLoadingEnv) {
-            alert("Veuillez attendre le chargement des conditions environnementales avant d'enregistrer.");
-            return;
+            return; // Le bouton est désactivé de toute façon
         }
+
+        // --- VALIDATION HORAIRE ---
+        // Comparaison lexicographique simple de chaînes "HH:MM" qui fonctionne très bien pour ce format
+        if (endTime <= startTime) {
+            setTimeError("L'heure de fin doit être postérieure à l'heure de début.");
+            return; // Bloque la soumission
+        }
+        // --------------------------
 
         const start = new Date(`1970-01-01T${startTime}:00`);
         const end = new Date(`1970-01-01T${endTime}:00`);
@@ -199,12 +210,11 @@ const SessionForm: React.FC<SessionFormProps> = ({
             feelingScore: feeling,
             
             // CRITICAL: Saving Environmental Snapshots
-            // On sauvegarde les VRAIES données obtenues des APIs
-            weather: realtimeWeather, // Météo Nanterre (si non null)
-            hydro: realtimeHydro,     // Hydro Austerlitz (si non null)
+            weather: realtimeWeather, 
+            hydro: realtimeHydro,     // C'est ici que ça se joue pour le Modal
             bioScore: bioScore,
-            waterTemp: waterTemp,     // Température Eau (si non null)
-            cloudCoverage: cloudCoverage, // Couverture Nuageuse (si non null)
+            waterTemp: waterTemp,     // C'est ici que ça se joue pour le Modal
+            cloudCoverage: cloudCoverage,
 
             // Champs de tableaux
             catches: catches,
@@ -220,12 +230,17 @@ const SessionForm: React.FC<SessionFormProps> = ({
         }, 500);
     };
 
-    // Handlers Catch/Miss (Inchangés)
-    const handleAddCatch = (data: { species: SpeciesType; size: number; technique: TechniqueType; lure: string; zone: ZoneType }) => {
+    // --- HANDLER CATCH (Support de l'heure & Photos) ---
+    // UPDATE: Ajout de photoUrls dans la signature
+    const handleAddCatch = (data: { species: SpeciesType; size: number; technique: TechniqueType; lure: string; zone: ZoneType; time: string; photoUrls: string[] }) => {
+        const fullDate = new Date(`${date}T${data.time}:00`);
+        // On retire 'time' car on utilise le timestamp complet, mais on garde photoUrls
+        const { time, ...catchData } = data; 
+
         const newCatch: Catch = {
             id: Math.random().toString(36).substr(2, 9),
-            ...data,
-            timestamp: new Date()
+            ...catchData, // Cela inclut photoUrls
+            timestamp: fullDate
         };
         setCatches([...catches, newCatch]);
     };
@@ -234,11 +249,15 @@ const SessionForm: React.FC<SessionFormProps> = ({
         setCatches(catches.filter(c => c.id !== id));
     };
 
-    const handleAddMiss = (data: Omit<Miss, 'id' | 'timestamp'>) => {
+    // --- HANDLER MISS MODIFIÉ (Support de l'heure) ---
+    const handleAddMiss = (data: Omit<Miss, 'id' | 'timestamp'> & { time: string }) => {
+        const fullDate = new Date(`${date}T${data.time}:00`);
+        const { time, ...missData } = data; // On retire 'time' propre
+
         const newMiss: Miss = {
             id: Math.random().toString(36).substr(2, 9),
-            ...data,
-            timestamp: new Date()
+            ...missData,
+            timestamp: fullDate
         };
         setMisses([...misses, newMiss]);
     };
@@ -269,16 +288,13 @@ const SessionForm: React.FC<SessionFormProps> = ({
     const getDeltaColorClass = (delta: string, baseColor: string, reverse: boolean = false) => {
         const d = Number(delta);
         if (isNaN(d)) return 'text-stone-500';
-        
-        // Règle simplifiée: vert si positif (ou si négatif dans le cas du débit)
         const isFavorable = reverse ? d <= 0 : d > 0;
-        
         if (isFavorable) return `text-${baseColor}-700 bg-${baseColor}-100`;
         return 'text-stone-500 bg-stone-100';
     };
 
-    const pressureColorClass = getDeltaColorClass(deltaPDisplay, 'emerald', true); // Pression basse (négative) est souvent favorable
-    const flowColorClass = getDeltaColorClass(deltaQDisplay, 'cyan', true);      // Débit stable/descendant (négatif) est souvent favorable
+    const pressureColorClass = getDeltaColorClass(deltaPDisplay, 'emerald', true); 
+    const flowColorClass = getDeltaColorClass(deltaQDisplay, 'cyan', true);      
 
 
     return (
@@ -290,6 +306,9 @@ const SessionForm: React.FC<SessionFormProps> = ({
                 initialZone={zone}
                 availableZones={availableZones}
                 availableTechniques={availableTechniques}
+                sessionDate={date}
+                sessionStartTime={startTime}
+                sessionEndTime={endTime} // Passe l'heure de fin pour validation
             />
             
             <MissDialog
@@ -298,6 +317,8 @@ const SessionForm: React.FC<SessionFormProps> = ({
                 onSave={handleAddMiss}
                 initialZone={zone}
                 availableZones={availableZones}
+                sessionStartTime={startTime}
+                sessionEndTime={endTime} // Passe l'heure de fin pour validation
             />
 
             <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-organic border border-stone-100 overflow-hidden">
@@ -318,22 +339,23 @@ const SessionForm: React.FC<SessionFormProps> = ({
                     {/* Main Form Fields */}
                     <div className="flex-1 p-8 space-y-8">
                         
-                        {/* BIG TACTILE INPUTS SECTION */}
+                        {/* SECTION DATE & CRÉNEAU - Responsive Fix */}
+                        {/* grid-cols-1 sur mobile (empilé) -> md:grid-cols-2 sur tablette/pc (côte à côte) */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
                                 <label className="text-xs font-bold uppercase tracking-wider text-stone-400 flex items-center gap-2">
                                     <Calendar size={14} /> Date
                                 </label>
                                 <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                        <Calendar className="text-stone-400" size={24} />
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <Calendar className="text-stone-400" size={20} />
                                     </div>
                                     <input 
                                         type="date" 
                                         value={date}
                                         onChange={(e) => setDate(e.target.value)}
                                         onClick={(e) => e.currentTarget.showPicker()}
-                                        className="w-full h-16 bg-white border border-stone-200 rounded-xl pl-12 pr-4 text-xl font-medium text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all appearance-none cursor-pointer"
+                                        className="w-full h-14 bg-white border border-stone-200 rounded-xl pl-10 pr-4 text-lg font-medium text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all appearance-none cursor-pointer"
                                     />
                                 </div>
                             </div>
@@ -341,36 +363,49 @@ const SessionForm: React.FC<SessionFormProps> = ({
                                 <label className="text-xs font-bold uppercase tracking-wider text-stone-400 flex items-center gap-2">
                                     <Clock size={14} /> Créneau
                                 </label>
-                                <div className="flex gap-3 items-center">
+                                {/* Ajout d'une bordure rouge si erreur */}
+                                <div className={`flex gap-3 items-center p-1 rounded-xl ${timeError ? 'bg-red-50 border border-red-200' : ''}`}>
                                     <div className="relative flex-1">
                                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                            <Clock className="text-stone-400" size={20} />
+                                            <Clock className="text-stone-400" size={18} />
                                         </div>
+                                        {/* FIX: Padding réduit (pl-8) et texte responsive pour éviter la coupure sur mobile */}
                                         <input 
                                             type="time" 
                                             value={startTime}
-                                            onChange={(e) => setStartTime(e.target.value)}
+                                            onChange={(e) => {
+                                                setStartTime(e.target.value);
+                                                setTimeError(null); // Reset erreur à la modif
+                                            }}
                                             onClick={(e) => e.currentTarget.showPicker()}
-                                            className="w-full h-16 bg-white border border-stone-200 rounded-xl pl-10 pr-2 text-lg font-medium text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all appearance-none text-center cursor-pointer"
+                                            className="w-full h-14 bg-white border border-stone-200 rounded-xl pl-8 pr-1 text-base sm:text-lg font-medium text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all appearance-none text-center cursor-pointer"
                                         />
                                     </div>
                                     <span className="text-stone-300 font-bold">-</span>
                                     <div className="relative flex-1">
                                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                            <Clock className="text-stone-400" size={20} />
+                                            <Clock className="text-stone-400" size={18} />
                                         </div>
                                         <input 
                                             type="time" 
                                             value={endTime}
-                                            onChange={(e) => setEndTime(e.target.value)}
+                                            onChange={(e) => {
+                                                setEndTime(e.target.value);
+                                                setTimeError(null); // Reset erreur à la modif
+                                            }}
                                             onClick={(e) => e.currentTarget.showPicker()}
-                                            className="w-full h-16 bg-white border border-stone-200 rounded-xl pl-10 pr-2 text-lg font-medium text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all appearance-none text-center cursor-pointer"
+                                            className={`w-full h-14 bg-white border ${timeError ? 'border-red-400 text-red-600' : 'border-stone-200 text-stone-800'} rounded-xl pl-8 pr-1 text-base sm:text-lg font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all appearance-none text-center cursor-pointer`}
                                         />
                                     </div>
                                 </div>
+                                {/* Message d'erreur sous les inputs */}
+                                {timeError && (
+                                    <p className="text-xs text-red-500 font-bold ml-1">{timeError}</p>
+                                )}
                             </div>
                         </div>
 
+                        {/* SECTION ZONE & SETUP - Harmonisé md:grid-cols-2 */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
                                 <label className="text-xs font-bold uppercase tracking-wider text-stone-400 flex items-center gap-2">
@@ -496,6 +531,10 @@ const SessionForm: React.FC<SessionFormProps> = ({
                                                         <div className="text-[10px] text-stone-400 font-medium">
                                                             {catchItem.size} cm
                                                         </div>
+                                                        {/* Petit indicateur d'heure sur la card */}
+                                                        <div className="text-[9px] text-amber-500 font-bold mt-0.5">
+                                                            {catchItem.timestamp.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             );
@@ -523,6 +562,10 @@ const SessionForm: React.FC<SessionFormProps> = ({
                                                     </div>
                                                     <div className="text-[9px] text-stone-400 uppercase tracking-wide truncate w-full">
                                                         {miss.speciesSupposed !== 'Inconnu' ? miss.speciesSupposed : 'Inconnu'}
+                                                    </div>
+                                                    {/* Petit indicateur d'heure pour les ratés */}
+                                                    <div className="text-[9px] text-red-400 font-bold mt-0.5">
+                                                        {miss.timestamp.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                                     </div>
                                                 </div>
                                             </div>
@@ -652,10 +695,24 @@ const SessionForm: React.FC<SessionFormProps> = ({
                         <div className="mt-8 pt-6 border-t border-stone-200">
                             <button 
                                 type="submit"
-                                className="w-full bg-stone-800 hover:bg-stone-900 text-white font-bold py-4 px-6 rounded-xl shadow-lg shadow-stone-800/20 transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2 active:scale-95"
+                                disabled={isLoadingEnv}
+                                className={`w-full font-bold py-4 px-6 rounded-xl shadow-lg transition-all transform flex items-center justify-center gap-2 
+                                    ${isLoadingEnv 
+                                        ? 'bg-stone-300 text-stone-500 cursor-not-allowed' 
+                                        : 'bg-stone-800 hover:bg-stone-900 text-white shadow-stone-800/20 hover:-translate-y-0.5 active:scale-95'
+                                    }`}
                             >
-                                <Save size={18} />
-                                Terminer la Session
+                                {isLoadingEnv ? (
+                                    <>
+                                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-stone-500 border-t-transparent"></div>
+                                        Chargement Données...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Save size={18} />
+                                        Terminer la Session
+                                    </>
+                                )}
                             </button>
                         </div>
                     </div>

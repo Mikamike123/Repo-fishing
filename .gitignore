@@ -44,6 +44,7 @@ venv/
 /.env
 /.env.*.local
 /.env.local
+/.env.production
 /config.js  # Si vous générez un fichier de config à partir des .env
 
 # Firebase / Cloud Functions

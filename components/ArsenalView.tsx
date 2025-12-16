@@ -1,18 +1,23 @@
 import React, { useState } from 'react';
-import { MapPin, Anchor, Crosshair, Plus, X, Trash2 } from 'lucide-react';
+// Ajoutez Trash2 à la liste ci-dessous
+
+import { MapPin, Anchor, Crosshair, Plus, X, Pencil, Check, Trash2 } from 'lucide-react'; // Ajout Pencil, Check
 
 interface ArsenalViewProps {
   zones: string[];
   onAddZone: (zone: string) => void;
   onDeleteZone: (zone: string) => void;
+  onEditZone: (oldVal: string, newVal: string) => void; // Nouveau
 
   setups: string[];
   onAddSetup: (setup: string) => void;
   onDeleteSetup: (setup: string) => void;
+  onEditSetup: (oldVal: string, newVal: string) => void; // Nouveau
 
   techniques: string[];
   onAddTechnique: (tech: string) => void;
   onDeleteTechnique: (tech: string) => void;
+  onEditTechnique: (oldVal: string, newVal: string) => void; // Nouveau
 }
 
 const ConfigSection: React.FC<{
@@ -21,10 +26,15 @@ const ConfigSection: React.FC<{
   items: string[];
   onAdd: (item: string) => void;
   onDelete: (item: string) => void;
+  onEdit: (oldVal: string, newVal: string) => void; // Nouveau
   placeholder: string;
   colorClass: string;
-}> = ({ title, icon, items, onAdd, onDelete, placeholder, colorClass }) => {
+}> = ({ title, icon, items, onAdd, onDelete, onEdit, placeholder, colorClass }) => {
   const [newItem, setNewItem] = useState('');
+  
+  // États pour l'édition
+  const [editingItem, setEditingItem] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,6 +42,24 @@ const ConfigSection: React.FC<{
       onAdd(newItem.trim());
       setNewItem('');
     }
+  };
+
+  const startEditing = (item: string) => {
+    setEditingItem(item);
+    setEditValue(item);
+  };
+
+  const saveEdit = () => {
+    if (editingItem && editValue.trim() && editValue !== editingItem) {
+        onEdit(editingItem, editValue.trim());
+    }
+    setEditingItem(null);
+    setEditValue('');
+  };
+
+  const cancelEdit = () => {
+    setEditingItem(null);
+    setEditValue('');
   };
 
   return (
@@ -46,13 +74,46 @@ const ConfigSection: React.FC<{
       <ul className="space-y-3 mb-6">
         {items.map((item, index) => (
           <li key={index} className="flex justify-between items-center group bg-stone-50 p-3 rounded-xl border border-stone-100 hover:border-amber-200 transition-colors">
-            <span className="font-medium text-stone-700">{item}</span>
-            <button 
-              onClick={() => onDelete(item)}
-              className="p-1.5 text-stone-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors opacity-60 group-hover:opacity-100"
-            >
-              <X size={16} />
-            </button>
+            
+            {/* MODE ÉDITION */}
+            {editingItem === item ? (
+                <div className="flex flex-1 gap-2 items-center">
+                    <input 
+                        type="text" 
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                        className="flex-1 bg-white border border-amber-300 rounded-lg px-2 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                        autoFocus
+                    />
+                    <button onClick={saveEdit} className="p-1 text-emerald-500 hover:bg-emerald-50 rounded">
+                        <Check size={16} />
+                    </button>
+                    <button onClick={cancelEdit} className="p-1 text-stone-400 hover:bg-stone-100 rounded">
+                        <X size={16} />
+                    </button>
+                </div>
+            ) : (
+                /* MODE AFFICHAGE */
+                <>
+                    <span className="font-medium text-stone-700">{item}</span>
+                    <div className="flex gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                        <button 
+                            onClick={() => startEditing(item)}
+                            className="p-1.5 text-stone-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors"
+                            title="Modifier"
+                        >
+                            <Pencil size={16} />
+                        </button>
+                        <button 
+                            onClick={() => onDelete(item)}
+                            className="p-1.5 text-stone-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                            title="Supprimer"
+                        >
+                            <Trash2 size={16} />
+                        </button>
+                    </div>
+                </>
+            )}
           </li>
         ))}
         {items.length === 0 && (
@@ -81,9 +142,9 @@ const ConfigSection: React.FC<{
 };
 
 const ArsenalView: React.FC<ArsenalViewProps> = ({
-  zones, onAddZone, onDeleteZone,
-  setups, onAddSetup, onDeleteSetup,
-  techniques, onAddTechnique, onDeleteTechnique
+  zones, onAddZone, onDeleteZone, onEditZone,
+  setups, onAddSetup, onDeleteSetup, onEditSetup,
+  techniques, onAddTechnique, onDeleteTechnique, onEditTechnique
 }) => {
   return (
     <div className="pb-24 animate-in fade-in duration-300">
@@ -93,14 +154,14 @@ const ArsenalView: React.FC<ArsenalViewProps> = ({
         <div>
           <h2 className="text-2xl font-bold text-stone-800 tracking-tight flex items-center gap-3">
              <div className="p-1.5 bg-stone-200 rounded-lg text-stone-600">
-                 <Anchor size={20} />
+                  <Anchor size={20} />
              </div>
             Mon Arsenal
           </h2>
           <p className="text-sm text-stone-400 mt-1 font-medium ml-1">
             Configurez vos zones, équipements et techniques.
           </p>
-        </div>
+      </div>
       </div>
 
       {/* Grid Layout */}
@@ -112,6 +173,7 @@ const ArsenalView: React.FC<ArsenalViewProps> = ({
           items={zones}
           onAdd={onAddZone}
           onDelete={onDeleteZone}
+          onEdit={onEditZone} // Passé ici
           placeholder="Ex: Piles de ponts..."
           colorClass="text-amber-600"
         />
@@ -122,6 +184,7 @@ const ArsenalView: React.FC<ArsenalViewProps> = ({
           items={setups}
           onAdd={onAddSetup}
           onDelete={onDeleteSetup}
+          onEdit={onEditSetup} // Passé ici
           placeholder="Ex: Combo Big Bait..."
           colorClass="text-stone-600"
         />
@@ -132,6 +195,7 @@ const ArsenalView: React.FC<ArsenalViewProps> = ({
           items={techniques}
           onAdd={onAddTechnique}
           onDelete={onDeleteTechnique}
+          onEdit={onEditTechnique} // Passé ici
           placeholder="Ex: Verticale..."
           colorClass="text-emerald-600"
         />
