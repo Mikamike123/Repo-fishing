@@ -1,8 +1,11 @@
-import { BioConditions, Session, OracleScore } from '../types';
+import { BioConditions, Session } from '../types';
+
+// Type local pour éviter les erreurs d'import si non exporté de types.ts
+type OracleScore = number | null;
 
 /**
  * ORACLE BIOLOGIQUE (ScoreBio)
- * Calculates a 0-100 score based on theoretical fish activity.
+ * Calcule un score 0-100 basé sur l'activité théorique des poissons.
  */
 export const calculateBioScore = (conditions: BioConditions): number => {
   let score = 50; // Depart
@@ -52,7 +55,6 @@ export const calculateBioScore = (conditions: BioConditions): number => {
   if (isDawn || isDusk) {
     score += 15; // Aube ou Crépuscule
   } else {
-    // Journée (ou Nuit hors créneaux magiques, traité comme journée par défaut pour luminosité)
     const cloudCover = conditions.currentWeather.clouds;
     if (cloudCover > 75) {
       score += 10; // Faible luminosité
@@ -61,13 +63,12 @@ export const calculateBioScore = (conditions: BioConditions): number => {
     }
   }
 
-  // --- Clamping ---
   return Math.max(0, Math.min(100, score));
 };
 
 /**
  * ORACLE HISTORIQUE (ScoreData)
- * Calculates a probability based on matching historical sessions.
+ * Calcule une probabilité basée sur la correspondance avec les sessions passées.
  */
 export const calculateDataScore = (
   currentConditions: BioConditions,
@@ -80,8 +81,12 @@ export const calculateDataScore = (
 
   // 1. Filtrage (Matching)
   const matchingSessions = history.filter((session) => {
-    // Saison: [c.month-1, c.month+1] (Handle year wrap)
-    const sMonth = session.date.getMonth();
+    // V3 FIX: La date de session est maintenant une string (YYYY-MM-DD)
+    // On doit la convertir en objet Date pour utiliser .getMonth()
+    const sDate = new Date(session.date);
+    const sMonth = sDate.getMonth();
+    
+    // Saison: [c.month-1, c.month+1]
     const prevMonth = (cMonth - 1 + 12) % 12;
     const nextMonth = (cMonth + 1) % 12;
     
@@ -89,10 +94,14 @@ export const calculateDataScore = (
     if (!isSeasonMatch) return false;
 
     // Pression: abs(s.pressure - c.pressure) <= 8 hPa
+    // V3 FIX: Vérification de l'existence de weather
+    if (!session.weather) return false;
     const isPressureMatch = Math.abs(session.weather.pressure - cPressure) <= 8;
     if (!isPressureMatch) return false;
 
     // Débit: abs(s.flow - c.flow) <= (c.flow * 0.15)
+    // V3 FIX: Vérification de l'existence de hydro
+    if (!session.hydro) return false;
     const flowThreshold = cFlow * 0.15;
     const isFlowMatch = Math.abs(session.hydro.flow - cFlow) <= flowThreshold;
     if (!isFlowMatch) return false;
@@ -104,7 +113,7 @@ export const calculateDataScore = (
   const totalMatches = matchingSessions.length;
   
   if (totalMatches < 5) {
-    return null; // N/A - Insufficient Data
+    return null; // Données insuffisantes
   }
 
   const winningMatches = matchingSessions.filter(s => s.catchCount > 0).length;

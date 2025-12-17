@@ -4,27 +4,25 @@ import { initializeApp } from "firebase/app";
 import { getFirestore, collection, doc, getDocs, deleteDoc } from "firebase/firestore"; 
 import { GoogleGenAI } from "@google/genai";
 
-// ID UTILISATEUR DE DÉMONSTRATION pour les chemins Firestore
-export const USER_ID = "USER_WEB_DEMO"; 
+// ID UTILISATEUR DE DÉMONSTRATION (Utilisé pour le multi-tenancy V3)
+export const USER_ID = "user_1"; 
 
 // 1. Config Firebase
 const firebaseConfig = {
-    // @ts-ignore : Ignorer l'erreur de typage 'env' de l'IDE qui persiste
+    // @ts-ignore
     apiKey: import.meta.env.VITE_GEMINI_API_KEY, 
     authDomain: "mysupstack.firebaseapp.com",
     projectId: "mysupstack", 
 };
 
-// Vérification de sécurité de la clé API
 const geminiApiKey = firebaseConfig.apiKey;
-
 if (!geminiApiKey) {
     console.error("❌ ERREUR CRITIQUE: Clé API Gemini manquante.");
 }
 
 const app = initializeApp(firebaseConfig);
 
-// 2. Initialisation Firestore (Database)
+// 2. Initialisation Firestore
 export const db = getFirestore(app);
 
 // 3. Initialisation Gemini
@@ -32,34 +30,28 @@ export const ai = new GoogleGenAI({
     apiKey: geminiApiKey as string 
 });
 
-// --- CHEMINS D'ACCÈS AUX COLLECTIONS ---
+// --- CHEMINS D'ACCÈS AUX COLLECTIONS (Architecture V3) ---
 
-// 3.1. Collection de l'historique du Coach (Mémoire IA)
+// 3.1. Coach & Sessions
 export const chatHistoryCollection = collection(db, 'users', USER_ID, 'coach_memoire');
+export const sessionsCollection = collection(db, 'sessions'); // Collection racine avec userId interne
 
-// 3.2. Collection des Sessions de pêche (Pour la persistance)
-export const sessionsCollection = collection(db, 'users', USER_ID, 'sessions');
+// 3.2. Arsenal (Nouvelle structure V3)
+export const zonesCollection = collection(db, 'zones');
+export const setupsCollection = collection(db, 'setups');
+export const techniquesCollection = collection(db, 'techniques');
+export const luresCollection = collection(db, 'lures');
 
-// NOUVELLES RÉFÉRENCES POUR L'ARSENAL (Configuration utilisateur)
-
-// 3.3. Collection des Paramètres (settings)
-export const settingsCollection = collection(db, 'users', USER_ID, 'settings'); 
-
-// 3.4. Document 'config' (Document unique qui stockera Zones, Setups, Techniques)
-export const configDocRef = doc(settingsCollection, 'config'); 
+// 3.3. Logs Environnementaux (Pour le futur Data Hoarder)
+export const envLogsCollection = collection(db, 'environmental_logs');
 
 /**
- * Supprime tous les messages de l'historique du coach pour redémarrer la conversation (UX).
+ * Nettoyage de l'historique IA
  */
 export const clearChatHistory = async () => {
     const snapshot = await getDocs(chatHistoryCollection);
-    
-    // Si la collection est déjà vide, ne rien faire
     if (snapshot.empty) return; 
-    
-    // Supprimer tous les documents trouvés dans la collection
     const deletePromises = snapshot.docs.map(d => deleteDoc(doc(chatHistoryCollection, d.id)));
-    
     await Promise.all(deletePromises);
     console.log(`Historique de chat effacé : ${deletePromises.length} messages supprimés.`);
 };

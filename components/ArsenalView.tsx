@@ -1,209 +1,158 @@
 import React, { useState } from 'react';
-// Ajoutez Trash2 à la liste ci-dessous
-
-import { MapPin, Anchor, Crosshair, Plus, X, Pencil, Check, Trash2 } from 'lucide-react'; // Ajout Pencil, Check
+import { MapPin, Anchor, Crosshair, Plus, X, Edit2, Check, Palette, Ruler, Scale, Fish } from 'lucide-react';
+import { Spot, Setup, Technique, RefLureType, RefColor, RefSize, RefWeight } from '../types';
 
 interface ArsenalViewProps {
-  zones: string[];
-  onAddZone: (zone: string) => void;
-  onDeleteZone: (zone: string) => void;
-  onEditZone: (oldVal: string, newVal: string) => void; // Nouveau
-
-  setups: string[];
-  onAddSetup: (setup: string) => void;
-  onDeleteSetup: (setup: string) => void;
-  onEditSetup: (oldVal: string, newVal: string) => void; // Nouveau
-
-  techniques: string[];
-  onAddTechnique: (tech: string) => void;
-  onDeleteTechnique: (tech: string) => void;
-  onEditTechnique: (oldVal: string, newVal: string) => void; // Nouveau
+  // SPOTS
+  spots: Spot[];
+  onAddSpot: (label: string) => void;
+  onDeleteSpot: (id: string) => void;
+  onEditSpot: (id: string, label: string) => void;
+  // SETUPS
+  setups: Setup[];
+  onAddSetup: (label: string) => void;
+  onDeleteSetup: (id: string) => void;
+  onEditSetup: (id: string, label: string) => void;
+  // TECHNIQUES
+  techniques: Technique[];
+  onAddTechnique: (label: string) => void;
+  onDeleteTechnique: (id: string) => void;
+  onEditTechnique: (id: string, label: string) => void;
+  
+  // --- NOUVELLES COLLECTIONS V3.1 ---
+  lureTypes: RefLureType[];
+  onAddLureType: (label: string) => void;
+  onDeleteLureType: (id: string) => void;
+  onEditLureType: (id: string, label: string) => void;
+  
+  colors: RefColor[];
+  onAddColor: (label: string) => void;
+  onDeleteColor: (id: string) => void;
+  onEditColor: (id: string, label: string) => void;
+  
+  sizes: RefSize[];
+  onAddSize: (label: string) => void;
+  onDeleteSize: (id: string) => void;
+  onEditSize: (id: string, label: string) => void;
+  
+  weights: RefWeight[];
+  onAddWeight: (label: string) => void;
+  onDeleteWeight: (id: string) => void;
+  onEditWeight: (id: string, label: string) => void;
 }
 
 const ConfigSection: React.FC<{
   title: string;
   icon: React.ReactNode;
-  items: string[];
-  onAdd: (item: string) => void;
-  onDelete: (item: string) => void;
-  onEdit: (oldVal: string, newVal: string) => void; // Nouveau
+  items: any[];
+  onAdd: (label: string) => void;
+  onDelete: (id: string) => void;
+  onEdit: (id: string, label: string) => void;
   placeholder: string;
   colorClass: string;
 }> = ({ title, icon, items, onAdd, onDelete, onEdit, placeholder, colorClass }) => {
-  const [newItem, setNewItem] = useState('');
-  
-  // États pour l'édition
-  const [editingItem, setEditingItem] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
+  const [newItemLabel, setNewItemLabel] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingLabel, setEditingLabel] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (newItem.trim()) {
-      onAdd(newItem.trim());
-      setNewItem('');
+    if (newItemLabel.trim()) {
+      onAdd(newItemLabel.trim());
+      setNewItemLabel('');
     }
-  };
-
-  const startEditing = (item: string) => {
-    setEditingItem(item);
-    setEditValue(item);
-  };
-
-  const saveEdit = () => {
-    if (editingItem && editValue.trim() && editValue !== editingItem) {
-        onEdit(editingItem, editValue.trim());
-    }
-    setEditingItem(null);
-    setEditValue('');
-  };
-
-  const cancelEdit = () => {
-    setEditingItem(null);
-    setEditValue('');
   };
 
   return (
-    <div className="bg-white rounded-3xl p-6 shadow-organic border border-stone-100 mb-6">
+    <div className="bg-white rounded-3xl p-6 shadow-sm border border-stone-100 break-inside-avoid">
       <div className={`flex items-center gap-3 mb-6 ${colorClass}`}>
-        <div className="p-2 rounded-xl bg-current opacity-10">
-           {icon}
-        </div>
+        <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-100">{icon}</div>
         <h3 className="font-bold text-lg text-stone-800">{title}</h3>
       </div>
-
-      <ul className="space-y-3 mb-6">
-        {items.map((item, index) => (
-          <li key={index} className="flex justify-between items-center group bg-stone-50 p-3 rounded-xl border border-stone-100 hover:border-amber-200 transition-colors">
-            
-            {/* MODE ÉDITION */}
-            {editingItem === item ? (
-                <div className="flex flex-1 gap-2 items-center">
-                    <input 
-                        type="text" 
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        className="flex-1 bg-white border border-amber-300 rounded-lg px-2 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                        autoFocus
-                    />
-                    <button onClick={saveEdit} className="p-1 text-emerald-500 hover:bg-emerald-50 rounded">
-                        <Check size={16} />
-                    </button>
-                    <button onClick={cancelEdit} className="p-1 text-stone-400 hover:bg-stone-100 rounded">
-                        <X size={16} />
-                    </button>
-                </div>
+      
+      <ul className="space-y-2 mb-4 max-h-60 overflow-y-auto pr-1 scrollbar-thin">
+        {items.map((item) => (
+          <li key={item.id} className="flex justify-between items-center bg-stone-50/50 p-2.5 rounded-xl border border-stone-100 group hover:border-amber-200 transition-colors">
+            {editingId === item.id ? (
+              <div className="flex flex-1 gap-2">
+                <input value={editingLabel} onChange={(e) => setEditingLabel(e.target.value)} className="flex-1 px-2 py-1 rounded-lg border border-amber-300 text-sm outline-none" autoFocus />
+                <button onClick={() => { onEdit(item.id, editingLabel); setEditingId(null); }} className="text-emerald-600 bg-emerald-50 p-1 rounded-lg"><Check size={14}/></button>
+              </div>
             ) : (
-                /* MODE AFFICHAGE */
-                <>
-                    <span className="font-medium text-stone-700">{item}</span>
-                    <div className="flex gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                        <button 
-                            onClick={() => startEditing(item)}
-                            className="p-1.5 text-stone-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors"
-                            title="Modifier"
-                        >
-                            <Pencil size={16} />
-                        </button>
-                        <button 
-                            onClick={() => onDelete(item)}
-                            className="p-1.5 text-stone-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
-                            title="Supprimer"
-                        >
-                            <Trash2 size={16} />
-                        </button>
-                    </div>
-                </>
+              <>
+                <span className="font-medium text-stone-600 text-sm truncate">{item.label}</span>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => { setEditingId(item.id); setEditingLabel(item.label); }} className="p-1.5 text-stone-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg"><Edit2 size={12}/></button>
+                  <button onClick={() => onDelete(item.id)} className="p-1.5 text-stone-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg"><X size={12}/></button>
+                </div>
+              </>
             )}
           </li>
         ))}
-        {items.length === 0 && (
-           <li className="text-center py-4 text-sm text-stone-400 italic">Aucun élément configuré.</li>
-        )}
+        {items.length === 0 && <div className="text-center text-xs text-stone-300 italic py-4">Aucune donnée</div>}
       </ul>
 
       <form onSubmit={handleSubmit} className="flex gap-2">
         <input 
           type="text" 
-          value={newItem}
-          onChange={(e) => setNewItem(e.target.value)}
+          value={newItemLabel} 
+          onChange={(e) => setNewItemLabel(e.target.value)} 
           placeholder={placeholder}
-          className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all text-sm font-medium"
+          className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-amber-100 transition-all"
         />
         <button 
-          type="submit"
-          disabled={!newItem.trim()}
-          className="p-2 bg-stone-800 text-white rounded-xl hover:bg-stone-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          type="submit" 
+          disabled={!newItemLabel.trim()}
+          className="p-3 bg-stone-800 text-white rounded-xl hover:bg-stone-900 disabled:opacity-30 transition-all"
         >
-          <Plus size={20} />
+          <Plus size={18} />
         </button>
       </form>
     </div>
   );
 };
 
-const ArsenalView: React.FC<ArsenalViewProps> = ({
-  zones, onAddZone, onDeleteZone, onEditZone,
-  setups, onAddSetup, onDeleteSetup, onEditSetup,
-  techniques, onAddTechnique, onDeleteTechnique, onEditTechnique
-}) => {
-  return (
-    <div className="pb-24 animate-in fade-in duration-300">
-      
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8 px-2">
-        <div>
-          <h2 className="text-2xl font-bold text-stone-800 tracking-tight flex items-center gap-3">
-             <div className="p-1.5 bg-stone-200 rounded-lg text-stone-600">
-                  <Anchor size={20} />
-             </div>
-            Mon Arsenal
-          </h2>
-          <p className="text-sm text-stone-400 mt-1 font-medium ml-1">
-            Configurez vos zones, équipements et techniques.
-          </p>
-      </div>
-      </div>
-
-      {/* Grid Layout */}
-      <div className="space-y-6">
-        
-        <ConfigSection 
-          title="Zones de Pêche"
-          icon={<MapPin size={24} />}
-          items={zones}
-          onAdd={onAddZone}
-          onDelete={onDeleteZone}
-          onEdit={onEditZone} // Passé ici
-          placeholder="Ex: Piles de ponts..."
-          colorClass="text-amber-600"
-        />
-
-        <ConfigSection 
-          title="Mon Armurerie (Setups)"
-          icon={<Anchor size={24} />}
-          items={setups}
-          onAdd={onAddSetup}
-          onDelete={onDeleteSetup}
-          onEdit={onEditSetup} // Passé ici
-          placeholder="Ex: Combo Big Bait..."
-          colorClass="text-stone-600"
-        />
-
-        <ConfigSection 
-          title="Techniques"
-          icon={<Crosshair size={24} />}
-          items={techniques}
-          onAdd={onAddTechnique}
-          onDelete={onDeleteTechnique}
-          onEdit={onEditTechnique} // Passé ici
-          placeholder="Ex: Verticale..."
-          colorClass="text-emerald-600"
-        />
-
-      </div>
-
+const ArsenalView: React.FC<ArsenalViewProps> = (props) => (
+  <div className="pb-24 animate-in fade-in duration-300">
+    <div className="mb-8 px-4">
+      <h2 className="text-2xl font-bold text-stone-800 flex items-center gap-3">
+        <div className="p-2 bg-stone-200 rounded-xl text-stone-600"><Anchor size={24} /></div>
+        Arsenal V3.1
+      </h2>
+      <p className="text-sm text-stone-400 mt-1 ml-1 font-medium">Configurez vos référentiels de pêche.</p>
     </div>
-  );
-};
+
+    <div className="space-y-6 px-2 md:columns-2 gap-6 space-y-0">
+      <div className="break-inside-avoid mb-6">
+        <ConfigSection title="Spots (ex-Zones)" icon={<MapPin size={20}/>} items={props.spots} onAdd={props.onAddSpot} onDelete={props.onDeleteSpot} onEdit={props.onEditSpot} placeholder="Ex: Spot A - Ruine..." colorClass="text-amber-600" />
+      </div>
+      
+      <div className="break-inside-avoid mb-6">
+        <ConfigSection title="Techniques" icon={<Crosshair size={20}/>} items={props.techniques} onAdd={props.onAddTechnique} onDelete={props.onDeleteTechnique} onEdit={props.onEditTechnique} placeholder="Ex: Contact Fond..." colorClass="text-emerald-600" />
+      </div>
+
+      <div className="break-inside-avoid mb-6">
+        <ConfigSection title="Types de Leurre" icon={<Fish size={20}/>} items={props.lureTypes} onAdd={props.onAddLureType} onDelete={props.onDeleteLureType} onEdit={props.onEditLureType} placeholder="Ex: Vibrant - Shad..." colorClass="text-indigo-500" />
+      </div>
+
+      <div className="break-inside-avoid mb-6">
+        <ConfigSection title="Couleurs" icon={<Palette size={20}/>} items={props.colors} onAdd={props.onAddColor} onDelete={props.onDeleteColor} onEdit={props.onEditColor} placeholder="Ex: Flashy - Firetiger..." colorClass="text-purple-500" />
+      </div>
+
+      {/* --- CORRECTION ICI : GUILLEMETS SIMPLES --- */}
+      <div className="break-inside-avoid mb-6">
+        <ConfigSection title="Tailles" icon={<Ruler size={20}/>} items={props.sizes} onAdd={props.onAddSize} onDelete={props.onDeleteSize} onEdit={props.onEditSize} placeholder='Ex: 3" - 4.5"...' colorClass="text-orange-500" />
+      </div>
+
+      <div className="break-inside-avoid mb-6">
+        <ConfigSection title="Poids" icon={<Scale size={20}/>} items={props.weights} onAdd={props.onAddWeight} onDelete={props.onDeleteWeight} onEdit={props.onEditWeight} placeholder="Ex: 5 - 9g..." colorClass="text-cyan-600" />
+      </div>
+
+      <div className="break-inside-avoid mb-6">
+        <ConfigSection title="Équipements (Setups)" icon={<Anchor size={20}/>} items={props.setups} onAdd={props.onAddSetup} onDelete={props.onDeleteSetup} onEdit={props.onEditSetup} placeholder="Ex: Combo Big Bait..." colorClass="text-stone-600" />
+      </div>
+    </div>
+  </div>
+);
 
 export default ArsenalView;

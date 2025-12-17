@@ -1,101 +1,161 @@
-// types.ts - Version CONSOLIDÉE et Corrigée (Final)
+// types.ts - Architecture Cible Complète (V3.1)
 
-import { Timestamp } from "firebase/firestore";
+// --- ENTITÉS DE BASE (ARSENAL) ---
+export interface BaseEntity {
+  id: string;
+  userId: string;
+  createdAt?: any;
+  updatedAt?: any;
+  active: boolean; 
+}
 
-// Weather data snapshot from Open-Meteo
+// 1. SPOTS (ex-Zones) : Plus précis
+export interface Spot extends BaseEntity {
+  label: string; // Ex: "Spot A - Proche ruine béton"
+  type?: 'Fleuve' | 'Etang' | 'Canal' | 'Lac' | 'Rivière' | 'Mer'; 
+  coordinates?: { lat: number; lng: number };
+}
+export type Zone = Spot; // Alias de rétrocompatibilité pour la transition
+
+// 2. SETUP (Combos)
+export interface Setup extends BaseEntity {
+  label: string; // Ex: "Spinning L / Stradic"
+  description?: string;
+}
+
+// 3. TECHNIQUES (Actions de pêche)
+export interface Technique extends BaseEntity {
+  label: string; // Ex: "Contact Fond - Grattage"
+}
+
+// --- NOUVELLES COLLECTIONS DE RÉFÉRENCE (V3.1) ---
+
+// 4. CATÉGORIES DE LEURRES (ref_lure_types)
+export interface RefLureType extends BaseEntity {
+  label: string; // Ex: "Vibrant - Shad", "Topwater - Popper"
+}
+
+// 5. COULEURS (ref_colors)
+export interface RefColor extends BaseEntity {
+  label: string; // Ex: "Flashy - Chartreuse", "Naturel - Ablette"
+}
+
+// 6. TAILLES (ref_sizes)
+export interface RefSize extends BaseEntity {
+  label: string; // Ex: "2\" - 3\"", "5\"+"
+}
+
+// 7. POIDS (ref_weights)
+export interface RefWeight extends BaseEntity {
+  label: string; // Ex: "5 - 9g", "10 - 14g"
+}
+
+// L'inventaire précis des leurres (Optionnel si on utilise juste les Ref en saisie rapide)
+export interface Lure extends BaseEntity {
+  brand: string;
+  model: string;
+  typeId?: string; // Lien vers RefLureType
+  colorId?: string; // Lien vers RefColor
+}
+
+// --- TYPES UTILITAIRES ---
+export type SpeciesType = 'Brochet' | 'Sandre' | 'Perche' | 'Black-Bass' | 'Silure' | 'Chevesne' | 'Truite' | 'Aspe' | 'Bar' | 'Inconnu';
+
+// --- MÉTÉO & HYDRO (Snapshot) ---
 export interface WeatherSnapshot {
-    temperature: number;
-    pressure: number; // hPa
-    clouds: number; // % 0-100
-    windSpeed: number; // km/h
+  temperature: number;
+  pressure: number;
+  clouds: number;
+  windSpeed: number;
+  windDirection?: number;
 }
 
-// Hydrology data snapshot from Hubeau (Austerlitz)
 export interface HydroSnapshot {
-    flow: number; // m3/s
-    level: number; // m <<< Ajouté pour supporter la Hauteur d'eau
-    waterTemp?: number | null; // <<< NOUVEAU : Ajout de la température de l'eau
+  flow: number;
+  level: number;
+  waterTemp?: number | null; 
 }
 
-// Combined conditions for the Bio Oracle
-export interface BioConditions {
-    date: Date;
-    currentWeather: WeatherSnapshot;
-    currentHydro: HydroSnapshot;
-    pressureTMinus3h: number; // For Delta P
-    flowTMinus24h: number; // For Delta Q
-    sunrise: Date;
-    sunset: Date;
-}
-
-// Relaxed types to allow dynamic user configuration
-export type ZoneType = string;
-export type TechniqueType = string;
-
-export type SpeciesType = 'Sandre' | 'Perche' | 'Brochet' | 'Silure' | 'Chevesne' | 'Aspe';
-
+// --- LES PRISES (Catch) ---
 export interface Catch {
-    id: string;
-    species: SpeciesType;
-    size: number;
-    technique: TechniqueType;
-    lure: string;
-    zone: ZoneType; 
-    timestamp: Date; 
-    photoUrls?: string[]; // << AJOUTER CETTE LIGNE (Optionnel, tableau de liens)
+  id: string;
+  species: SpeciesType;
+  
+  // Mesures
+  size: number; // cm
+  weight?: number; // kg
+  
+  // Relations contextuelles (IDs) & Snapshots (Noms pour l'historique)
+  techniqueId: string;
+  technique: string;
+  
+  setupId: string;
+  setup: string;
+  
+  // Détail Leurre V3.1
+  lureName: string; // Nom libre ou concaténé
+  lureTypeId?: string;
+  lureColorId?: string;
+  lureSizeId?: string;
+  lureWeightId?: string;
+  
+  spotId: string; // Ex-Zone
+  spotName: string;
+  
+  timestamp: any; // Date précise de la prise
+  photoUrls?: string[];
 }
 
+// --- LES RATÉS (Miss) ---
 export interface Miss {
-    id: string;
-    type: 'Décroché' | 'Casse' | 'Touche Ratée' | 'Suivi' | 'Inconnu';
-    speciesSupposed: SpeciesType | 'Inconnu';
-    estimation: 'Inconnu' | 'Petit' | 'Moyen' | 'Lourd' | 'Monstre';
-    location: string;
-    zone: ZoneType; 
-    timestamp: Date;
+  id: string;
+  type: 'Décroché' | 'Touche Ratée' | 'Suivi' | 'Casse' | 'Coupe' | 'Inconnu';
+  speciesSupposed: SpeciesType | 'Inconnu';
+  estimation: 'Petit' | 'Moyen' | 'Lourd' | 'Monstre' | 'Inconnu';
+  location: string; 
+  spotId: string;
+  spotName: string;     
+  timestamp: any;
 }
 
+// --- LA SESSION ---
+export interface Session extends BaseEntity {
+  date: string;
+  startTime: string; 
+  endTime: string;   
+  durationMinutes: number;
 
-// --- DÉFINITION UNIQUE ET CONSOLIDÉE DE SESSION ---
-export interface Session {
-    id: string;
-    date: string; // YYYY-MM-JJ pour le state/formulaire
-    
-    // Champs essentiels (non optionnels)
-    zone: ZoneType;
-    setup: string;
-    feelingScore: number;
-    catchCount: number; // Dérivé de catches.length
-    
-    // NOUVEAUX CHAMPS ENVIRONNEMENTAUX CAPTURÉS
-    waterTemp: number | null; 
-    cloudCoverage: number | null; 
-    
-    // Les tableaux doivent toujours être présents, mais peuvent être vides
-    techniquesUsed: string[];
-    catches: Catch[];
-    misses: Miss[];
-    
-    // Champs optionnels ou historiques
-    // CORRECTION CRITIQUE : Accepter null explicitement pour éviter ts(2322)
-    startTime?: string;
-    endTime?: string;
-    durationMinutes?: number;
-    weather?: WeatherSnapshot | null; // <<< CORRIGÉ
-    hydro?: HydroSnapshot | null;     // <<< CORRIGÉ
-    bioScore?: number;
-    notes?: string;
-    weatherDescription?: string;
-}
-// --- FIN DÉFINITION UNIQUE ---
+  spotId: string;   
+  spotName: string; // Snapshot V3
+  
+  setupId: string;
+  setupName: string; // Snapshot V3
 
+  feelingScore: number;
+  catchCount: number;
+  notes: string;
 
-// --- Structure pour le document de configuration de l'Arsenal ---
-export interface ArsenalConfig {
-    zones: string[];
-    setups: string[];
-    techniques: string[];
-    lastUpdated?: Date; 
+  catches: Catch[];
+  misses: Miss[];
+  techniquesUsed: string[];
+
+  weather?: WeatherSnapshot | null;
+  hydro?: HydroSnapshot | null;
+  waterTemp?: number | null;
+  
+  bioScore?: number;
 }
 
-export type OracleScore = number | null;
+// --- CONFIGURATION GLOBALE (État App) ---
+export interface AppData {
+    spots: Spot[];
+    setups: Setup[];
+    techniques: Technique[];
+    // Nouvelles refs
+    lureTypes: RefLureType[];
+    colors: RefColor[];
+    sizes: RefSize[];
+    weights: RefWeight[];
+    // Legacy inventory
+    lures: Lure[]; 
+}

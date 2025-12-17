@@ -2,22 +2,21 @@ import React, { useState } from 'react';
 import { ScrollText, Anchor } from 'lucide-react';
 import { Session } from '../types';
 import SessionCard from './SessionCard';
-import SessionDetailModal from './SessionDetailModal'; // << AJOUTÉ
+import SessionDetailModal from './SessionDetailModal';
 
 interface HistoryViewProps {
   sessions: Session[];
   onDeleteSession: (id: string) => void;
+  onEditSession: (session: Session) => void;
 }
 
-const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession }) => {
-  // Sort sessions by date descending (newest first)
-  const sortedSessions = [...sessions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-  // --- ÉTATS MODAL DÉTAIL ---
+const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, onEditSession }) => {
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
-  // HANDLER OUVERTURE DÉTAIL
+  // Trier les sessions par date décroissante
+  const sortedSessions = [...sessions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
   const handleOpenDetail = (session: Session) => {
       setSelectedSession(session);
       setIsDetailOpen(true);
@@ -39,17 +38,17 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession }) 
         </div>
       </div>
 
-      {/* List */}
+      {/* Liste des Sessions */}
       <div className="space-y-4">
         {sortedSessions.length > 0 ? (
           sortedSessions.map((session) => (
-            <div 
+            <SessionCard 
                 key={session.id} 
-                onClick={() => handleOpenDetail(session)} // << AJOUTÉ
-                className="cursor-pointer transition-transform hover:scale-[1.01] active:scale-[0.99]"
-            >
-                <SessionCard session={session} onDelete={onDeleteSession} />
-            </div>
+                session={session} 
+                onDelete={onDeleteSession}
+                onEdit={onEditSession} // Connexion du bouton Modifier
+                onClick={handleOpenDetail}
+            />
           ))
         ) : (
           <div className="flex flex-col items-center justify-center py-16 px-4 text-center border-2 border-dashed border-stone-200 rounded-3xl bg-stone-50/50">
@@ -64,7 +63,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession }) 
         )}
       </div>
 
-      {/* MODAL DÉTAIL */}
+      {/* Modal de Détail */}
       <SessionDetailModal 
         session={selectedSession} 
         isOpen={isDetailOpen} 

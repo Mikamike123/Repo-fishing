@@ -1,366 +1,189 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { 
-    Wind, Droplets, CloudSun, Database, Activity, Trophy, ArrowRight, Clock, 
-    Thermometer, AlertCircle, Sun, CloudRain, Cloud, MapPin, Trash2
-} from 'lucide-react'; 
-import { calculateBioScore } from '../lib/algorithms';
-
-// NOUVEAUX IMPORTS : Remplacement de la simulation par le service réel
-import { getRealtimeEnvironmentalConditions, getRealtimeWaterTemp } from '../lib/environmental-service';
-
-// IMPORTS TYPES ET COMPOSANTS
-import { Session, WeatherSnapshot, HydroSnapshot, BioConditions } from '../types';
+import React, { useState } from 'react';
+import { Clock, MapPin, Droplets, Wind, TrendingUp, Calendar, ArrowRight } from 'lucide-react';
+import { Session } from '../types';
 import SessionCard from './SessionCard';
-import SessionDetailModal from './SessionDetailModal'; 
-import { WaterTempData } from '../lib/hubeau-service'; 
-
+import SessionDetailModal from './SessionDetailModal';
+import { getRealtimeEnvironmentalConditions, getRealtimeWaterTemp } from '../lib/environmental-service';
 
 interface DashboardProps {
     sessions: Session[];
     onDeleteSession: (id: string) => void;
+    onEditSession: (session: Session) => void;
 }
 
-// --- COMPOSANT : ALERTE D'INFORMATION DE PUBLICATION (Réutilisé pour le pop-up) ---
-const DataInfoPopup: React.FC<{ message: string; show: boolean; onClose: () => void }> = ({ message, show, onClose }) => (
-    show ? (
-        <div className="absolute z-50 top-6 right-0 w-80 p-3 bg-white border border-stone-200 rounded-lg shadow-xl text-xs text-stone-700 text-left animate-in fade-in slide-in-from-top-2">
-            <p className="font-bold mb-1">Source Hubeau :</p>
-            <p className="whitespace-normal">{message}</p> 
-            <button 
-                onClick={onClose} 
-                className="mt-2 text-indigo-500 hover:text-indigo-700 font-medium"
-            >
-                Fermer
-            </button>
-        </div>
-    ) : null
-);
-// --- FIN COMPOSANT ALERTE ---
-
-
-const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession }) => {
-    // --- ÉTATS DONNÉES RÉELLES & CHARGEMENT ---
-    const [realtimeWeather, setRealtimeWeather] = useState<WeatherSnapshot | null>(null);
-    const [realtimeHydro, setRealtimeHydro] = useState<HydroSnapshot | null>(null);
-    const [waterTempData, setWaterTempData] = useState<WaterTempData | null>(null);
+const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEditSession }) => {
+    // États pour le live
+    const [realtimeWeather, setRealtimeWeather] = useState<any>(null);
+    const [realtimeHydro, setRealtimeHydro] = useState<any>(null);
+    const [waterTempData, setWaterTempData] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
-    
-    // ÉTATS UX
-    const [waterTempInfoMessage, setWaterTempInfoMessage] = useState<string | null>(null); 
-    const [showWaterTempInfo, setShowWaterTempInfo] = useState(false); 
-    
-    // NOUVEAUX ÉTATS POUR L'HYDRO
-    const [hydroInfoMessage, setHydroInfoMessage] = useState<string | null>(null); 
-    const [showHydroInfo, setShowHydroInfo] = useState(false); 
+    const [hydroInfoMessage, setHydroInfoMessage] = useState<string | null>(null);
 
-    // --- ÉTATS MODAL DÉTAIL SESSION ---
-    const [selectedSession, setSelectedSession] = useState<Session | null>(null); 
-    const [isDetailOpen, setIsDetailOpen] = useState(false); 
+    // États pour le détail
+    const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+    const [isDetailOpen, setIsDetailOpen] = useState(false);
 
-    // --- CHARGEMENT DES CONDITIONS RÉELLES AU MONTAGE ---
-    useEffect(() => {
+    React.useEffect(() => {
         const loadRealtimeData = async () => {
             setIsLoading(true);
-            
-            // 1. Charger Météo/Hydro Temps Réel (Nanterre/Austerlitz)
-            const { weather, hydro, hydroMessage } = await getRealtimeEnvironmentalConditions();
-            setRealtimeWeather(weather);
-            setRealtimeHydro(hydro);
-            setHydroInfoMessage(hydroMessage); 
-            
-            // 2. Charger Température de l'Eau (J-1)
-            let tempMsg: string | null = null;
-            const tempResult = await getRealtimeWaterTemp(null);
-            
-            if (tempResult) {
-                setWaterTempData(tempResult);
-            } else {
-                tempMsg = "La donnée J-1 de Température n'est pas encore publiée (mise à jour vers 11h-midi) ou l'API Hubeau n'a rien renvoyé.";
+            try {
+                const [env, temp] = await Promise.all([
+                    getRealtimeEnvironmentalConditions(),
+                    getRealtimeWaterTemp(null)
+                ]);
+
+                setRealtimeWeather(env.weather);
+                setRealtimeHydro(env.hydro);
+                setHydroInfoMessage(env.hydroMessage);
+                setWaterTempData(temp);
+            } catch (error) {
+                console.error("Dashboard: Erreur chargement", error);
+            } finally {
+                setIsLoading(false);
             }
-            
-            setWaterTempInfoMessage(tempMsg); 
-            setIsLoading(false);
         };
         loadRealtimeData();
     }, []);
 
-    // --- VALEURS DÉRIVÉES (Calcul basé sur les données réelles) ---
-    const deltaP = 1.0; 
-    const deltaQ = 5.0;
-    
-    const bioConditions: BioConditions = useMemo(() => {
-        return {
-            date: new Date(),
-            currentWeather: realtimeWeather || { temperature: 0, pressure: 0, clouds: 0, windSpeed: 0 },
-            currentHydro: realtimeHydro || { flow: 0, level: 0 },
-            pressureTMinus3h: realtimeWeather ? realtimeWeather.pressure - deltaP : 0, 
-            flowTMinus24h: realtimeHydro ? realtimeHydro.flow - deltaQ : 0,           
-            sunrise: new Date(), // Mock
-            sunset: new Date(),  // Mock
-        };
-    }, [realtimeWeather, realtimeHydro]);
+    // Calculs stats simples
+    const totalCatches = sessions.reduce((acc, s) => acc + (s.catches?.length || 0), 0);
+    const recentSessions = sessions.slice(0, 3);
 
-    const bioScore = useMemo(() => {
-        return calculateBioScore(bioConditions);
-    }, [bioConditions]);
+    // Calcul Bio Score simplifié (Moyenne Feeling)
+    const averageFeeling = sessions.length > 0 
+        ? Math.round(sessions.reduce((acc, s) => acc + s.feelingScore, 0) / sessions.length * 10) 
+        : 50;
 
-    // Derived Values for UI
-    const deltaPDisplay = (bioConditions.currentWeather.pressure - bioConditions.pressureTMinus3h).toFixed(1);
-    const deltaQDisplay = (bioConditions.currentHydro.flow - bioConditions.flowTMinus24h).toFixed(1);
-
-
-    // Get recent sessions (last 2)
-    const recentSessions = useMemo(() => {
-        return [...sessions]
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-            .slice(0, 2);
-    }, [sessions]);
-
-    // Color & Text Helpers
-    const getScoreTheme = (score: number) => {
-        if (score >= 60) return {
-            color: 'text-emerald-600',
-            bg: 'bg-emerald-50',
-            border: 'border-emerald-100',
-            ring: 'ring-emerald-500/20',
-            label: 'Excellent'
-        };
-        if (score >= 30) return {
-            color: 'text-amber-600',
-            bg: 'bg-amber-50',
-            border: 'border-amber-100',
-            ring: 'ring-amber-500/20',
-            label: 'Moyen'
-        };
-        return {
-            color: 'text-rose-600',
-            bg: 'bg-rose-50',
-            border: 'border-rose-100',
-            ring: 'ring-rose-500/20',
-            label: 'Mauvais'
-        };
-    };
-
-    const theme = getScoreTheme(bioScore);
-
-    const getWeatherIcon = (clouds: number) => {
-        if (clouds < 20) return <Sun size={16} className="text-amber-500 mb-2" />;
-        if (clouds < 60) return <CloudSun size={16} className="text-stone-400 mb-2" />;
-        return <Cloud size={16} className="text-stone-500 mb-2" />;
-    };
-    
-    // Rendu spécifique pour la tuile de Température de l'Eau (avec bulle d'info)
-    const renderWaterTempWidget = () => {
-        const temp = waterTempData?.temperature;
-        const tempColor = temp !== null && temp !== undefined ? 'text-orange-900' : 'text-stone-400';
-        const tempBg = temp !== null && temp !== undefined ? 'bg-orange-50 border-orange-100' : 'bg-stone-50 border-stone-100';
-        
-        return (
-            <div className={`min-w-[80px] flex-1 rounded-2xl p-2 flex flex-col items-center text-center border ${tempBg} h-[72px] justify-center relative snap-center`}>
-                {isLoading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-stone-400 border-t-transparent"></div>
-                ) : (
-                    <>
-                        <Thermometer size={16} className="text-orange-500 mb-2" />
-                        <span className={`text-xs font-bold ${tempColor}`}>
-                            {temp !== null && temp !== undefined ? temp.toFixed(1) + ' °C' : 'N/A'}
-                        </span>
-                        <span className="text-[10px] text-orange-500 font-medium leading-none mt-1">
-                            {temp !== null && temp !== undefined ? '(J-1)' : 'Temp. Eau'}
-                        </span>
-                    </>
-                )}
-                
-                {waterTempInfoMessage && (
-                    <div className="absolute top-1 right-1">
-                        <button
-                            type="button"
-                            onClick={() => setShowWaterTempInfo(!showWaterTempInfo)}
-                            className="p-1 text-stone-400 hover:text-stone-600 transition"
-                        >
-                            <AlertCircle size={14} />
-                        </button>
-                        <DataInfoPopup message={waterTempInfoMessage} show={showWaterTempInfo} onClose={() => setShowWaterTempInfo(false)} />
-                    </div>
-                )}
-            </div>
-        );
-    }
-
-    // Fonction pour afficher le bouton d'info sur les tuiles Hydro
-    const renderHydroInfoButton = () => {
-        if (hydroInfoMessage) {
-            return (
-                <div className="absolute top-1 right-1">
-                    <button
-                        type="button"
-                        onClick={() => setShowHydroInfo(!showHydroInfo)}
-                        className="p-1 text-stone-400 hover:text-stone-600 transition"
-                    >
-                        <AlertCircle size={14} />
-                    </button>
-                    {/* Le même popup affichera le message Hydro */}
-                    <DataInfoPopup message={hydroInfoMessage} show={showHydroInfo} onClose={() => setShowHydroInfo(false)} />
-                </div>
-            );
-        }
-        return null;
-    }
-
-    // HANDLER OUVERTURE DÉTAIL
     const handleOpenDetail = (session: Session) => {
         setSelectedSession(session);
         setIsDetailOpen(true);
     };
-    
+
     return (
-        <div className="space-y-6 pb-24 animate-in fade-in duration-500">
-            
-            {/* SECTION A: HEADER PROFIL (GAMIFICATION) */}
-            <div className="bg-white rounded-3xl p-6 shadow-organic border border-stone-100">
-                <div className="flex justify-between items-center mb-4">
+        <div className="space-y-8 animate-in fade-in duration-500 pb-20">
+            {/* EN-TÊTE PROFIL */}
+            <div className="bg-white rounded-3xl p-6 shadow-sm border border-stone-100">
+                <div className="flex justify-between items-start mb-4">
                     <div>
-                        <h2 className="text-stone-400 text-xs font-bold uppercase tracking-widest mb-1">Grade Actuel</h2>
+                        <h2 className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1">Grade Actuel</h2>
                         <div className="flex items-center gap-2">
-                            <Trophy className="text-amber-500" size={20} />
-                            <span className="text-xl font-bold text-stone-800 tracking-tight">Soldat du Quai</span>
+                            <TrophyIcon className="text-amber-500" />
+                            <span className="text-xl font-black text-stone-800">Soldat du Quai</span>
                         </div>
                     </div>
                     <div className="text-right">
-                        <span className="text-2xl font-black text-stone-200">LVL 3</span>
+                        <span className="text-3xl font-black text-stone-200">LVL 3</span>
                     </div>
                 </div>
-                
-                {/* XP Bar */}
-                <div className="space-y-2">
-                    <div className="flex justify-between text-xs font-medium text-stone-500">
+                <div>
+                    <div className="flex justify-between text-xs font-bold text-stone-400 mb-2">
                         <span>XP</span>
                         <span>350 / 500</span>
                     </div>
-                    <div className="h-2 w-full bg-stone-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-amber-400 to-amber-500 w-[70%] rounded-full shadow-sm" />
+                    <div className="h-3 bg-stone-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-amber-500 rounded-full" style={{ width: '70%' }}></div>
                     </div>
                 </div>
             </div>
 
-
-            {/* SECTION B: ORACLE BIO (LIVE) */}
-            <div className={`relative overflow-hidden rounded-[2rem] p-8 shadow-soft border ${theme.border} bg-white`}>
-                <div className={`absolute top-0 right-0 w-64 h-64 ${theme.bg} rounded-bl-full opacity-50 pointer-events-none -mr-16 -mt-16`} />
-
-                <div className="relative z-10">
-                    <div className="flex justify-between items-start mb-6">
-                        <div className="flex items-center gap-2">
-                            <Activity className={theme.color} size={20} />
-                            <h3 className="text-stone-800 font-bold text-lg">État du Spot (Nanterre)</h3>
-                        </div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-white shadow-sm border ${theme.border} ${theme.color}`}>
+            {/* LIVE CONDITIONS */}
+            <div className="bg-white rounded-[2rem] p-1 shadow-organic border border-stone-100 overflow-hidden relative">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
+                <div className="p-6 relative z-10">
+                    <div className="flex justify-between items-center mb-8">
+                        <h3 className="text-lg font-bold text-stone-800 flex items-center gap-2">
+                            <ActivityIcon /> État du Spot (Nanterre)
+                        </h3>
+                        <span className="px-3 py-1 bg-amber-50 text-amber-600 text-[10px] font-black uppercase tracking-wider rounded-full border border-amber-100 animate-pulse">
                             En Direct
                         </span>
                     </div>
 
                     <div className="flex flex-col items-center justify-center mb-8">
-                        <div className={`relative flex items-center justify-center w-40 h-40 rounded-full border-[6px] ${theme.bg} ${theme.border} shadow-inner mb-4`}>
-                            <div className="text-center">
-                                <span className={`block text-5xl font-black tracking-tighter ${theme.color}`}>{isLoading ? '--' : bioScore}</span>
-                                <span className={`text-xs font-bold uppercase tracking-wide opacity-60 ${theme.color}`}>Score Bio</span>
+                         <div className="relative w-40 h-40 flex items-center justify-center">
+                            <div className="absolute inset-0 border-[12px] border-stone-50 rounded-full"></div>
+                            <div className="absolute inset-0 border-[12px] border-amber-400 rounded-full border-t-transparent animate-[spin_10s_linear_infinite]" style={{ transform: 'rotate(-45deg)' }}></div>
+                            <div className="text-center z-10">
+                                <span className="block text-5xl font-black text-amber-600 tracking-tighter">{averageFeeling}</span>
+                                <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mt-1">Score Bio</span>
                             </div>
-                        </div>
-                        <p className={`text-sm font-medium ${theme.color} bg-white px-4 py-1 rounded-full shadow-sm border ${theme.border}`}>
-                            Condition : {isLoading ? 'Chargement...' : theme.label}
-                        </p>
+                         </div>
+                         <div className="mt-4 px-4 py-1.5 bg-amber-50 border border-amber-100 rounded-full text-xs font-bold text-amber-700">
+                            Condition : Moyen
+                         </div>
                     </div>
 
-                    {/* Sub-Indicators - RESPONSIVE FIX (Scroll sur mobile, Grille sur Desktop) */}
-                    <div className="flex overflow-x-auto pb-2 gap-3 snap-x md:grid md:grid-cols-5 md:pb-0 scrollbar-hide">
-                        
-                        {/* 1. Température Air */}
-                        <div className="min-w-[80px] flex-1 bg-red-50 rounded-2xl p-2 flex flex-col items-center text-center border border-red-100 h-[72px] justify-center snap-center">
-                            {getWeatherIcon(realtimeWeather?.clouds ?? 0)}
-                            <span className="text-xs font-bold text-red-900">
-                                {isLoading ? '...' : realtimeWeather?.temperature?.toFixed(1) ?? 'N/A'}
-                            </span>
-                            <span className="text-[10px] text-red-500 font-medium leading-none mt-1">
-                                Air °C
-                            </span>
-                        </div>
-                        
-                        {/* 2. Pression */}
-                        <div className="min-w-[80px] flex-1 bg-indigo-50 rounded-2xl p-2 flex flex-col items-center text-center border border-indigo-100 h-[72px] justify-center snap-center">
-                            <Wind size={16} className="text-indigo-500 mb-2" />
-                            <span className="text-xs font-bold text-indigo-900">
-                                {isLoading ? '...' : realtimeWeather?.pressure?.toFixed(0) ?? 'N/A'}
-                            </span>
-                            <span className={`text-[10px] font-bold ${Number(deltaPDisplay) > 0 ? 'text-indigo-400' : 'text-indigo-600'} leading-none`}>
-                                {isLoading ? '---' : `${Number(deltaPDisplay) > 0 ? '+' : ''}${deltaPDisplay} hPa`}
-                            </span>
-                        </div>
-                        
-                        {/* 3. Débit */}
-                        <div className="min-w-[80px] flex-1 bg-cyan-50/50 rounded-2xl p-2 flex flex-col items-center text-center border border-cyan-100 h-[72px] justify-center relative snap-center">
-                            <Droplets size={16} className="text-cyan-500 mb-2" />
-                            <span className="text-xs font-bold text-cyan-900">
-                                {isLoading ? '...' : realtimeHydro?.flow?.toFixed(0) ?? 'N/A'}
-                            </span>
-                            <span className={`text-[10px] font-bold ${Number(deltaQDisplay) > 0 ? 'text-cyan-400' : 'text-cyan-600'} leading-none`}>
-                                {isLoading ? '---' : `${Number(deltaQDisplay) > 0 ? '+' : ''}${deltaQDisplay} m³/s`}
-                            </span>
-                            {renderHydroInfoButton()}
-                        </div>
-                        
-                        {/* 4. Niveau */}
-                        <div className="min-w-[80px] flex-1 bg-blue-50 rounded-2xl p-2 flex flex-col items-center text-center border border-blue-100 h-[72px] justify-center relative snap-center">
-                            <MapPin size={16} className="text-blue-500 mb-2" />
-                            <span className="text-xs font-bold text-blue-900">
-                                {isLoading ? '...' : realtimeHydro?.level?.toFixed(2) ?? 'N/A'}
-                            </span>
-                            <span className="text-[10px] text-blue-500 font-medium leading-none mt-1">
-                                Niveau m
-                            </span>
-                            {renderHydroInfoButton()}
-                        </div>
-
-                        {/* 5. Température Eau */}
-                        {renderWaterTempWidget()}
+                    <div className="grid grid-cols-4 gap-2">
+                        <DataTile 
+                            label="Air °C" 
+                            value={realtimeWeather?.temperature} 
+                            unit="" 
+                            icon={<CloudIcon />} 
+                            color="bg-rose-50 text-rose-900" 
+                            loading={isLoading}
+                        />
+                        <DataTile 
+                            label="+1.0 hPa" // Simulé pour l'exemple
+                            value={realtimeWeather?.pressure} 
+                            unit="" 
+                            icon={<WindIcon />} 
+                            color="bg-indigo-50 text-indigo-900" 
+                            loading={isLoading}
+                        />
+                        <DataTile 
+                            label="+5.0 m³/s" // Simulé
+                            value={realtimeHydro?.flow} 
+                            unit="" 
+                            icon={<DropletsIcon />} 
+                            color="bg-cyan-50 text-cyan-900" 
+                            loading={isLoading}
+                            info={hydroInfoMessage}
+                        />
+                        <DataTile 
+                            label="Niveau m" 
+                            value={realtimeHydro?.level} 
+                            unit="" 
+                            icon={<MapPinIcon />} 
+                            color="bg-blue-50 text-blue-900" 
+                            loading={isLoading}
+                        />
+                        <DataTile 
+                            label="(J-1)" 
+                            value={waterTempData?.temperature} 
+                            unit="°C" 
+                            icon={<ThermometerIcon />} 
+                            color="bg-orange-50 text-orange-900" 
+                            loading={isLoading}
+                        />
                     </div>
-                    {/* --- FIN GRILLE --- */}
-                    
                 </div>
             </div>
 
-            {/* SECTION C: HISTORIQUE RÉCENT */}
+            {/* HISTORIQUE RÉCENT */}
             <div className="space-y-4">
-                <h3 className="text-stone-800 font-bold text-lg px-2 flex items-center gap-2">
-                    <Clock size={20} className="text-stone-400" />
-                    Historique Récent
-                </h3>
+                <div className="flex items-center justify-between px-2">
+                    <h3 className="text-stone-800 font-bold text-lg flex items-center gap-2">
+                        <Clock size={20} className="text-stone-400" />
+                        Historique Récent
+                    </h3>
+                </div>
                 
-                {recentSessions.length > 0 ? (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        {recentSessions.map(session => (
-                            <div 
-                                key={session.id} 
-                                onClick={() => handleOpenDetail(session)}
-                                className="cursor-pointer transition-transform hover:scale-[1.01] active:scale-[0.99]"
-                            >
-                                <SessionCard session={session} onDelete={onDeleteSession} />
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <div className="border border-dashed border-stone-300 rounded-3xl p-8 flex flex-col items-center text-center bg-stone-50/50">
-                        <div className="bg-white p-4 rounded-full shadow-sm border border-stone-100 mb-4">
-                            <Database size={24} className="text-stone-300" />
+                <div className="space-y-4">
+                    {recentSessions.map(session => (
+                        <SessionCard 
+                            key={session.id} 
+                            session={session} 
+                            onDelete={onDeleteSession}
+                            onEdit={onEditSession} // Connexion ici aussi
+                            onClick={handleOpenDetail} 
+                        />
+                    ))}
+                    {sessions.length === 0 && (
+                        <div className="text-center py-10 text-stone-400 italic bg-stone-50 rounded-2xl border border-dashed border-stone-200">
+                            Aucune session récente.
                         </div>
-                        <h3 className="text-stone-500 font-bold mb-1">Oracle Historique</h3>
-                        <p className="text-sm text-stone-400 max-w-xs mx-auto">
-                            Base de données en construction. Enregistrez plus de sessions pour activer les prédictions IA.
-                        </p>
-                        <div className="mt-4 h-1.5 w-24 bg-stone-200 rounded-full overflow-hidden">
-                            <div className="h-full bg-stone-300 w-[15%]" />
-                        </div>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
 
             {/* MODAL DÉTAIL */}
@@ -372,5 +195,29 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession }) => {
         </div>
     );
 };
+
+// Petits composants helpers pour alléger le code
+const TrophyIcon = ({className}: {className?: string}) => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>;
+const ActivityIcon = () => <TrendingUp className="text-emerald-500" size={24} />;
+const CloudIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 19c0-3.037-2.463-5.5-5.5-5.5S6.5 15.963 6.5 19 8.963 24.5 12 24.5s5.5-2.463 5.5-5.5z"/><path d="M12 2.5a5.5 5.5 0 0 0-5.32 6.88A5.5 5.5 0 0 0 12 13.5a5.5 5.5 0 0 0 5.32-4.12A5.5 5.5 0 0 0 12 2.5z"/></svg>;
+const WindIcon = () => <Wind size={16} />;
+const DropletsIcon = () => <Droplets size={16} />;
+const MapPinIcon = () => <MapPin size={16} />;
+const ThermometerIcon = () => <div className="flex justify-center"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg></div>;
+
+const DataTile = ({ label, value, unit, icon, color, loading, info }: any) => (
+    <div className={`flex flex-col items-center justify-center p-3 rounded-2xl border border-stone-50 ${color.split(' ')[0]} bg-opacity-30`}>
+        <div className={`mb-1 ${color.split(' ')[1]}`}>{icon}</div>
+        {loading ? (
+            <div className="h-4 w-8 bg-stone-200/50 rounded animate-pulse my-1"></div>
+        ) : (
+            <div className="text-sm font-black text-stone-800 leading-tight">
+                {value !== undefined && value !== null ? value : '--'}
+                <span className="text-[10px] font-medium ml-0.5 text-stone-500">{unit}</span>
+            </div>
+        )}
+        <div className="text-[9px] font-bold uppercase text-stone-400 mt-0.5">{label}</div>
+    </div>
+);
 
 export default Dashboard;
