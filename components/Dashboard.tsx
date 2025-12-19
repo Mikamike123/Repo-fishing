@@ -1,17 +1,26 @@
 import React, { useState } from 'react';
-import { Clock, MapPin, Droplets, Wind, TrendingUp, Calendar, ArrowRight } from 'lucide-react';
+import { Clock, MapPin, Droplets, Wind, TrendingUp, Calendar, ArrowRight, Gauge, Activity } from 'lucide-react'; 
 import { Session } from '../types';
 import SessionCard from './SessionCard';
 import SessionDetailModal from './SessionDetailModal';
 import { getRealtimeEnvironmentalConditions, getRealtimeWaterTemp } from '../lib/environmental-service';
 
+// --- HELPER DIRECTION VENT ---
+const getWindDir = (deg?: number) => {
+    if (deg === undefined) return '';
+    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+    return directions[Math.round(deg / 45) % 8];
+};
+
 interface DashboardProps {
     sessions: Session[];
     onDeleteSession: (id: string) => void;
     onEditSession: (session: Session) => void;
+    // AJOUT DE LA PROPRIÉTÉ MANQUANTE
+    userName?: string; 
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEditSession }) => {
+const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEditSession, userName }) => {
     // États pour le live
     const [realtimeWeather, setRealtimeWeather] = useState<any>(null);
     const [realtimeHydro, setRealtimeHydro] = useState<any>(null);
@@ -65,7 +74,10 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
             <div className="bg-white rounded-3xl p-6 shadow-sm border border-stone-100">
                 <div className="flex justify-between items-start mb-4">
                     <div>
-                        <h2 className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1">Grade Actuel</h2>
+                        <h2 className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1">
+                            {/* Utilisation du userName ici */}
+                            Salut, <span className="text-amber-500">{userName || 'Pêcheur'}</span> !
+                        </h2>
                         <div className="flex items-center gap-2">
                             <TrophyIcon className="text-amber-500" />
                             <span className="text-xl font-black text-stone-800">Soldat du Quai</span>
@@ -113,23 +125,39 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
                          </div>
                     </div>
 
-                    <div className="grid grid-cols-4 gap-2">
+                    {/* GRILLE 5 COLONNES (Responsive) */}
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                        {/* AIR TEMP */}
                         <DataTile 
                             label="Air °C" 
-                            value={realtimeWeather?.temperature} 
+                            value={realtimeWeather?.temperature ? Math.round(realtimeWeather.temperature) : '--'} 
                             unit="" 
                             icon={<CloudIcon />} 
                             color="bg-rose-50 text-rose-900" 
                             loading={isLoading}
                         />
+
+                        {/* VENT */}
                         <DataTile 
-                            label="+1.0 hPa" // Simulé pour l'exemple
-                            value={realtimeWeather?.pressure} 
-                            unit="" 
+                            label="Vent" 
+                            value={realtimeWeather?.windSpeed ? Math.round(realtimeWeather.windSpeed) : '--'} 
+                            unit={realtimeWeather?.windDirection !== undefined ? `km/h ${getWindDir(realtimeWeather.windDirection)}` : 'km/h'}
                             icon={<WindIcon />} 
-                            color="bg-indigo-50 text-indigo-900" 
+                            color="bg-stone-100 text-stone-600" 
                             loading={isLoading}
                         />
+
+                        {/* PRESSION */}
+                        <DataTile 
+                            label="Pression" 
+                            value={realtimeWeather?.pressure ? Math.round(realtimeWeather.pressure) : '--'} 
+                            unit="hPa" 
+                            icon={<GaugeIcon />} 
+                            color="bg-indigo-50 text-indigo-900" 
+                            loading={isLoading}
+                        /> 
+
+                        {/* DEBIT */}
                         <DataTile 
                             label="+5.0 m³/s" // Simulé
                             value={realtimeHydro?.flow} 
@@ -139,14 +167,8 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
                             loading={isLoading}
                             info={hydroInfoMessage}
                         />
-                        <DataTile 
-                            label="Niveau m" 
-                            value={realtimeHydro?.level} 
-                            unit="" 
-                            icon={<MapPinIcon />} 
-                            color="bg-blue-50 text-blue-900" 
-                            loading={isLoading}
-                        />
+
+                        {/* EAU TEMP */}
                         <DataTile 
                             label="(J-1)" 
                             value={waterTempData?.temperature} 
@@ -174,7 +196,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
                             key={session.id} 
                             session={session} 
                             onDelete={onDeleteSession}
-                            onEdit={onEditSession} // Connexion ici aussi
+                            onEdit={onEditSession}
                             onClick={handleOpenDetail} 
                         />
                     ))}
@@ -196,13 +218,14 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
     );
 };
 
-// Petits composants helpers pour alléger le code
+// Petits composants helpers
 const TrophyIcon = ({className}: {className?: string}) => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>;
 const ActivityIcon = () => <TrendingUp className="text-emerald-500" size={24} />;
 const CloudIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 19c0-3.037-2.463-5.5-5.5-5.5S6.5 15.963 6.5 19 8.963 24.5 12 24.5s5.5-2.463 5.5-5.5z"/><path d="M12 2.5a5.5 5.5 0 0 0-5.32 6.88A5.5 5.5 0 0 0 12 13.5a5.5 5.5 0 0 0 5.32-4.12A5.5 5.5 0 0 0 12 2.5z"/></svg>;
 const WindIcon = () => <Wind size={16} />;
 const DropletsIcon = () => <Droplets size={16} />;
 const MapPinIcon = () => <MapPin size={16} />;
+const GaugeIcon = () => <Gauge size={16} />;
 const ThermometerIcon = () => <div className="flex justify-center"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg></div>;
 
 const DataTile = ({ label, value, unit, icon, color, loading, info }: any) => (
@@ -211,7 +234,7 @@ const DataTile = ({ label, value, unit, icon, color, loading, info }: any) => (
         {loading ? (
             <div className="h-4 w-8 bg-stone-200/50 rounded animate-pulse my-1"></div>
         ) : (
-            <div className="text-sm font-black text-stone-800 leading-tight">
+            <div className="text-sm font-black text-stone-800 leading-tight text-center">
                 {value !== undefined && value !== null ? value : '--'}
                 <span className="text-[10px] font-medium ml-0.5 text-stone-500">{unit}</span>
             </div>

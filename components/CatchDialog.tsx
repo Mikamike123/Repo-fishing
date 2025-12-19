@@ -1,16 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { X, Ruler, Sparkles, MapPin, AlertTriangle, Clock, Edit2 } from 'lucide-react';
-import { SpeciesType, Zone, Technique, Catch } from '../types';
+import { X, Ruler, Sparkles, Edit2, Image as ImageIcon } from 'lucide-react';
+import { SpeciesType, Zone, Technique, Catch, RefLureType, RefColor, RefSize, RefWeight } from '../types';
 
 interface CatchDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (data: any) => void;
-  initialData?: Catch | null; // Ajout pour l'édition
+  initialData?: Catch | null;
   availableZones: Zone[];
   availableTechniques: Technique[];
   sessionStartTime: string;
   sessionEndTime: string;
+  lureTypes: RefLureType[];
+  colors: RefColor[];
+  sizes: RefSize[];
+  weights: RefWeight[];
+  // NOUVELLE PROP
+  lastCatchDefaults?: Catch | null;
 }
 
 const SPECIES_CONFIG: Record<string, { max: number }> = {
@@ -20,56 +26,96 @@ const SPECIES_CONFIG: Record<string, { max: number }> = {
 };
 
 const CatchDialog: React.FC<CatchDialogProps> = ({ 
-  isOpen, onClose, onSave, initialData, availableZones, availableTechniques, sessionStartTime, sessionEndTime 
+  isOpen, onClose, onSave, initialData, availableZones, availableTechniques, 
+  sessionStartTime, sessionEndTime, lureTypes, colors, sizes, weights,
+  lastCatchDefaults 
 }) => {
   const [species, setSpecies] = useState<SpeciesType>('Sandre');
   const [size, setSize] = useState<number>(45);
   const [selectedTechId, setSelectedTechId] = useState('');
   const [selectedZoneId, setSelectedZoneId] = useState('');
-  const [lure, setLure] = useState('');
+  const [lureName, setLureName] = useState('');
   const [time, setTime] = useState(sessionStartTime);
+  
+  const [selectedLureTypeId, setSelectedLureTypeId] = useState('');
+  const [selectedColorId, setSelectedColorId] = useState('');
+  const [selectedSizeId, setSelectedSizeId] = useState('');
+  const [selectedWeightId, setSelectedWeightId] = useState('');
+
+  const [photoLink1, setPhotoLink1] = useState('');
+  const [photoLink2, setPhotoLink2] = useState('');
+
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setError(null);
+      
       if (initialData) {
-        // --- MODE ÉDITION : Pré-remplissage ---
+        // --- CAS 1 : ÉDITION (Priorité absolue) ---
         setSpecies(initialData.species);
         setSize(initialData.size);
-        setLure(initialData.lure || '');
+        setLureName(initialData.lureName || (initialData as any).lure || ''); 
         
-        // Trouver l'ID technique/zone correspondant au libellé si l'ID manque (rétrocompatibilité)
-        const tech = availableTechniques.find(t => t.id === initialData.techniqueId || t.label === initialData.technique);
-        if (tech) setSelectedTechId(tech.id);
+        if (availableTechniques.length) setSelectedTechId(initialData.techniqueId || availableTechniques.find(t => t.label === initialData.technique)?.id || '');
+        if (availableZones.length) setSelectedZoneId(initialData.spotId || (initialData as any).zoneId || availableZones[0].id);
 
-        const zone = availableZones.find(z => z.id === initialData.zoneId || z.label === initialData.zone);
-        if (zone) setSelectedZoneId(zone.id);
+        setSelectedLureTypeId(initialData.lureTypeId || '');
+        setSelectedColorId(initialData.lureColorId || '');
+        setSelectedSizeId(initialData.lureSizeId || '');
+        setSelectedWeightId(initialData.lureWeightId || '');
 
-        // Extraction de l'heure format HH:MM depuis le timestamp
+        if (initialData.photoUrls && initialData.photoUrls.length > 0) {
+            setPhotoLink1(initialData.photoUrls[0] || '');
+            setPhotoLink2(initialData.photoUrls[1] || '');
+        } else {
+            setPhotoLink1('');
+            setPhotoLink2('');
+        }
+
         if (initialData.timestamp) {
-            const dateObj = initialData.timestamp instanceof Date 
-                ? initialData.timestamp 
-                : new Date((initialData.timestamp as any).seconds * 1000);
+            const dateObj = initialData.timestamp instanceof Date ? initialData.timestamp : new Date((initialData.timestamp as any).seconds * 1000);
             setTime(dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
         }
+
       } else {
-        // --- MODE CRÉATION : Défauts ---
+        // --- CAS 2 : CRÉATION (Nouvelle prise) ---
+        
+        // Reset des champs variables
         setTime(sessionStartTime);
-        setSpecies('Sandre');
+        setSpecies('Sandre'); 
         setSize(45);
-        setLure('');
-        if (availableZones.length > 0) setSelectedZoneId(availableZones[0].id);
-        if (availableTechniques.length > 0) setSelectedTechId(availableTechniques[0].id);
+        setPhotoLink1('');
+        setPhotoLink2('');
+
+        // LOGIQUE DE DUPLICATION INTELLIGENTE
+        if (lastCatchDefaults) {
+            // On reprend la config qui marche !
+            setSelectedTechId(lastCatchDefaults.techniqueId);
+            setSelectedZoneId(lastCatchDefaults.spotId || (lastCatchDefaults as any).zoneId); 
+            setSelectedLureTypeId(lastCatchDefaults.lureTypeId || '');
+            setSelectedColorId(lastCatchDefaults.lureColorId || '');
+            setSelectedSizeId(lastCatchDefaults.lureSizeId || '');
+            setSelectedWeightId(lastCatchDefaults.lureWeightId || '');
+            setLureName(lastCatchDefaults.lureName || (lastCatchDefaults as any).lure || '');
+        } else {
+            // Pas d'historique dans cette session, reset total
+            setLureName('');
+            setSelectedLureTypeId('');
+            setSelectedColorId('');
+            setSelectedSizeId('');
+            setSelectedWeightId('');
+            if (availableZones.length > 0) setSelectedZoneId(availableZones[0].id);
+            if (availableTechniques.length > 0) setSelectedTechId(availableTechniques[0].id);
+        }
       }
     }
-  }, [isOpen, initialData, sessionStartTime, availableZones, availableTechniques]);
+  }, [isOpen, initialData, lastCatchDefaults, sessionStartTime, availableZones, availableTechniques]);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (time < sessionStartTime || time > sessionEndTime) {
       setError(`L'heure doit être comprise entre ${sessionStartTime} et ${sessionEndTime}.`);
       return;
@@ -78,20 +124,38 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
     const zoneObj = availableZones.find(z => z.id === selectedZoneId);
     const techObj = availableTechniques.find(t => t.id === selectedTechId);
     
+    const photos = [photoLink1.trim(), photoLink2.trim()].filter(url => url.length > 0);
+
     onSave({ 
       species, size, 
-      lure: lure.trim() || '', 
+      lureName: lureName.trim(),
+      lure: lureName.trim(), 
+      lureTypeId: selectedLureTypeId,
+      lureColorId: selectedColorId,
+      lureSizeId: selectedSizeId,
+      lureWeightId: selectedWeightId,
       time,
       technique: techObj?.label || 'Inconnue', techniqueId: selectedTechId,
-      zone: zoneObj?.label || 'Inconnue', zoneId: selectedZoneId
+      spotName: zoneObj?.label || 'Inconnue', spotId: selectedZoneId,
+      zone: zoneObj?.label || 'Inconnue', zoneId: selectedZoneId,
+      photoUrls: photos 
     });
-    
     onClose();
   };
 
+  const SelectField = ({ label, value, onChange, options, placeholder }: any) => (
+    <div className="space-y-1">
+       <label className="text-[10px] font-black uppercase text-stone-400 ml-1">{label}</label>
+       <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full p-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-700 outline-none focus:ring-2 focus:ring-amber-200">
+          <option value="">{placeholder}</option>
+          {options.map((o: any) => <option key={o.id} value={o.id}>{o.label}</option>)}
+       </select>
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center bg-stone-900/40 backdrop-blur-sm animate-in fade-in duration-200 sm:items-center p-4">
-      <div className="w-full max-w-lg bg-[#FAF9F6] rounded-3xl shadow-2xl p-6 space-y-5 border border-white/50">
+      <div className="w-full max-w-lg bg-[#FAF9F6] rounded-3xl shadow-2xl p-6 space-y-4 border border-white/50 max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center border-b border-stone-100 pb-4">
           <h3 className="font-bold text-lg flex items-center gap-2 text-stone-800">
             {initialData ? <><Edit2 className="text-amber-500" size={20}/> Modifier la Prise</> : <><Sparkles className="text-amber-500" size={20}/> Nouvelle Prise</>}
@@ -118,13 +182,20 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
           <div className="space-y-1">
             <label className="text-[10px] font-black uppercase text-stone-400 ml-1">Technique</label>
             <select value={selectedTechId} onChange={(e) => setSelectedTechId(e.target.value)} className="w-full p-3 bg-white border border-stone-200 rounded-xl text-sm font-medium text-stone-700 outline-none focus:ring-2 focus:ring-amber-200">
-              {availableTechniques.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+               {availableTechniques.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
             </select>
+          </div>
+
+          <div className="bg-stone-100/50 p-3 rounded-2xl border border-stone-100 grid grid-cols-2 gap-3">
+              <SelectField label="Type de Leurre" value={selectedLureTypeId} onChange={setSelectedLureTypeId} options={lureTypes} placeholder="Type..." />
+              <SelectField label="Couleur" value={selectedColorId} onChange={setSelectedColorId} options={colors} placeholder="Couleur..." />
+              <SelectField label="Taille" value={selectedSizeId} onChange={setSelectedSizeId} options={sizes} placeholder="Taille..." />
+              <SelectField label="Poids" value={selectedWeightId} onChange={setSelectedWeightId} options={weights} placeholder="Poids..." />
           </div>
 
           <div className="bg-white p-4 rounded-2xl border border-stone-100 space-y-3 shadow-sm">
             <div className="flex justify-between items-center">
-              <label className="text-[10px] font-black uppercase text-stone-400 flex items-center gap-2"><Ruler size={14}/> Taille</label>
+              <label className="text-[10px] font-black uppercase text-stone-400 flex items-center gap-2"><Ruler size={14}/> Taille Prise</label>
               <span className="text-xl font-black text-stone-800">{size} <span className="text-xs text-stone-400">cm</span></span>
             </div>
             <input type="range" min="10" max={SPECIES_CONFIG[species]?.max || 100} value={size} onChange={(e) => setSize(Number(e.target.value))} className="w-full h-2 bg-stone-100 rounded-lg appearance-none cursor-pointer accent-amber-500" />
@@ -137,7 +208,15 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
             </select>
           </div>
 
-          <input type="text" placeholder="Leurre utilisé..." value={lure} onChange={(e) => setLure(e.target.value)} className="w-full p-3 bg-white border border-stone-200 rounded-xl text-sm outline-none focus:border-amber-400"/>
+          <input type="text" placeholder="Commentaire (Modèle précis, etc.)" value={lureName} onChange={(e) => setLureName(e.target.value)} className="w-full p-3 bg-white border border-stone-200 rounded-xl text-sm outline-none focus:border-amber-400"/>
+
+          <div className="bg-blue-50/50 p-3 rounded-2xl border border-blue-100 space-y-2">
+             <label className="text-[10px] font-black uppercase text-blue-400 flex items-center gap-1">
+                <ImageIcon size={12} /> Liens Google Photos (Partage)
+             </label>
+             <input type="url" placeholder="Lien partage n°1" value={photoLink1} onChange={(e) => setPhotoLink1(e.target.value)} className="w-full p-2 bg-white border border-blue-100 rounded-xl text-xs text-blue-800 outline-none focus:ring-2 focus:ring-blue-200"/>
+             <input type="url" placeholder="Lien partage n°2" value={photoLink2} onChange={(e) => setPhotoLink2(e.target.value)} className="w-full p-2 bg-white border border-blue-100 rounded-xl text-xs text-blue-800 outline-none focus:ring-2 focus:ring-blue-200"/>
+          </div>
 
           <button type="submit" className="w-full bg-stone-800 text-white py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-transform">
             {initialData ? 'Mettre à jour' : 'Valider la prise'}

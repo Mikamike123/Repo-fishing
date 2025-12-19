@@ -116,6 +116,11 @@ export interface Miss {
   spotId: string;
   spotName: string;     
   timestamp: any;
+  lureName?: string; // Champ commentaire/modèle
+  lureTypeId?: string;
+  lureColorId?: string;
+  lureSizeId?: string;
+  lureWeightId?: string;
 }
 
 // --- LA SESSION ---
@@ -158,4 +163,11 @@ export interface AppData {
     weights: RefWeight[];
     // Legacy inventory
     lures: Lure[]; 
+}
+
+export interface UserProfile {
+  id: string; // Correspondra au userId (ex: 'user_1')
+  pseudo: string;
+  createdAt: any;
+  avatarBase64?: string; // AJOUT : Pour stocker l'image encodée
 }
