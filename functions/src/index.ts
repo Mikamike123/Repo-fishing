@@ -7,7 +7,6 @@ import axios, { AxiosResponse } from "axios";
 import { VertexAI } from "@google-cloud/vertexai";
 
 // --- 1. CONFIGURATION GLOBALE (EUROPE) ---
-// On force toutes les fonctions à s'exécuter en Europe (Belgique)
 setGlobalOptions({ region: "europe-west1", maxInstances: 10 });
 
 // --- 2. INITIALISATION ADMIN ---
@@ -17,19 +16,17 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 // --- 3. CONSTANTES ---
-const STATION_CODE_HYDRO = "F700000103"; // Station Austerlitz
+const STATION_CODE_HYDRO = "F700000103"; 
 const VIGICRUES_BASE_URL = "https://www.vigicrues.gouv.fr/services/observations.json";
 const LAT = 48.92;
 const LON = 2.19;
 
-// --- 4. INITIALISATION VERTEX AI (GEMINI) ---
-// On initialise le client Vertex AI en Europe également
+// --- 4. INITIALISATION VERTEX AI ---
 const vertex_ai = new VertexAI({
-    project: process.env.GCLOUD_PROJECT,
-    location: "europe-west1" // <-- IMPORTANT : L'IA répond depuis l'Europe
+    project: "mysupstack", 
+    location: "europe-west1"
 });
 
-// Utilisation du modèle Flash (Rapide et économique)
 const model = vertex_ai.getGenerativeModel({ 
     model: "gemini-1.5-flash" 
 });
@@ -62,7 +59,8 @@ const fetchVigicruesData = async (grandeur: "Q" | "H"): Promise<number> => {
     }
 };
 
-const getSeasonalWaterTemp = (): {date: string, temperature: number, unit: string} => {
+/* // FONCTION MISE EN COMMENTAIRE POUR ÉVITER L'ERREUR DE COMPILATION TS6133
+const getSeasonalWaterTemp = () => {
     const now = new Date();
     const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 1000 / 60 / 60 / 24);
     const average = 14.5;
@@ -75,86 +73,88 @@ const getSeasonalWaterTemp = (): {date: string, temperature: number, unit: strin
         unit: "°C (Est.)",
     };
 };
+*/
 
 // --- CLOUD FUNCTIONS ---
 
-/**
- * 1. API HTTP (Frontend)
- */
 export const fetchHubeauData = onRequest({ cors: true }, async (request, response) => {
     const dataType = request.query.type as string;
-    
     if (dataType === "realtime") {
         const [flow, level] = await Promise.all([
             fetchVigicruesData("Q"),
             fetchVigicruesData("H"),
         ]);
-        const message = (flow > 0) ? "200 OK: Vigicrues" : "WARN: Vigicrues Offline";
-        response.status(200).json({ data: {flow, level}, message: message });
-
-    } else if (dataType === "watertemp") {
-        const data = getSeasonalWaterTemp();
-        response.status(200).json(data);
+        response.status(200).json({ data: {flow, level} });
     } else {
         response.status(400).send("Type inconnu.");
     }
 });
 
 /**
- * 2. SCHEDULER DATA (Data Hoarder)
- * Enregistre les données brutes toutes les heures
+ * 2. SCHEDULER DATA (L'Observatoire)
  */
 export const recordHourlyEnvironment = onSchedule(
     { schedule: "10 * * * *", timeZone: "Europe/Paris" },
     async (event) => {
+      logger.info("CRON: Démarrage de l'enregistrement horaire complet");
       try {
         const now = new Date();
-        const docId = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}00`;
+        const datePart = now.toLocaleDateString("en-CA", {timeZone: "Europe/Paris"}); 
+        const hourPart = now.toLocaleTimeString("fr-FR", {timeZone: "Europe/Paris", hour: "2-digit"}).split(' ')[0];
+        const docId = `${datePart}_${hourPart.padStart(2, '0')}00`;
   
-        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,precipitation,weather_code,wind_speed_10m&timezone=Europe%2FParis`;
+        logger.info(`Étape 1: ID du document cible = ${docId}`);
+
+        // URL MISE À JOUR : Ajout de wind_direction_10m et surface_pressure
+        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure&timezone=Europe%2FParis`;
         
+        logger.info("Étape 2: Appel des API Météo et Vigicrues...");
         const [weatherRes, riverLevel] = await Promise.all([
             axios.get(weatherUrl),
             fetchVigicruesData("H")
         ]);
   
-        const weatherData = weatherRes.data.current;
-  
+        const w = weatherRes.data.current;
+        
+        // --- STRUCTURE RÉCONCILIÉE AVEC LE BACKFILL ---
         const dataToSave = {
           timestamp: admin.firestore.Timestamp.now(),
-          date_id: docId,
+          id: docId, 
+          source: "observatoire_live",
           location: { lat: LAT, lon: LON },
           weather: {
-              temp_c: weatherData.temperature_2m,
-              precipitation_mm: weatherData.precipitation,
-              wind_kph: weatherData.wind_speed_10m,
-              condition_code: weatherData.weather_code
+              temp: w.temperature_2m,
+              pressure: w.surface_pressure,     // Ajouté pour harmonisation
+              windSpeed: w.wind_speed_10m,
+              windDir: w.wind_direction_10m,    // Ajouté pour harmonisation
+              precip: w.precipitation,
+              condition_code: w.weather_code
           },
-          river: {
+          hydro: { 
               level: riverLevel,
               station: STATION_CODE_HYDRO
-          }
+          },
+          updatedAt: admin.firestore.Timestamp.now()
         };
   
+        logger.info("Étape 3: Tentative d'écriture dans Firestore...");
         await db.collection("environmental_logs").doc(docId).set(dataToSave);
-        logger.info(`Données enregistrées : ${docId}`);
+        logger.info(`Étape 4: Succès total pour l'ID ${docId}`);
   
-      } catch (error) {
-        logger.error("Erreur recordHourlyEnvironment", error);
+      } catch (error: any) {
+        logger.error("ERREUR lors de l'archivage :", error.message);
       }
     }
 );
 
 /**
  * 3. SCHEDULER AI (Le Coach Pêche)
- * Analyse les données une fois par jour (ex: 6h00 du matin) et génère un conseil.
  */
 export const generateDailyFishingBrief = onSchedule(
-    { schedule: "0 6 * * *", timeZone: "Europe/Paris" }, // Tous les jours à 06h00
+    { schedule: "0 6 * * *", timeZone: "Europe/Paris" },
     async (event) => {
-        logger.info("IA: Génération du briefing pêche...");
+        logger.info("IA: Génération du briefing...");
         try {
-            // 1. Récupérer les conditions actuelles
             const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,precipitation,weather_code,wind_speed_10m&timezone=Europe%2FParis`;
             const [weatherRes, riverLevel] = await Promise.all([
                 axios.get(weatherUrl),
@@ -162,46 +162,24 @@ export const generateDailyFishingBrief = onSchedule(
             ]);
             const w = weatherRes.data.current;
 
-            // 2. Construire le Prompt pour Gemini
-            const prompt = `
-            Tu es un expert en pêche aux carnassiers en Seine (région parisienne).
-            Voici les conditions actuelles :
-            - Niveau eau (Seine): ${riverLevel} m
-            - Météo: Code ${w.weather_code} (WMO code)
-            - Température air: ${w.temperature_2m}°C
-            - Vent: ${w.wind_speed_10m} km/h
-            - Précipitations: ${w.precipitation} mm
-            
-            Analyse ces conditions. Donne-moi un conseil court (3 phrases max) :
-            1. Est-ce un bon jour pour pêcher ?
-            2. Quel type de leurre utiliser ? (Couleur/Type)
-            3. Une zone à privilégier (bordure, cassure, calme) ?
-            Réponds sur un ton motivant mais réaliste.
-            `;
+            const prompt = `Expert pêche Seine. Conditions: Eau ${riverLevel}m, Météo code ${w.weather_code}, Air ${w.temperature_2m}°C. Conseil 3 phrases max (leurre/zone).`;
 
-            // 3. Appeler Gemini
             const result = await model.generateContent(prompt);
             const response = await result.response;
-            const text = response.candidates?.[0]?.content?.parts?.[0]?.text || "Pas de conseil disponible pour le moment.";
+            const text = response.candidates?.[0]?.content?.parts?.[0]?.text || "Pas de conseil.";
 
-            // 4. Sauvegarder le briefing dans Firestore
-            const now = new Date();
-            const docId = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            const dateId = new Date().toLocaleDateString("en-CA", {timeZone: "Europe/Paris"});
             
-            await db.collection("fishing_briefs").doc(docId).set({
-                date: docId,
+            await db.collection("fishing_briefs").doc(dateId).set({
+                date: dateId,
                 created_at: admin.firestore.Timestamp.now(),
                 content: text,
-                conditions_snapshot: {
-                    temp: w.temperature_2m,
-                    river_level: riverLevel
-                }
+                conditions_snapshot: { temp: w.temperature_2m, river_level: riverLevel }
             });
 
-            logger.info("IA: Briefing généré et sauvegardé !");
-
+            logger.info("IA: Briefing sauvegardé !");
         } catch (error) {
-            logger.error("IA: Erreur lors de la génération", error);
+            logger.error("IA Erreur:", error);
         }
     }
 );
