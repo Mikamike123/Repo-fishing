@@ -52,3 +52,5 @@ venv/
 /functions/node_modules
 /functions/lib # Dossier de sortie de la compilation TypeScript des fonctions
 /functions/dist
+# Firebase clé privé
+/serviceAccountKey.json
