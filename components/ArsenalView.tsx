@@ -139,7 +139,6 @@ const ArsenalView: React.FC<ArsenalViewProps> = (props) => (
         <ConfigSection title="Couleurs" icon={<Palette size={20}/>} items={props.colors} onAdd={props.onAddColor} onDelete={props.onDeleteColor} onEdit={props.onEditColor} placeholder="Ex: Flashy - Firetiger..." colorClass="text-purple-500" />
       </div>
 
-      {/* --- CORRECTION ICI : GUILLEMETS SIMPLES --- */}
       <div className="break-inside-avoid mb-6">
         <ConfigSection title="Tailles" icon={<Ruler size={20}/>} items={props.sizes} onAdd={props.onAddSize} onDelete={props.onDeleteSize} onEdit={props.onEditSize} placeholder='Ex: 3" - 4.5"...' colorClass="text-orange-500" />
       </div>
