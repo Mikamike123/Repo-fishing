@@ -59,22 +59,6 @@ const fetchVigicruesData = async (grandeur: "Q" | "H"): Promise<number> => {
     }
 };
 
-/* // FONCTION MISE EN COMMENTAIRE POUR ÉVITER L'ERREUR DE COMPILATION TS6133
-const getSeasonalWaterTemp = () => {
-    const now = new Date();
-    const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 1000 / 60 / 60 / 24);
-    const average = 14.5;
-    const amplitude = 9.5;
-    const phaseShift = 110; 
-    const tempEstim = average + amplitude * Math.sin(2 * Math.PI * (dayOfYear - phaseShift) / 365);
-    return {
-        date: now.toISOString().split("T")[0],
-        temperature: parseFloat(tempEstim.toFixed(1)),
-        unit: "°C (Est.)",
-    };
-};
-*/
-
 // --- CLOUD FUNCTIONS ---
 
 export const fetchHubeauData = onRequest({ cors: true }, async (request, response) => {
@@ -105,13 +89,14 @@ export const recordHourlyEnvironment = onSchedule(
   
         logger.info(`Étape 1: ID du document cible = ${docId}`);
 
-        // URL MISE À JOUR : Ajout de wind_direction_10m et surface_pressure
-        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure&timezone=Europe%2FParis`;
+        // URL MISE À JOUR : Ajout de cloud_cover pour la réconciliation avec le backfill
+        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure,cloud_cover&timezone=Europe%2FParis`;
         
-        logger.info("Étape 2: Appel des API Météo et Vigicrues...");
-        const [weatherRes, riverLevel] = await Promise.all([
+        logger.info("Étape 2: Appel des API Météo et Vigicrues (H et Q)...");
+        const [weatherRes, riverLevel, riverFlow] = await Promise.all([
             axios.get(weatherUrl),
-            fetchVigicruesData("H")
+            fetchVigicruesData("H"),
+            fetchVigicruesData("Q") // AJOUT : Récupération du débit
         ]);
   
         const w = weatherRes.data.current;
@@ -124,14 +109,16 @@ export const recordHourlyEnvironment = onSchedule(
           location: { lat: LAT, lon: LON },
           weather: {
               temp: w.temperature_2m,
-              pressure: w.surface_pressure,     // Ajouté pour harmonisation
+              pressure: w.surface_pressure,
               windSpeed: w.wind_speed_10m,
-              windDir: w.wind_direction_10m,    // Ajouté pour harmonisation
+              windDir: w.wind_direction_10m,
               precip: w.precipitation,
+              cloudCover: w.cloud_cover, // AJOUT : Cohérence avec le backfill
               condition_code: w.weather_code
           },
           hydro: { 
               level: riverLevel,
+              flow: riverFlow, // AJOUT : Cohérence avec le backfill
               station: STATION_CODE_HYDRO
           },
           updatedAt: admin.firestore.Timestamp.now()
