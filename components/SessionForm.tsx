@@ -1,9 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Loader2, Fish, AlertOctagon, Heart, X } from 'lucide-react';
-import { Session, Zone, Setup, Technique, Catch, Miss, Lure, WeatherSnapshot, HydroSnapshot, RefLureType, RefColor, RefSize, RefWeight } from '../types';
-import { getRealtimeEnvironmentalConditions, getRealtimeWaterTemp } from '../lib/environmental-service';
+import { 
+    Save, Loader2, Fish, AlertOctagon, X, Copy, 
+    // Icons pour les widgets météo
+    Cloud, Sun, CloudSun, CloudRain, Wind, Thermometer, Droplets
+} from 'lucide-react';
+import { Session, Zone, Setup, Technique, Catch, Miss, Lure, RefLureType, RefColor, RefSize, RefWeight } from '../types';
+import { collection, query, orderBy, limit, getDocs, where, Timestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+
 import CatchDialog from './CatchDialog';
 import MissDialog from './MissDialog';
+
+// --- HELPERS VISUELS (Identiques à SessionCard) ---
+const getWindDir = (deg?: number) => {
+    if (deg === undefined) return '';
+    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+    return directions[Math.round(deg / 45) % 8];
+};
+
+const getWeatherIcon = (clouds: number) => {
+    if (clouds < 20) return <Sun size={14} className="text-amber-500" />;
+    if (clouds < 60) return <CloudSun size={14} className="text-stone-400" />;
+    if (clouds < 90) return <Cloud size={14} className="text-stone-500" />;
+    return <CloudRain size={14} className="text-stone-600" />;
+};
 
 interface SessionFormProps {
     onAddSession: (session: Session) => void;
@@ -17,231 +37,324 @@ interface SessionFormProps {
     colors: RefColor[];
     sizes: RefSize[];
     weights: RefWeight[];
+    lastCatchDefaults?: Catch | null;
 }
 
 const SessionForm: React.FC<SessionFormProps> = ({ 
     onAddSession, onUpdateSession, initialData, zones, setups, techniques,
-    lureTypes, colors, sizes, weights 
+    lureTypes, colors, sizes, weights, lastCatchDefaults
 }) => {
-    const [date, setDate] = useState(initialData?.date || new Date().toISOString().split('T')[0]);
-    const [startTime, setStartTime] = useState(initialData?.startTime || "08:00");
-    const [endTime, setEndTime] = useState(initialData?.endTime || "11:00");
-    
-    const [feeling, setFeeling] = useState(initialData?.feelingScore || 5);
-    
-    const [selectedZoneId, setSelectedZoneId] = useState(initialData?.spotId || (initialData as any)?.zoneId || '');
-    const [selectedSetupId, setSelectedSetupId] = useState(initialData?.setupId || '');
-    
-    const [catches, setCatches] = useState<Catch[]>(initialData?.catches || []);
-    const [misses, setMisses] = useState<Miss[]>(initialData?.misses || []);
+    const safeData = initialData as any;
 
+    const [date, setDate] = useState(safeData?.date || new Date().toISOString().split('T')[0]);
+    const [startTime, setStartTime] = useState(safeData?.startTime || "08:00");
+    const [endTime, setEndTime] = useState(safeData?.endTime || "11:00");
+    const [spotId, setSpotId] = useState(safeData?.spotId || (zones[0]?.id || ''));
+
+    // États de données (Stockés mais plus affichés en inputs bruts)
+    const [weatherCondition, setWeatherCondition] = useState<any>(safeData?.weatherCondition || 'Eclaircies');
+    const [airTemp, setAirTemp] = useState(safeData?.airTemp?.toString() || null);
+    const [windSpeed, setWindSpeed] = useState(safeData?.windSpeed?.toString() || null);
+    const [windDirection, setWindDirection] = useState(safeData?.windDirection || 0);
+    const [pressure, setPressure] = useState(safeData?.pressure?.toString() || null);
+    const [cloudCover, setCloudCover] = useState(safeData?.cloudCover || 0); 
+    const [waterFlow, setWaterFlow] = useState(safeData?.waterFlow?.toString() || null);
+    const [waterTemp, setWaterTemp] = useState(safeData?.waterTemp?.toString() || null);
+    const [waterLevel, setWaterLevel] = useState(safeData?.waterLevel?.toString() || null);
+
+    const [feelingScore, setFeelingScore] = useState(safeData?.feelingScore || 5);
+    const [comment, setComment] = useState(safeData?.comment || '');
+
+    const [catches, setCatches] = useState<Catch[]>(safeData?.catches || []);
+    const [misses, setMisses] = useState<Miss[]>(safeData?.misses || []);
+
+    const [isLoadingEnv, setIsLoadingEnv] = useState(false);
+    const [envStatus, setEnvStatus] = useState<'idle' | 'found' | 'not-found'>('idle');
+    
     const [isCatchModalOpen, setIsCatchModalOpen] = useState(false);
     const [isMissModalOpen, setIsMissModalOpen] = useState(false);
     
     const [editingCatch, setEditingCatch] = useState<Catch | null>(null);
     const [editingMiss, setEditingMiss] = useState<Miss | null>(null);
-    
-    // NOUVEL ETAT : Pour stocker les valeurs de la dernière prise pour clonage
-    const [lastCatchDefaults, setLastCatchDefaults] = useState<Catch | null>(null);
 
-    const [isLoadingEnv, setIsLoadingEnv] = useState(!initialData);
-    const [envData, setEnvData] = useState<{w: WeatherSnapshot | null, h: HydroSnapshot | null, t: number | null}>({
-        w: initialData?.weather || null, h: initialData?.hydro || null, t: initialData?.waterTemp || null
-    });
-
+    // --- AUTO-FETCH INTELLIGENT (Sur changement Date ou Heure) ---
     useEffect(() => {
-        if (initialData) return;
-        const loadEnv = async () => {
-            const [env, temp] = await Promise.all([getRealtimeEnvironmentalConditions(), getRealtimeWaterTemp(null)]);
-            setEnvData({ w: env.weather, h: env.hydro, t: temp?.temperature || null });
-            setIsLoadingEnv(false);
+        // Si on est en mode édition avec des données déjà présentes, on ne réécrase pas automatiquement
+        if (initialData && envStatus === 'idle') return;
+
+        const fetchEnv = async () => {
+            setIsLoadingEnv(true);
+            setEnvStatus('idle');
+
+            try {
+                // 1. Reconstitution du Timestamp cible (Date + Heure Début)
+                const targetDate = new Date(`${date}T${startTime}:00`);
+                const targetTimestamp = Timestamp.fromDate(targetDate);
+
+                // 2. Requête : Trouver le log le plus proche DANS LE PASSÉ par rapport à ce timestamp
+                // "Quel temps faisait-il à ce moment là ?"
+                const q = query(
+                    collection(db, 'environmental_logs'),
+                    where('timestamp', '<=', targetTimestamp),
+                    orderBy('timestamp', 'desc'),
+                    limit(1)
+                );
+
+                const snapshot = await getDocs(q);
+
+                if (!snapshot.empty) {
+                    const docData = snapshot.docs[0].data() as any;
+                    
+                    // MAPPING
+                    if (docData.weather) {
+                        if (docData.weather.temp !== undefined) setAirTemp(docData.weather.temp);
+                        if (docData.weather.windSpeed !== undefined) setWindSpeed(docData.weather.windSpeed);
+                        if (docData.weather.windDirection !== undefined) setWindDirection(docData.weather.windDirection);
+                        if (docData.weather.pressure !== undefined) setPressure(docData.weather.pressure);
+                        if (docData.weather.cloudCover !== undefined) setCloudCover(docData.weather.cloudCover);
+                    }
+
+                    if (docData.hydro) {
+                        // Division par 1000 pour m3/s
+                        if (docData.hydro.flow !== undefined) setWaterFlow((docData.hydro.flow / 1000).toFixed(0));
+                        if (docData.hydro.level !== undefined) setWaterLevel(docData.hydro.level);
+                        
+                        if (docData.hydro.waterTemp !== undefined) {
+                            setWaterTemp(docData.hydro.waterTemp);
+                        } else if (docData.weather?.waterTemp !== undefined) {
+                            setWaterTemp(docData.weather.waterTemp);
+                        }
+                    }
+                    setEnvStatus('found');
+                } else {
+                    setEnvStatus('not-found');
+                    // On ne reset pas forcément à zéro pour laisser une saisie manuelle si besoin, 
+                    // mais ici on a décidé de cacher les inputs, donc ça restera vide.
+                }
+            } catch (error) {
+                console.error("Erreur fetch env:", error);
+            } finally {
+                setIsLoadingEnv(false);
+            }
         };
-        loadEnv();
-    }, [initialData]);
 
-    useEffect(() => {
-        if (zones.length > 0 && !selectedZoneId) setSelectedZoneId(zones[0].id);
-        if (setups.length > 0 && !selectedSetupId) setSelectedSetupId(setups[0].id);
-    }, [zones, setups, selectedZoneId]);
+        const timeoutId = setTimeout(fetchEnv, 800); // Debounce de 800ms pour éviter de spammer pendant la saisie de l'heure
+        return () => clearTimeout(timeoutId);
 
-    const combineDateAndTime = (timeStr: string) => {
-        if (!timeStr) return new Date();
-        const [hours, minutes] = timeStr.split(':').map(Number);
-        const sessionDate = new Date(date);
-        sessionDate.setHours(hours, minutes, 0, 0);
-        return sessionDate;
-    };
-
-    const handleSaveCatch = (c: any) => {
-        const timestamp = combineDateAndTime(c.time);
-        if (editingCatch) {
-            setCatches(prev => prev.map(item => item.id === editingCatch.id ? { ...item, ...c, timestamp } : item));
-            setEditingCatch(null);
-        } else {
-            setCatches(prev => [...prev, { ...c, id: crypto.randomUUID(), timestamp }]);
-        }
-        setIsCatchModalOpen(false);
-    };
-
-    const handleSaveMiss = (m: any) => {
-        const timestamp = combineDateAndTime(m.time);
-        if (editingMiss) {
-            setMisses(prev => prev.map(item => item.id === editingMiss.id ? { ...item, ...m, timestamp } : item));
-            setEditingMiss(null);
-        } else {
-            setMisses(prev => [...prev, { ...m, id: crypto.randomUUID(), timestamp }]);
-        }
-        setIsMissModalOpen(false);
-    };
-
-    // ACTION : Clic sur "+ Prise" avec logique d'auto-fill
-    const handleAddCatchClick = () => {
-        setEditingCatch(null); // Mode Création
-        
-        // Si on a déjà des prises, on prend la dernière pour pré-remplir
-        if (catches.length > 0) {
-            setLastCatchDefaults(catches[catches.length - 1]);
-        } else {
-            setLastCatchDefaults(null);
-        }
-        
-        setIsCatchModalOpen(true);
-    };
-
-    const openEditCatch = (c: Catch) => {
-        setEditingCatch(c);
-        setLastCatchDefaults(null); // Pas de pré-remplissage en mode édition
-        setIsCatchModalOpen(true);
-    };
-
-    const openEditMiss = (m: Miss) => {
-        setEditingMiss(m);
-        setIsMissModalOpen(true);
-    };
-
-    const getFeelingColor = (val: number) => {
-        if (val <= 3) return 'text-rose-500';
-        if (val <= 6) return 'text-amber-500';
-        if (val <= 8) return 'text-emerald-500';
-        return 'text-purple-600';
-    };
-    
-    const getFeelingLabel = (val: number) => {
-        if (val <= 3) return 'Mauvais';
-        if (val <= 6) return 'Moyen';
-        if (val <= 8) return 'Bon';
-        return 'Mythique';
-    };
+    }, [date, startTime]); // Se déclenche quand la date ou l'heure de début change
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const zoneObj = zones.find(z => z.id === selectedZoneId);
-        const setupObj = setups.find(s => s.id === selectedSetupId);
         
-        const finalWeather = initialData ? initialData.weather : envData.w;
-        const finalHydro = initialData ? initialData.hydro : envData.h;
-        const finalWaterTemp = initialData ? initialData.waterTemp : envData.t;
-
-        const payload: Partial<Session> = {
-            date, startTime, endTime, 
-            feelingScore: feeling, 
-            spotId: selectedZoneId, 
-            spotName: zoneObj?.label || 'Inconnue',
-            setupId: selectedSetupId, 
-            setupName: setupObj?.label || 'Inconnu',
-            catches, misses, 
-            weather: finalWeather, 
-            hydro: finalHydro, 
-            waterTemp: finalWaterTemp,
-            catchCount: catches.length, userId: 'user_1',
-            techniquesUsed: Array.from(new Set(catches.map(c => c.technique)))
+        const sessionData: any = {
+            date,
+            startTime,
+            endTime,
+            spotId,
+            weatherCondition,
+            airTemp: airTemp ? Number(airTemp) : null,
+            windSpeed: windSpeed ? Number(windSpeed) : null,
+            windDirection,
+            pressure: pressure ? Number(pressure) : null,
+            cloudCover: cloudCover || 0,
+            waterFlow: waterFlow ? Number(waterFlow) : null,
+            waterTemp: waterTemp ? Number(waterTemp) : null,
+            waterLevel: waterLevel ? Number(waterLevel) : null,
+            feelingScore,
+            comment,
+            catches,
+            misses
         };
-        
-        if (initialData?.id) {
-            onUpdateSession(initialData.id, payload);
+
+        if (initialData) {
+            onUpdateSession(initialData.id, sessionData);
         } else {
-            onAddSession({ id: crypto.randomUUID(), ...payload } as Session);
+            onAddSession(sessionData);
         }
     };
 
+    // --- HANDLERS (Inchangés) ---
+    const handleSaveCatch = (catchData: any) => {
+        if (editingCatch) {
+            setCatches(prev => prev.map(c => c.id === editingCatch.id ? { ...catchData, id: c.id } : c));
+        } else {
+            setCatches(prev => [...prev, { ...catchData, id: Date.now().toString() }]);
+        }
+        setIsCatchModalOpen(false);
+        setEditingCatch(null);
+    };
+
+    const handleDeleteCatch = (id: string) => {
+        if (confirm("Supprimer ?")) setCatches(prev => prev.filter(c => c.id !== id));
+    };
+
+    const handleSaveMiss = (missData: any) => {
+        if (editingMiss) {
+            setMisses(prev => prev.map(m => m.id === editingMiss.id ? { ...missData, id: m.id } : m));
+        } else {
+            setMisses(prev => [...prev, { ...missData, id: Date.now().toString() }]);
+        }
+        setIsMissModalOpen(false);
+        setEditingMiss(null);
+    };
+
+    const handleDeleteMiss = (id: string) => {
+        if (confirm("Supprimer ?")) setMisses(prev => prev.filter(m => m.id !== id));
+    };
+
     return (
-        <div className="w-full max-w-2xl mx-auto p-4 space-y-6">
-            <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-lg p-8 space-y-8 border border-stone-100">
-                <h2 className="text-xl font-bold text-stone-800">{initialData ? 'Modifier Session' : 'Nouvelle Session'}</h2>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-14 bg-stone-50 border border-stone-200 rounded-xl px-4 font-bold text-stone-700" />
-                    <div className="flex gap-2">
-                        <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="flex-1 h-14 bg-stone-50 border border-stone-200 rounded-xl text-center font-bold text-stone-700" />
-                        <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="flex-1 h-14 bg-stone-50 border border-stone-200 rounded-xl text-center font-bold text-stone-700" />
-                    </div>
-                </div>
+        <div className="bg-white rounded-3xl p-6 shadow-xl pb-24">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-black text-stone-800 flex items-center gap-2">
+                    {initialData ? <><AlertOctagon className="text-amber-500" /> Éditer</> : <><Fish className="text-emerald-500" /> Nouvelle Session</>}
+                </h2>
+                {initialData && (
+                    <button onClick={() => onUpdateSession(initialData.id, {})} className="p-2 bg-stone-100 rounded-full hover:bg-stone-200">
+                        <X size={20} />
+                    </button>
+                )}
+            </div>
 
+            <form onSubmit={handleSubmit} className="space-y-6">
+                {/* 1. INFO DE BASE */}
                 <div className="grid grid-cols-2 gap-4">
-                    <select value={selectedZoneId} onChange={(e) => setSelectedZoneId(e.target.value)} className="p-4 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-700">
-                        <option value="">Sélectionner Zone...</option>
-                        {zones.map(z => <option key={z.id} value={z.id}>{z.label}</option>)}
-                    </select>
-                    <select value={selectedSetupId} onChange={(e) => setSelectedSetupId(e.target.value)} className="p-4 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-700">
-                        <option value="">Sélectionner Setup...</option>
-                        {setups.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                    <div className="col-span-2">
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1 block">Date</label>
+                        <input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full p-4 bg-stone-50 rounded-2xl font-bold text-stone-700 outline-none focus:ring-2 focus:ring-emerald-100 transition-all" />
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1 block">Début</label>
+                        <input type="time" required value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full p-4 bg-stone-50 rounded-2xl font-bold text-stone-700 outline-none focus:ring-2 focus:ring-emerald-100 transition-all" />
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1 block">Fin</label>
+                        <input type="time" required value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full p-4 bg-stone-50 rounded-2xl font-bold text-stone-700 outline-none focus:ring-2 focus:ring-emerald-100 transition-all" />
+                    </div>
+                </div>
+
+                <div>
+                    <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1 block">Spot</label>
+                    <select required value={spotId} onChange={e => setSpotId(e.target.value)} className="w-full p-4 bg-stone-50 rounded-2xl font-bold text-stone-700 outline-none focus:ring-2 focus:ring-emerald-100 transition-all">
+                        {zones.map(z => <option key={z.id} value={z.id}>{z.label} ({z.type})</option>)}
                     </select>
                 </div>
 
-                <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100">
-                    <div className="flex justify-between items-center mb-2">
-                        <label className="text-xs font-bold text-stone-400 uppercase flex items-center gap-1">
-                            <Heart size={14} className="text-rose-400" /> Ressenti Global
+                {/* 2. WIDGETS ENVIRONNEMENT (Style SessionCard) */}
+                <div className="space-y-2">
+                    <div className="flex justify-between items-end px-1">
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                            Conditions (Auto)
                         </label>
-                        <span className={`text-sm font-black ${getFeelingColor(feeling)}`}>
-                            {feeling}/10 - {getFeelingLabel(feeling)}
-                        </span>
+                        {/* Indicateur de statut discret */}
+                        {isLoadingEnv ? (
+                             <span className="text-[9px] text-amber-500 font-bold flex items-center gap-1"><Loader2 size={10} className="animate-spin"/> Recherche...</span>
+                        ) : envStatus === 'found' ? (
+                             <span className="text-[9px] text-emerald-500 font-bold">Données synchronisées</span>
+                        ) : (
+                             <span className="text-[9px] text-stone-300 italic">Aucune donnée trouvée</span>
+                        )}
                     </div>
-                    <input 
-                        type="range" 
-                        min="0" max="10" step="1" 
-                        value={feeling} 
-                        onChange={(e) => setFeeling(Number(e.target.value))}
-                        className="w-full h-2 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-stone-800"
-                    />
-                    <div className="flex justify-between text-[10px] text-stone-400 mt-1 font-bold px-1">
+                    
+                    <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide py-2">
+                        {/* Widget Météo */}
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50 text-blue-900 border border-blue-100 shrink-0 min-w-[80px] justify-center">
+                            {airTemp !== null ? getWeatherIcon(cloudCover) : <Cloud size={16} className="text-blue-300"/>}
+                            <span className="text-sm font-bold">{airTemp !== null ? `${Math.round(Number(airTemp))}°C` : '--'}</span>
+                        </div>
+
+                        {/* Widget Vent */}
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-stone-100 text-stone-600 border border-stone-200 shrink-0 min-w-[100px] justify-center">
+                            <Wind size={16} className="text-stone-400" />
+                            <span className="text-sm font-bold">
+                                {windSpeed !== null ? `${Math.round(Number(windSpeed))} ${getWindDir(windDirection)}` : '--'}
+                            </span>
+                        </div>
+
+                        {/* Widget Eau */}
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-orange-50 text-orange-700 border border-orange-100 shrink-0 min-w-[80px] justify-center">
+                            <Thermometer size={16} className="text-orange-500" />
+                            <span className="text-sm font-bold">{waterTemp !== null ? `${Number(waterTemp).toFixed(1)}°C` : '--'}</span>
+                        </div>
+
+                        {/* Widget Débit */}
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-cyan-50 text-cyan-700 border border-cyan-100 shrink-0 min-w-[80px] justify-center">
+                            <Droplets size={16} className="text-cyan-500" />
+                            <span className="text-sm font-bold">{waterFlow !== null ? `${Number(waterFlow).toFixed(0)}` : '--'}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 3. LISTES (Boutons Restaurés & Améliorés) */}
+                <div className="space-y-4 pt-2">
+                    <div className="flex gap-3">
+                        <button 
+                            type="button" 
+                            onClick={() => setIsMissModalOpen(true)} 
+                            className="flex-1 py-3 bg-rose-50 text-rose-600 rounded-full text-xs font-black border border-rose-100 shadow-sm active:scale-95 transition-all flex justify-center items-center gap-2 hover:bg-rose-100"
+                        >
+                            <AlertOctagon size={16}/> AJOUTER RATÉ
+                        </button>
+                        <button 
+                            type="button" 
+                            onClick={() => setIsCatchModalOpen(true)} 
+                            className="flex-1 py-3 bg-emerald-50 text-emerald-600 rounded-full text-xs font-black border border-emerald-100 shadow-sm active:scale-95 transition-all flex justify-center items-center gap-2 hover:bg-emerald-100"
+                        >
+                            <Fish size={16}/> AJOUTER PRISE
+                        </button>
+                    </div>
+
+                    {catches.length === 0 && misses.length === 0 && (
+                        <div className="p-6 border-2 border-dashed border-stone-100 rounded-2xl text-center">
+                            <p className="text-stone-400 text-xs italic">Aucune prise pour le moment.</p>
+                        </div>
+                    )}
+                    
+                    <div className="space-y-2">
+                        {catches.map(c => (
+                            <div key={c.id} className="flex items-center justify-between p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl">
+                                <span className="font-bold text-stone-800 text-sm flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                                    {c.species} {c.size}cm
+                                </span>
+                                <div className="flex gap-1">
+                                    <button type="button" onClick={() => { setEditingCatch(c); setIsCatchModalOpen(true); }} className="p-2 bg-white rounded-full text-stone-400 shadow-sm border border-stone-100 hover:text-emerald-600"><Copy size={12}/></button>
+                                    <button type="button" onClick={() => handleDeleteCatch(c.id)} className="p-2 bg-white rounded-full text-rose-400 shadow-sm border border-stone-100 hover:text-rose-600"><X size={12}/></button>
+                                </div>
+                            </div>
+                        ))}
+                        {misses.map(m => (
+                            <div key={m.id} className="flex items-center justify-between p-3 bg-rose-50/50 border border-rose-100 rounded-xl">
+                                <span className="font-bold text-stone-800 text-sm flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-rose-500"></div>
+                                    {m.type}
+                                </span>
+                                <div className="flex gap-1">
+                                    <button type="button" onClick={() => { setEditingMiss(m); setIsMissModalOpen(true); }} className="p-2 bg-white rounded-full text-stone-400 shadow-sm border border-stone-100 hover:text-rose-600"><Copy size={12}/></button>
+                                    <button type="button" onClick={() => handleDeleteMiss(m.id)} className="p-2 bg-white rounded-full text-rose-400 shadow-sm border border-stone-100 hover:text-rose-600"><X size={12}/></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* 4. FEELING */}
+                <div className="pt-2">
+                     <label className="text-[10px] font-bold text-stone-400 uppercase mb-3 flex justify-between">
+                        <span>Ressenti Global</span>
+                        <span className="text-amber-500 text-lg font-black">{feelingScore}/10</span>
+                     </label>
+                     <input type="range" min="1" max="10" value={feelingScore} onChange={e => setFeelingScore(parseInt(e.target.value))} className="w-full h-2 bg-stone-100 rounded-lg appearance-none cursor-pointer accent-amber-500"/>
+                     <div className="flex justify-between text-[8px] font-bold text-stone-300 uppercase mt-2 px-1">
                         <span>Horrible</span>
                         <span>Moyen</span>
-                        <span>Top</span>
+                        <span>Légendaire</span>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                    {/* BOUTON MODIFIÉ : APPEL handleAddCatchClick */}
-                    <button type="button" onClick={handleAddCatchClick} className="py-4 bg-amber-500 text-white rounded-2xl font-black shadow-lg shadow-amber-500/20 active:scale-95 transition-transform hover:bg-amber-600">+ Prise</button>
-                    <button type="button" onClick={() => { setEditingMiss(null); setIsMissModalOpen(true); }} className="py-4 bg-stone-100 text-stone-600 rounded-2xl font-bold border border-stone-200 active:scale-95 transition-transform hover:bg-stone-200">+ Raté</button>
-                </div>
+                <textarea rows={3} value={comment} onChange={e => setComment(e.target.value)} placeholder="Notes sur la session..." className="w-full p-4 bg-stone-50 rounded-2xl text-sm outline-none resize-none focus:ring-2 focus:ring-stone-200 transition-all" />
 
-                <div className="flex gap-3 overflow-x-auto py-4 min-h-[110px] scrollbar-thin scrollbar-thumb-stone-200">
-                    {catches.map((c) => (
-                        <div key={c.id} onClick={() => openEditCatch(c)} className="relative shrink-0 w-24 h-24 bg-white border border-amber-100 rounded-2xl p-2 flex flex-col items-center justify-center text-center shadow-sm group cursor-pointer hover:border-amber-400 transition-colors">
-                            <button type="button" onClick={(e) => { e.stopPropagation(); setCatches(catches.filter(i => i.id !== c.id)); }} className="absolute top-1 right-1 p-1 text-stone-300 hover:text-red-500 transition-colors z-10"><X size={12}/></button>
-                            <Fish size={16} className="text-amber-500 mb-1"/>
-                            <span className="text-[10px] font-black text-stone-700 leading-tight truncate w-full">{c.species}</span>
-                            <span className="text-[10px] text-stone-400">{c.size}cm</span>
-                            <span className="text-[9px] text-stone-300 mt-1 font-mono">{c.timestamp instanceof Date ? c.timestamp.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '--:--'}</span>
-                        </div>
-                    ))}
-                    {misses.map((m) => (
-                        <div key={m.id} onClick={() => openEditMiss(m)} className="relative shrink-0 w-24 h-24 bg-stone-50 border border-dashed border-stone-300 rounded-2xl p-2 flex flex-col items-center justify-center text-center group cursor-pointer hover:border-rose-400 transition-colors">
-                            <button type="button" onClick={(e) => { e.stopPropagation(); setMisses(misses.filter(i => i.id !== m.id)); }} className="absolute top-1 right-1 p-1 text-stone-300 hover:text-red-500 transition-colors z-10"><X size={12}/></button>
-                            <AlertOctagon size={16} className="text-rose-400 mb-1"/>
-                            <span className="text-[10px] font-black text-stone-600 leading-tight truncate w-full">{m.type}</span>
-                            <span className="text-[9px] text-stone-400 mt-1 font-mono">{m.timestamp instanceof Date ? m.timestamp.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '--:--'}</span>
-                        </div>
-                    ))}
-                    {catches.length === 0 && misses.length === 0 && (
-                        <div className="w-full flex items-center justify-center text-xs text-stone-400 italic border-2 border-dashed border-stone-100 rounded-2xl bg-stone-50/50">Le vivier est vide.</div>
-                    )}
-                </div>
-
-                <button type="submit" disabled={isLoadingEnv} className="w-full bg-stone-800 text-white py-5 rounded-2xl font-black shadow-xl flex items-center justify-center gap-3 disabled:bg-stone-200 disabled:text-stone-400 transition-all hover:bg-stone-900 active:scale-[0.99]">
-                    {isLoadingEnv ? <><Loader2 className="animate-spin" size={20} /> Chargement Météo...</> : <><Save size={20} /> {initialData ? 'Enregistrer les modifications' : 'Terminer la Session'}</>}
+                <button type="submit" disabled={isLoadingEnv} className="w-full py-4 bg-stone-800 text-white rounded-2xl font-black shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2">
+                    {isLoadingEnv ? <Loader2 className="animate-spin" size={20} /> : <><Save size={20} /> {initialData ? 'Modifier' : 'Terminer'}</>}
                 </button>
             </form>
 
@@ -258,7 +371,6 @@ const SessionForm: React.FC<SessionFormProps> = ({
                 colors={colors}
                 sizes={sizes}
                 weights={weights}
-                // PROP PASSÉE ICI
                 lastCatchDefaults={lastCatchDefaults}
             />
             

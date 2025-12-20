@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Clock, MapPin, Droplets, Wind, TrendingUp, Calendar, ArrowRight, Gauge, Activity, Cloud, Thermometer } from 'lucide-react'; 
+import { Clock, MapPin, Droplets, Wind, TrendingUp, Gauge, Activity, Cloud, Thermometer } from 'lucide-react';
 import { Session } from '../types';
 import SessionCard from './SessionCard';
 import SessionDetailModal from './SessionDetailModal';
-import { getRealtimeEnvironmentalConditions, getRealtimeWaterTemp } from '../lib/environmental-service';
+import { useCurrentConditions } from '../lib/hooks';
 
 // --- HELPER DIRECTION VENT ---
 const getWindDir = (deg?: number) => {
@@ -16,54 +16,19 @@ interface DashboardProps {
     sessions: Session[];
     onDeleteSession: (id: string) => void;
     onEditSession: (session: Session) => void;
-    userName?: string; 
-    currentUserId: string; // AJOUT CRUCIAL POUR LE SOCIAL MODE
+    userName?: string;
+    currentUserId: string;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEditSession, userName, currentUserId }) => {
-    // États pour le live
-    const [realtimeWeather, setRealtimeWeather] = useState<any>(null);
-    const [realtimeHydro, setRealtimeHydro] = useState<any>(null);
-    const [waterTempData, setWaterTempData] = useState<any>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [hydroInfoMessage, setHydroInfoMessage] = useState<string | null>(null);
+    const { weather, hydro, isLoading } = useCurrentConditions();
 
-    // États pour le détail
     const [selectedSession, setSelectedSession] = useState<Session | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
 
-    React.useEffect(() => {
-        const loadRealtimeData = async () => {
-            setIsLoading(true);
-            try {
-                const [env, temp] = await Promise.all([
-                    getRealtimeEnvironmentalConditions(),
-                    getRealtimeWaterTemp(null)
-                ]);
-
-                setRealtimeWeather(env.weather);
-                setRealtimeHydro(env.hydro);
-                setHydroInfoMessage(env.hydroMessage);
-                setWaterTempData(temp);
-            } catch (error) {
-                console.error("Dashboard: Erreur chargement", error);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        loadRealtimeData();
-    }, []);
-
-    // Calculs stats simples
-    const totalCatches = sessions.reduce((acc, s) => acc + (s.catches?.length || 0), 0);
-    
-    // On affiche un peu plus de sessions dans le feed social (ex: 5)
     const recentSessions = sessions.slice(0, 5);
-
-    // Calcul Bio Score simplifié (Moyenne Feeling)
-    const averageFeeling = sessions.length > 0 
-        ? Math.round(sessions.reduce((acc, s) => acc + s.feelingScore, 0) / sessions.length * 10) 
-        : 50;
+    const averageFeeling = sessions.length > 0 ? 
+        Math.round(sessions.reduce((acc, s) => acc + s.feelingScore, 0) / sessions.length * 10) : 50;
 
     const handleOpenDetail = (session: Session) => {
         setSelectedSession(session);
@@ -99,9 +64,10 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
                 </div>
             </div>
 
-            {/* LIVE CONDITIONS */}
+            {/* LIVE CONDITIONS (Firestore) */}
             <div className="bg-white rounded-[2rem] p-1 shadow-organic border border-stone-100 overflow-hidden relative">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
+                
                 <div className="p-6 relative z-10">
                     <div className="flex justify-between items-center mb-8">
                         <h3 className="text-lg font-bold text-stone-800 flex items-center gap-2">
@@ -113,93 +79,83 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
                     </div>
 
                     <div className="flex flex-col items-center justify-center mb-8">
-                         <div className="relative w-40 h-40 flex items-center justify-center">
+                        <div className="relative w-40 h-40 flex items-center justify-center">
                             <div className="absolute inset-0 border-[12px] border-stone-50 rounded-full"></div>
                             <div className="absolute inset-0 border-[12px] border-amber-400 rounded-full border-t-transparent animate-[spin_10s_linear_infinite]" style={{ transform: 'rotate(-45deg)' }}></div>
                             <div className="text-center z-10">
                                 <span className="block text-5xl font-black text-amber-600 tracking-tighter">{averageFeeling}</span>
                                 <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mt-1">Score Bio</span>
                             </div>
-                         </div>
-                         <div className="mt-4 px-4 py-1.5 bg-amber-50 border border-amber-100 rounded-full text-xs font-bold text-amber-700">
+                        </div>
+                        <div className="mt-4 px-4 py-1.5 bg-amber-50 border border-amber-100 rounded-full text-xs font-bold text-amber-700">
                             Condition : Moyen
-                         </div>
+                        </div>
                     </div>
 
-                    {/* GRILLE 5 COLONNES (Responsive) */}
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                        {/* AIR TEMP */}
                         <DataTile 
                             label="Air °C" 
-                            value={realtimeWeather?.temperature ? Math.round(realtimeWeather.temperature) : '--'} 
+                            // CORRECTION ICI : weather.temp
+                            value={weather?.temp !== undefined ? Math.round(weather.temp) : '--'} 
                             unit="" 
                             icon={<CloudIcon />} 
                             color="bg-rose-50 text-rose-900" 
-                            loading={isLoading}
+                            loading={isLoading} 
                         />
-
-                        {/* VENT */}
                         <DataTile 
                             label="Vent" 
-                            value={realtimeWeather?.windSpeed ? Math.round(realtimeWeather.windSpeed) : '--'} 
-                            unit={realtimeWeather?.windDirection !== undefined ? `km/h ${getWindDir(realtimeWeather.windDirection)}` : 'km/h'}
+                            value={weather?.windSpeed !== undefined ? Math.round(weather.windSpeed) : '--'} 
+                            unit={weather?.windDirection !== undefined ? `km/h ${getWindDir(weather.windDirection)}` : 'km/h'} 
                             icon={<WindIcon />} 
                             color="bg-stone-100 text-stone-600" 
-                            loading={isLoading}
+                            loading={isLoading} 
                         />
-
-                        {/* PRESSION */}
                         <DataTile 
                             label="Pression" 
-                            value={realtimeWeather?.pressure ? Math.round(realtimeWeather.pressure) : '--'} 
+                            value={weather?.pressure !== undefined ? Math.round(weather.pressure) : '--'} 
                             unit="hPa" 
                             icon={<GaugeIcon />} 
                             color="bg-indigo-50 text-indigo-900" 
-                            loading={isLoading}
-                        /> 
-
-                        {/* DEBIT */}
+                            loading={isLoading} 
+                        />
                         <DataTile 
-                            label="+5.0 m³/s" // Simulé
-                            value={realtimeHydro?.flow} 
-                            unit="" 
+                            label="Débit" 
+                            // Division par 1000 confirmée
+                            value={hydro?.flow ? (hydro.flow / 1000).toFixed(0) : '--'} 
+                            unit="m³/s" 
                             icon={<DropletsIcon />} 
                             color="bg-cyan-50 text-cyan-900" 
-                            loading={isLoading}
-                            info={hydroInfoMessage}
+                            loading={isLoading} 
                         />
-
-                        {/* EAU TEMP */}
                         <DataTile 
-                            label="(J-1)" 
-                            value={waterTempData?.temperature} 
+                            label="Eau" 
+                            value={hydro?.waterTemp || weather?.waterTemp || '--'} 
                             unit="°C" 
                             icon={<ThermometerIcon />} 
                             color="bg-orange-50 text-orange-900" 
-                            loading={isLoading}
+                            loading={isLoading} 
                         />
                     </div>
                 </div>
             </div>
 
-            {/* FIL D'ACTUALITÉ (SOCIAL FEED) */}
+            {/* FIL D'ACTUALITÉ */}
             <div className="space-y-4">
                 <div className="flex items-center justify-between px-2">
                     <h3 className="text-stone-800 font-bold text-lg flex items-center gap-2">
-                        <Clock size={20} className="text-stone-400" />
-                        Fil d'Actualité
+                        <Clock size={20} className="text-stone-400" /> Fil d'Actualité
                     </h3>
                 </div>
-                
+
                 <div className="space-y-4">
                     {recentSessions.map(session => (
                         <SessionCard 
                             key={session.id} 
                             session={session} 
-                            onDelete={onDeleteSession}
-                            onEdit={onEditSession}
+                            onDelete={onDeleteSession} 
+                            onEdit={onEditSession} 
                             onClick={handleOpenDetail} 
-                            currentUserId={currentUserId} // PASSAGE DE L'ID UTILISATEUR
+                            currentUserId={currentUserId}
                         />
                     ))}
                     {sessions.length === 0 && (
@@ -210,7 +166,6 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
                 </div>
             </div>
 
-            {/* MODAL DÉTAIL */}
             <SessionDetailModal 
                 session={selectedSession} 
                 isOpen={isDetailOpen} 
@@ -220,18 +175,18 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
     );
 };
 
-// Petits composants helpers
+// HELPERS
 const TrophyIcon = ({className}: {className?: string}) => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>;
-const ActivityIcon = () => <TrendingUp className="text-emerald-500" size={24} />;
-const CloudIcon = () => <Cloud size={16} />; // Correction icône
+const ActivityIcon = () => <Activity className="text-emerald-500" size={24} />;
+const CloudIcon = () => <Cloud size={16} />;
 const WindIcon = () => <Wind size={16} />;
 const DropletsIcon = () => <Droplets size={16} />;
 const MapPinIcon = () => <MapPin size={16} />;
 const GaugeIcon = () => <Gauge size={16} />;
 const ThermometerIcon = () => <div className="flex justify-center"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg></div>;
 
-const DataTile = ({ label, value, unit, icon, color, loading, info }: any) => (
-    <div className={`flex flex-col items-center justify-center p-3 rounded-2xl border border-stone-50 ${color.split(' ')[0]} bg-opacity-30`}>
+const DataTile = ({ label, value, unit, icon, color, loading }: any) => (
+    <div className={`flex flex-col items-center justify-center p-3 rounded-2xl border border-stone-50 ${color.split(' ')[0]} bg-opacity-30 relative`}>
         <div className={`mb-1 ${color.split(' ')[1]}`}>{icon}</div>
         {loading ? (
             <div className="h-4 w-8 bg-stone-200/50 rounded animate-pulse my-1"></div>
