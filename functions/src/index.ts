@@ -68,7 +68,13 @@ export const fetchHubeauData = onRequest({ cors: true }, async (request, respons
             fetchVigicruesData("Q"),
             fetchVigicruesData("H"),
         ]);
-        response.status(200).json({ data: {flow, level} });
+        // Harmonisation pour l'affichage temps réel immédiat
+        response.status(200).json({ 
+            data: {
+                flow: Math.round(flow * 1000), 
+                level: Math.round(level * 1000) 
+            } 
+        });
     } else {
         response.status(400).send("Type inconnu.");
     }
@@ -89,14 +95,13 @@ export const recordHourlyEnvironment = onSchedule(
   
         logger.info(`Étape 1: ID du document cible = ${docId}`);
 
-        // URL MISE À JOUR : Ajout de cloud_cover pour la réconciliation avec le backfill
         const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure,cloud_cover&timezone=Europe%2FParis`;
         
         logger.info("Étape 2: Appel des API Météo et Vigicrues (H et Q)...");
         const [weatherRes, riverLevel, riverFlow] = await Promise.all([
             axios.get(weatherUrl),
             fetchVigicruesData("H"),
-            fetchVigicruesData("Q") // AJOUT : Récupération du débit
+            fetchVigicruesData("Q") 
         ]);
   
         const w = weatherRes.data.current;
@@ -113,12 +118,14 @@ export const recordHourlyEnvironment = onSchedule(
               windSpeed: w.wind_speed_10m,
               windDir: w.wind_direction_10m,
               precip: w.precipitation,
-              cloudCover: w.cloud_cover, // AJOUT : Cohérence avec le backfill
+              cloudCover: w.cloud_cover, 
               condition_code: w.weather_code
           },
           hydro: { 
-              level: riverLevel,
-              flow: riverFlow, // AJOUT : Cohérence avec le backfill
+              // CONVERSION : Mètres vers Millimètres (ex: 1.4 -> 1400)
+              level: Math.round(riverLevel * 1000), 
+              // CONVERSION : m3/s vers Litres/s (ex: 409.4 -> 409400)
+              flow: Math.round(riverFlow * 1000), 
               station: STATION_CODE_HYDRO
           },
           updatedAt: admin.firestore.Timestamp.now()
@@ -149,6 +156,7 @@ export const generateDailyFishingBrief = onSchedule(
             ]);
             const w = weatherRes.data.current;
 
+            // Note: riverLevel est ici en mètres pour le prompt de l'IA (plus naturel pour elle)
             const prompt = `Expert pêche Seine. Conditions: Eau ${riverLevel}m, Météo code ${w.weather_code}, Air ${w.temperature_2m}°C. Conseil 3 phrases max (leurre/zone).`;
 
             const result = await model.generateContent(prompt);

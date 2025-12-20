@@ -7,6 +7,8 @@ export interface BaseEntity {
   createdAt?: any;
   updatedAt?: any;
   active: boolean; 
+  userPseudo?: string; // <--- AJOUT
+  userAvatar?: string; // <--- AJOUT
 }
 
 // 1. SPOTS (ex-Zones) : Plus précis
@@ -171,3 +173,4 @@ export interface UserProfile {
   createdAt: any;
   avatarBase64?: string; // AJOUT : Pour stocker l'image encodée
 }
+

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Clock, MapPin, Droplets, Wind, TrendingUp, Calendar, ArrowRight, Gauge, Activity } from 'lucide-react'; 
+import { Clock, MapPin, Droplets, Wind, TrendingUp, Calendar, ArrowRight, Gauge, Activity, Cloud, Thermometer } from 'lucide-react'; 
 import { Session } from '../types';
 import SessionCard from './SessionCard';
 import SessionDetailModal from './SessionDetailModal';
@@ -16,11 +16,11 @@ interface DashboardProps {
     sessions: Session[];
     onDeleteSession: (id: string) => void;
     onEditSession: (session: Session) => void;
-    // AJOUT DE LA PROPRIÉTÉ MANQUANTE
     userName?: string; 
+    currentUserId: string; // AJOUT CRUCIAL POUR LE SOCIAL MODE
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEditSession, userName }) => {
+const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEditSession, userName, currentUserId }) => {
     // États pour le live
     const [realtimeWeather, setRealtimeWeather] = useState<any>(null);
     const [realtimeHydro, setRealtimeHydro] = useState<any>(null);
@@ -56,7 +56,9 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
 
     // Calculs stats simples
     const totalCatches = sessions.reduce((acc, s) => acc + (s.catches?.length || 0), 0);
-    const recentSessions = sessions.slice(0, 3);
+    
+    // On affiche un peu plus de sessions dans le feed social (ex: 5)
+    const recentSessions = sessions.slice(0, 5);
 
     // Calcul Bio Score simplifié (Moyenne Feeling)
     const averageFeeling = sessions.length > 0 
@@ -75,7 +77,6 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
                 <div className="flex justify-between items-start mb-4">
                     <div>
                         <h2 className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1">
-                            {/* Utilisation du userName ici */}
                             Salut, <span className="text-amber-500">{userName || 'Pêcheur'}</span> !
                         </h2>
                         <div className="flex items-center gap-2">
@@ -181,12 +182,12 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
                 </div>
             </div>
 
-            {/* HISTORIQUE RÉCENT */}
+            {/* FIL D'ACTUALITÉ (SOCIAL FEED) */}
             <div className="space-y-4">
                 <div className="flex items-center justify-between px-2">
                     <h3 className="text-stone-800 font-bold text-lg flex items-center gap-2">
                         <Clock size={20} className="text-stone-400" />
-                        Historique Récent
+                        Fil d'Actualité
                     </h3>
                 </div>
                 
@@ -198,11 +199,12 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
                             onDelete={onDeleteSession}
                             onEdit={onEditSession}
                             onClick={handleOpenDetail} 
+                            currentUserId={currentUserId} // PASSAGE DE L'ID UTILISATEUR
                         />
                     ))}
                     {sessions.length === 0 && (
                         <div className="text-center py-10 text-stone-400 italic bg-stone-50 rounded-2xl border border-dashed border-stone-200">
-                            Aucune session récente.
+                            Le calme plat sur le réseau...
                         </div>
                     )}
                 </div>
@@ -221,7 +223,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
 // Petits composants helpers
 const TrophyIcon = ({className}: {className?: string}) => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>;
 const ActivityIcon = () => <TrendingUp className="text-emerald-500" size={24} />;
-const CloudIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 19c0-3.037-2.463-5.5-5.5-5.5S6.5 15.963 6.5 19 8.963 24.5 12 24.5s5.5-2.463 5.5-5.5z"/><path d="M12 2.5a5.5 5.5 0 0 0-5.32 6.88A5.5 5.5 0 0 0 12 13.5a5.5 5.5 0 0 0 5.32-4.12A5.5 5.5 0 0 0 12 2.5z"/></svg>;
+const CloudIcon = () => <Cloud size={16} />; // Correction icône
 const WindIcon = () => <Wind size={16} />;
 const DropletsIcon = () => <Droplets size={16} />;
 const MapPinIcon = () => <MapPin size={16} />;
