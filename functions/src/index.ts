@@ -1,116 +1,97 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { onRequest } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
 import { setGlobalOptions } from "firebase-functions/v2";
-import axios, { AxiosResponse } from "axios";
-import { VertexAI } from "@google-cloud/vertexai";
 
-// --- 1. CONFIGURATION GLOBALE (EUROPE) ---
-setGlobalOptions({ region: "europe-west1", maxInstances: 10 });
+// --- CONFIGURATION ---
+setGlobalOptions({ region: "europe-west3", maxInstances: 10 });
 
-// --- 2. INITIALISATION ADMIN ---
-if (!admin.apps.length) {
-    admin.initializeApp();
-}
+if (!admin.apps.length) { admin.initializeApp(); }
 const db = admin.firestore();
 
-// --- 3. CONSTANTES ---
-const STATION_CODE_HYDRO = "F700000103"; 
-const VIGICRUES_BASE_URL = "https://www.vigicrues.gouv.fr/services/observations.json";
+const STATION_CODE_HYDRO = "F700000103"; // Paris-Austerlitz (H et Q disponibles)
 const LAT = 48.92;
 const LON = 2.19;
 
-// --- 4. INITIALISATION VERTEX AI ---
-const vertex_ai = new VertexAI({
-    project: "mysupstack", 
-    location: "europe-west1"
-});
-
-const model = vertex_ai.getGenerativeModel({ 
-    model: "gemini-1.5-flash" 
-});
-
-// --- TYPES ---
-interface VigicruesObservation {
-    DtObsHydro: string;
-    ResObsHydro: number;
-}
-
-interface VigicruesResult {
-    Serie: {
-        GrdSerie: "H" | "Q";
-        ObssHydro: VigicruesObservation[];
-    }
-}
-
-// --- FONCTIONS HELPERS ---
-
-const fetchVigicruesData = async (grandeur: "Q" | "H"): Promise<number> => {
-    const url = `${VIGICRUES_BASE_URL}?CdStationHydro=${STATION_CODE_HYDRO}&GrdSerie=${grandeur}&FormatDate=iso&MaxObs=200`;
+/**
+ * HELPER : Récupération des données via l'API Vigicrues
+ * Retourne le nombre (m ou m3/s) ou null si aucune donnée n'est disponible.
+ */
+const fetchVigicruesStealth = async (grandeur: "Q" | "H"): Promise<number | null> => {
+    // Utilisation du service d'observations de Vigicrues
+    const url = `https://www.vigicrues.gouv.fr/services/observations.json?CdStationHydro=${STATION_CODE_HYDRO}&GrdSerie=${grandeur}&FormatDate=iso&MaxObs=50`;
+    
     try {
-        const response: AxiosResponse<VigicruesResult> = await axios.get(url);
-        const observations = response.data?.Serie?.ObssHydro;
-        if (!observations || observations.length === 0) return 0;
-        return observations[observations.length - 1].ResObsHydro;
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'Referer': 'https://www.vigicrues.gouv.fr/',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        });
+
+        if (!response.ok) {
+            logger.error(`[API] Erreur ${response.status} pour ${grandeur}`);
+            return null;
+        }
+
+        const data: any = await response.json();
+        const obs = data?.Serie?.ObssHydro;
+        
+        if (!obs || !Array.isArray(obs) || obs.length === 0) {
+            logger.warn(`[DATA] Aucun relevé trouvé pour la grandeur ${grandeur}`);
+            return null;
+        }
+        
+        // On récupère la valeur numérique la plus récente (fin du tableau)
+        // La station Austerlitz est débitmétrique et limnimétrique
+        for (let i = obs.length - 1; i >= 0; i--) {
+            const val = obs[i].ResObsHydro;
+            if (val !== undefined && val !== null) return val;
+        }
+        
+        return null;
     } catch (error: any) {
-        logger.error(`Erreur Vigicrues (${grandeur}): ${error.message}`);
-        return 0;
+        logger.error(`[ERROR] ${grandeur}: ${error.message}`);
+        return null;
     }
 };
 
-// --- CLOUD FUNCTIONS ---
-
-export const fetchHubeauData = onRequest({ cors: true }, async (request, response) => {
-    const dataType = request.query.type as string;
-    if (dataType === "realtime") {
-        const [flow, level] = await Promise.all([
-            fetchVigicruesData("Q"),
-            fetchVigicruesData("H"),
-        ]);
-        // Harmonisation pour l'affichage temps réel immédiat
-        response.status(200).json({ 
-            data: {
-                flow: Math.round(flow * 1000), 
-                level: Math.round(level * 1000) 
-            } 
-        });
-    } else {
-        response.status(400).send("Type inconnu.");
-    }
-});
-
-/**
- * 2. SCHEDULER DATA (L'Observatoire)
- */
 export const recordHourlyEnvironment = onSchedule(
     { schedule: "10 * * * *", timeZone: "Europe/Paris" },
     async (event) => {
-      logger.info("CRON: Démarrage de l'enregistrement horaire complet");
       try {
         const now = new Date();
-        const datePart = now.toLocaleDateString("en-CA", {timeZone: "Europe/Paris"}); 
-        const hourPart = now.toLocaleTimeString("fr-FR", {timeZone: "Europe/Paris", hour: "2-digit"}).split(' ')[0];
-        const docId = `${datePart}_${hourPart.padStart(2, '0')}00`;
-  
-        logger.info(`Étape 1: ID du document cible = ${docId}`);
-
-        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure,cloud_cover&timezone=Europe%2FParis`;
+        const formatter = new Intl.DateTimeFormat("fr-FR", {
+            timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
+            hour: "2-digit", hour12: false
+        });
         
-        logger.info("Étape 2: Appel des API Météo et Vigicrues (H et Q)...");
+        const p = formatter.formatToParts(now);
+        const docId = `${p.find(x=>x.type==='year')?.value}-${p.find(x=>x.type==='month')?.value}-${p.find(x=>x.type==='day')?.value}_${p.find(x=>x.type==='hour')?.value}00`;
+
+        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,surface_pressure,wind_speed_10m,wind_direction_10m,precipitation,cloud_cover,weather_code&timezone=Europe%2FParis`;
+        
+        // Récupération simultanée de la météo et des données hydro (H et Q)
         const [weatherRes, riverLevel, riverFlow] = await Promise.all([
-            axios.get(weatherUrl),
-            fetchVigicruesData("H"),
-            fetchVigicruesData("Q") 
+            fetch(weatherUrl).then(res => res.json()),
+            fetchVigicruesStealth("H"),
+            fetchVigicruesStealth("Q")
         ]);
   
-        const w = weatherRes.data.current;
-        
-        // --- STRUCTURE RÉCONCILIÉE AVEC LE BACKFILL ---
+        // Sécurité : Si l'API renvoie null pour les deux, on ne veut peut-être pas polluer Firestore
+        if (riverLevel === null && riverFlow === null) {
+            logger.warn(`⚠️ Abandon de l'écriture : Aucune donnée hydro disponible pour ${docId}`);
+            return;
+        }
+
+        const w = (weatherRes as any).current;
         const dataToSave = {
           timestamp: admin.firestore.Timestamp.now(),
           id: docId, 
-          source: "observatoire_live",
+          source: "observatoire_live_final_stealth",
           location: { lat: LAT, lon: LON },
           weather: {
               temp: w.temperature_2m,
@@ -122,59 +103,20 @@ export const recordHourlyEnvironment = onSchedule(
               condition_code: w.weather_code
           },
           hydro: { 
-              // CONVERSION : Mètres vers Millimètres (ex: 1.4 -> 1400)
-              level: Math.round(riverLevel * 1000), 
-              // CONVERSION : m3/s vers Litres/s (ex: 409.4 -> 409400)
-              flow: Math.round(riverFlow * 1000), 
-              station: STATION_CODE_HYDRO
+              // Conversion en mm et L/s si valeur présente, sinon null
+              level: riverLevel !== null ? Math.round(riverLevel * 1000) : null, 
+              flow: riverFlow !== null ? Math.round(riverFlow * 1000) : null, 
+              station: STATION_CODE_HYDRO,
+              waterTemp: null
           },
           updatedAt: admin.firestore.Timestamp.now()
         };
   
-        logger.info("Étape 3: Tentative d'écriture dans Firestore...");
         await db.collection("environmental_logs").doc(docId).set(dataToSave);
-        logger.info(`Étape 4: Succès total pour l'ID ${docId}`);
-  
+        logger.info(`✅ Succès : ${docId} (H: ${riverLevel}m, Q: ${riverFlow}m3/s)`);
+        
       } catch (error: any) {
-        logger.error("ERREUR lors de l'archivage :", error.message);
+        logger.error("❌ Erreur critique lors de l'exécution du schedule:", error.message);
       }
-    }
-);
-
-/**
- * 3. SCHEDULER AI (Le Coach Pêche)
- */
-export const generateDailyFishingBrief = onSchedule(
-    { schedule: "0 6 * * *", timeZone: "Europe/Paris" },
-    async (event) => {
-        logger.info("IA: Génération du briefing...");
-        try {
-            const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,precipitation,weather_code,wind_speed_10m&timezone=Europe%2FParis`;
-            const [weatherRes, riverLevel] = await Promise.all([
-                axios.get(weatherUrl),
-                fetchVigicruesData("H")
-            ]);
-            const w = weatherRes.data.current;
-
-            // Note: riverLevel est ici en mètres pour le prompt de l'IA (plus naturel pour elle)
-            const prompt = `Expert pêche Seine. Conditions: Eau ${riverLevel}m, Météo code ${w.weather_code}, Air ${w.temperature_2m}°C. Conseil 3 phrases max (leurre/zone).`;
-
-            const result = await model.generateContent(prompt);
-            const response = await result.response;
-            const text = response.candidates?.[0]?.content?.parts?.[0]?.text || "Pas de conseil.";
-
-            const dateId = new Date().toLocaleDateString("en-CA", {timeZone: "Europe/Paris"});
-            
-            await db.collection("fishing_briefs").doc(dateId).set({
-                date: dateId,
-                created_at: admin.firestore.Timestamp.now(),
-                content: text,
-                conditions_snapshot: { temp: w.temperature_2m, river_level: riverLevel }
-            });
-
-            logger.info("IA: Briefing sauvegardé !");
-        } catch (error) {
-            logger.error("IA Erreur:", error);
-        }
     }
 );
