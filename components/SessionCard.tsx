@@ -1,7 +1,8 @@
 import React from 'react';
 import { 
     MapPin, Fish, Trash2, Edit2, 
-    Droplets, Thermometer, Cloud, Sun, CloudSun, CloudRain, Activity, Image as ImageIcon, Wind, Gauge, User, Lock, Calendar 
+    Droplets, Thermometer, Cloud, Sun, CloudSun, CloudRain, Activity, 
+    Image as ImageIcon, Wind, User, Lock, Calendar, AlertOctagon, Gauge, Waves, Eye 
 } from 'lucide-react'; 
 import { Session, SpeciesType } from '../types';
 
@@ -13,7 +14,6 @@ interface SessionCardProps {
     currentUserId: string;
 }
 
-// --- HELPERS ---
 const getWindDir = (deg?: number) => {
     if (deg === undefined) return '';
     const directions = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
@@ -21,10 +21,10 @@ const getWindDir = (deg?: number) => {
 };
 
 const getWeatherIcon = (clouds: number) => {
-    if (clouds < 20) return <Sun size={14} className="text-amber-500" />;
-    if (clouds < 60) return <CloudSun size={14} className="text-stone-400" />;
-    if (clouds < 90) return <Cloud size={14} className="text-stone-500" />;
-    return <CloudRain size={14} className="text-stone-600" />;
+    if (clouds < 20) return <Sun size={12} />;
+    if (clouds < 60) return <CloudSun size={12} />;
+    if (clouds < 90) return <Cloud size={12} />;
+    return <CloudRain size={12} />;
 };
 
 const getSpeciesColor = (species: SpeciesType) => {
@@ -32,168 +32,110 @@ const getSpeciesColor = (species: SpeciesType) => {
         case 'Sandre': return 'bg-amber-100 text-amber-800 border-amber-200';
         case 'Perche': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
         case 'Brochet': return 'bg-stone-200 text-stone-700 border-stone-300';
-        case 'Silure': return 'bg-slate-800 text-slate-100 border-slate-700';
         default: return 'bg-stone-100 text-stone-600 border-stone-200';
     }
 };
 
 const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, onClick, currentUserId }) => {
-    const dateObj = new Date(session.date);
-    const totalPhotos = session.catches?.reduce((acc, c) => acc + (c.photoUrls?.length || 0), 0) || 0;
-    
-    // EST-CE MA SESSION ?
+    const env = session.envSnapshot;
     const isOwner = session.userId === currentUserId;
 
-    return (
-        <div 
-            onClick={() => onClick && onClick(session)}
-            className={`
-                relative rounded-[2rem] p-5 border transition-all cursor-pointer group
-                ${isOwner 
-                    ? 'bg-white border-stone-100 hover:border-amber-200 shadow-organic' 
-                    : 'bg-[#F5F4F1] border-stone-200/60 hover:border-stone-300 shadow-none opacity-95'
-                }
-            `}
-        >
-            {/* --- HEADER CARTE --- */}
-            <div className="flex justify-between items-center mb-4 pb-3 border-b border-stone-50/50">
-                
-                {/* 1. GAUCHE : TEXTES & INFOS */}
-                <div className="flex-1 min-w-0 pr-4">
-                    {/* TITRE PRINCIPAL : SPOT (Moi) ou PSEUDO (Autre) */}
-                    <div className="flex items-center gap-1.5 text-stone-800 font-bold text-sm uppercase truncate">
-                        {isOwner ? (
-                            <>
-                                <MapPin size={14} className="text-amber-500 shrink-0" />
-                                <span className="truncate">{session.spotName || 'Spot Inconnu'}</span>
-                            </>
-                        ) : (
-                            <>
-                                <span className="text-stone-700 truncate">{session.userPseudo || 'Pêcheur Inconnu'}</span>
-                            </>
-                        )}
-                    </div>
+    // Helper pour les mini-widgets pastels
+    const MiniEnvTile = ({ icon: Icon, value, unit, theme }: any) => {
+        const themes: any = {
+            rose: "bg-rose-50/60 border-rose-100 text-rose-700",
+            indigo: "bg-indigo-50/60 border-indigo-100 text-indigo-700",
+            blue: "bg-blue-50/60 border-blue-100 text-blue-700",
+            amber: "bg-amber-50/60 border-amber-100 text-amber-700",
+            orange: "bg-orange-50/60 border-orange-100 text-orange-700",
+            cyan: "bg-cyan-50/60 border-cyan-100 text-cyan-700",
+            emerald: "bg-emerald-50/60 border-emerald-100 text-emerald-700"
+        };
+        return (
+            <div className={`${themes[theme] || 'bg-stone-50'} flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-black shrink-0`}>
+                <Icon size={12} className="opacity-60" />
+                <span>{value}{unit}</span>
+            </div>
+        );
+    };
 
-                    {/* SOUS-TITRE : DATE (Pour tous) + DÉTAILS */}
-                    <div className="text-[10px] font-medium text-stone-400 mt-1 truncate flex items-center gap-1.5">
-                            {/* DATE TOUJOURS VISIBLE */}
-                            <span className={`flex items-center gap-1 ${isOwner ? 'text-amber-600/80 font-bold' : 'text-stone-500'}`}>
-                                <Calendar size={10} />
-                                {dateObj.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
-                            </span>
-                            
-                            <span>•</span>
-                            <span>{session.startTime}-{session.endTime}</span>
-                            
-                            {isOwner ? (
-                                <>
-                                    <span>•</span>
-                                    <span className="truncate max-w-[120px]">{session.setupName}</span>
-                                </>
-                            ) : (
-                                <>
-                                    <span>•</span>
-                                    <span className="truncate max-w-[120px]">{session.spotName}</span>
-                                </>
-                            )}
+    return (
+        <div onClick={() => onClick && onClick(session)} className={`relative rounded-[2.5rem] p-6 border transition-all cursor-pointer group ${isOwner ? 'bg-white border-stone-100 shadow-organic' : 'bg-[#F5F4F1] border-stone-200/60'}`}>
+            
+            {/* --- HEADER --- */}
+            <div className="flex justify-between items-start mb-4">
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 text-stone-800 font-black text-sm uppercase truncate">
+                        {isOwner ? <><MapPin size={14} className="text-amber-500 shrink-0" /> {session.spotName}</> : session.userPseudo}
+                    </div>
+                    <div className="text-[10px] font-bold text-stone-400 mt-0.5 flex items-center gap-2">
+                        <Calendar size={10} /> {new Date(session.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} • {session.startTime}-{session.endTime}
                     </div>
                 </div>
-
-                {/* 2. DROITE : ACTIONS & AVATAR (POUR TOUS) */}
-                <div className="flex items-center gap-3 flex-shrink-0">
-                    
-                    {/* BOUTONS D'ACTION (Seulement si Owner) */}
-                    {isOwner ? (
-                        <div className="flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                            {onEdit && (
-                                <button
-                                    type="button"
-                                    onClick={(e) => { e.stopPropagation(); onEdit(session); }}
-                                    className="p-2 bg-white hover:bg-amber-50 text-stone-300 hover:text-amber-600 rounded-full border border-stone-100 hover:border-amber-200 shadow-sm transition-all"
-                                >
-                                    <Edit2 size={14} />
-                                </button>
-                            )}
-                            {onDelete && (
-                                <button
-                                    type="button"
-                                    onClick={(e) => { e.stopPropagation(); onDelete(session.id); }}
-                                    className="p-2 bg-white hover:bg-rose-50 text-stone-300 hover:text-rose-600 rounded-full border border-stone-100 hover:border-rose-200 shadow-sm transition-all"
-                                >
-                                    <Trash2 size={14} />
-                                </button>
-                            )}
-                        </div>
-                    ) : (
-                        // Petit cadenas discret pour les autres
-                        <div className="hidden sm:flex text-stone-300">
-                            <Lock size={12} />
+                <div className="flex items-center gap-3">
+                    {isOwner && (
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                            <button onClick={(e) => { e.stopPropagation(); onEdit?.(session); }} className="p-2 bg-stone-50 hover:bg-amber-50 rounded-full border border-stone-100"><Edit2 size={12}/></button>
+                            <button onClick={(e) => { e.stopPropagation(); onDelete?.(session.id); }} className="p-2 bg-stone-50 hover:bg-rose-50 rounded-full border border-stone-100"><Trash2 size={12}/></button>
                         </div>
                     )}
-
-                    {/* AVATAR : TOUJOURS VISIBLE MAINTENANT */}
-                    <div className={`w-12 h-12 rounded-full border-2 shadow-sm flex items-center justify-center overflow-hidden flex-shrink-0 ${isOwner ? 'border-amber-200 bg-amber-50 ring-2 ring-amber-50' : 'border-white bg-white'}`}>
-                        {session.userAvatar ? (
-                            <img src={session.userAvatar} alt="User" className="w-full h-full object-cover" />
-                        ) : (
-                            <User size={20} className={isOwner ? "text-amber-400" : "text-stone-300"} />
-                        )}
+                    <div className="w-10 h-10 rounded-full border-2 border-white overflow-hidden shadow-sm bg-stone-100 flex items-center justify-center">
+                        {session.userAvatar ? <img src={session.userAvatar} className="w-full h-full object-cover" /> : <User size={18} className="text-stone-300" />}
                     </div>
                 </div>
             </div>
-            
-            {/* BARRE MÉTÉO */}
-            <div className="flex items-center gap-2 text-xs font-bold whitespace-nowrap overflow-x-auto scrollbar-hide mb-4 pb-1">
-                <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 text-blue-900 shrink-0">
-                    {session.weather?.temperature !== undefined ? getWeatherIcon(session.weather.clouds) : <Cloud size={14} />}
-                    <span>{session.weather?.temperature !== undefined ? `${Math.round(session.weather.temperature)}°C` : 'N/A'}</span>
+
+            {/* --- WIDGETS ENVIRONNEMENTAUX (Oracle Style) --- */}
+            <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide mb-5 pb-1">
+                <MiniEnvTile theme="blue" icon={() => getWeatherIcon(env?.weather?.cloudCover || 0)} value={env?.weather?.cloudCover} unit="%" />
+                <MiniEnvTile theme="rose" icon={Thermometer} value={env?.weather?.temperature ? Math.round(env.weather.temperature) : '--'} unit="°C" />
+                <MiniEnvTile theme="indigo" icon={Gauge} value={env?.weather?.pressure?.toFixed(0)} unit=" hPa" />
+                <MiniEnvTile theme="amber" icon={Wind} value={env?.weather?.windSpeed ? Math.round(env.weather.windSpeed) : '--'} unit={` ${getWindDir(env?.weather?.windDir)}`} />
+                <MiniEnvTile theme="orange" icon={Droplets} value={env?.hydro?.waterTemp?.toFixed(1)} unit="°C" />
+                <MiniEnvTile theme="cyan" icon={Waves} value={env?.hydro?.flowLagged?.toFixed(0)} unit="m³/s" />
+                <MiniEnvTile theme="emerald" icon={Eye} value={env?.hydro?.turbidityIdx?.toFixed(2)} unit="" />
+            </div>
+
+            {/* --- COMMENTAIRE SESSION (ASPECT SOCIAL) --- */}
+            {session.notes && (
+                <div className="mb-5 px-4 py-3 bg-amber-50/30 rounded-2xl border border-amber-100/50 relative italic text-sm text-stone-600 leading-snug">
+                    <div className="absolute -top-2 left-4 px-2 bg-white text-[8px] font-black text-amber-500 uppercase tracking-widest border border-amber-100 rounded-full">Observation</div>
+                    "{session.notes}"
                 </div>
-                {session.weather?.windSpeed !== undefined && (
-                    <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-stone-100 text-stone-600 shrink-0">
-                        <Wind size={14} className="text-stone-400" />
-                        <span>{Math.round(session.weather.windSpeed)} {getWindDir(session.weather.windDirection)}</span>
+            )}
+
+            {/* --- TAGS PRISES ET RATÉS --- */}
+            <div className="flex flex-wrap gap-2 mb-5">
+                {session.catches.map(fish => (
+                    <div key={fish.id} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[10px] font-black ${getSpeciesColor(fish.species)} shadow-sm`}>
+                        <Fish size={10} /> {fish.species} {fish.size}cm
                     </div>
+                ))}
+                {session.misses.map(miss => (
+                    <div key={miss.id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-rose-100 bg-rose-50 text-rose-700 text-[10px] font-black shadow-sm">
+                        <AlertOctagon size={10} /> {miss.type}
+                    </div>
+                ))}
+                {session.catches.length === 0 && session.misses.length === 0 && (
+                    <span className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">Capot</span>
                 )}
-                <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-orange-50 text-orange-700 shrink-0">
-                    <Thermometer size={14} className="text-orange-500" />
-                    <span>{session.waterTemp ? `${session.waterTemp.toFixed(1)}°C` : 'N/A'}</span>
-                </div>
-                <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-cyan-50 text-cyan-700 shrink-0">
-                    <Droplets size={14} className="text-cyan-500" />
-                    <span>{session.hydro?.flow ? `${session.hydro.flow.toFixed(0)}` : 'N/A'}</span>
-                </div>
             </div>
 
-            {/* TAGS POISSONS */}
-            <div className="flex flex-wrap gap-2 mb-4">
-                {session.catches.length > 0 ? (
-                    session.catches.map(fish => (
-                        <div key={fish.id} className={`flex items-center gap-1.5 px-2 py-1 rounded-full border text-[10px] font-bold ${getSpeciesColor(fish.species)}`}>
-                            <Fish size={10} /> {fish.species} {fish.size}cm
+            {/* --- SCORES BIO --- */}
+            <div className="flex justify-between items-center pt-4 border-t border-stone-50">
+                <div className="flex gap-4">
+                    {['sandre', 'brochet', 'perche'].map(s => (
+                        <div key={s} className="flex flex-col">
+                            <span className="text-[8px] font-black text-stone-300 uppercase tracking-tighter">{s}</span>
+                            <div className="flex items-center gap-1 text-[10px] font-black text-stone-600">
+                                <Activity size={10} className={(env?.scores as any)?.[s] > 50 ? "text-emerald-500" : "text-amber-500"} />
+                                {(env?.scores as any)?.[s]?.toFixed(0) || '--'}
+                            </div>
                         </div>
-                    ))
-                ) : (
-                    <span className="text-[10px] italic text-stone-400 bg-stone-50 px-3 py-1 rounded-lg">Capot</span>
-                )}
-                
-                {totalPhotos > 0 && (
-                    <div className="flex items-center gap-1 px-2 py-1 rounded-full border border-blue-100 bg-blue-50 text-blue-600 text-[10px] font-bold">
-                        <ImageIcon size={10} /> {totalPhotos}
-                    </div>
-                )}
-            </div>
-
-            {/* FOOTER */}
-            <div className="flex justify-between items-center pt-3 border-t border-stone-100/50">
-                <div className="flex flex-col">
-                    <span className="text-[9px] uppercase font-bold text-stone-400">Score Bio</span>
-                    <div className="flex items-center gap-1">
-                        <Activity size={12} className={session.bioScore && session.bioScore > 50 ? "text-emerald-500" : "text-amber-500"} />
-                        <span className="text-xs font-bold text-stone-700">{session.bioScore ?? '--'}/100</span>
-                    </div>
+                    ))}
                 </div>
-                <div className={`text-[10px] font-bold px-3 py-1 rounded-full ${session.feelingScore >= 7 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                    Feeling: {session.feelingScore}/10
+                <div className={`text-[10px] font-black px-3 py-1 rounded-full ${session.feelingScore >= 7 ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-amber-50 text-amber-700 border border-amber-100'}`}>
+                    FEELING: {session.feelingScore}/10
                 </div>
             </div>
         </div>

@@ -1,114 +1,117 @@
-// types.ts - Architecture Cible Complète (V3.1)
+// types.ts - Architecture Cible Complète (v4.5 - RAG & Observatoire)
 
-// --- ENTITÉS DE BASE (ARSENAL) ---
+// --- ENTITÉS DE BASE ---
 export interface BaseEntity {
   id: string;
   userId: string;
   createdAt?: any;
   updatedAt?: any;
   active: boolean; 
-  userPseudo?: string; // <--- AJOUT
-  userAvatar?: string; // <--- AJOUT
+  userPseudo?: string;
+  userAvatar?: string;
 }
 
-// 1. SPOTS (ex-Zones) : Plus précis
-export interface Spot extends BaseEntity {
-  label: string; // Ex: "Spot A - Proche ruine béton"
-  type?: 'Fleuve' | 'Etang' | 'Canal' | 'Lac' | 'Rivière' | 'Mer'; 
-  coordinates?: { lat: number; lng: number };
-}
-export type Zone = Spot; // Alias de rétrocompatibilité pour la transition
+// --- STRUCTURES ENVIRONNEMENTALES DÉTAILLÉES (Observables) ---
 
-// 2. SETUP (Combos)
-export interface Setup extends BaseEntity {
-  label: string; // Ex: "Spinning L / Stradic"
-  description?: string;
-}
-
-// 3. TECHNIQUES (Actions de pêche)
-export interface Technique extends BaseEntity {
-  label: string; // Ex: "Contact Fond - Grattage"
-}
-
-// --- NOUVELLES COLLECTIONS DE RÉFÉRENCE (V3.1) ---
-
-// 4. CATÉGORIES DE LEURRES (ref_lure_types)
-export interface RefLureType extends BaseEntity {
-  label: string; // Ex: "Vibrant - Shad", "Topwater - Popper"
-}
-
-// 5. COULEURS (ref_colors)
-export interface RefColor extends BaseEntity {
-  label: string; // Ex: "Flashy - Chartreuse", "Naturel - Ablette"
-}
-
-// 6. TAILLES (ref_sizes)
-export interface RefSize extends BaseEntity {
-  label: string; // Ex: "2\" - 3\"", "5\"+"
-}
-
-// 7. POIDS (ref_weights)
-export interface RefWeight extends BaseEntity {
-  label: string; // Ex: "5 - 9g", "10 - 14g"
-}
-
-// L'inventaire précis des leurres (Optionnel si on utilise juste les Ref en saisie rapide)
-export interface Lure extends BaseEntity {
-  brand: string;
-  model: string;
-  typeId?: string; // Lien vers RefLureType
-  colorId?: string; // Lien vers RefColor
-}
-
-// --- TYPES UTILITAIRES ---
-export type SpeciesType = 'Brochet' | 'Sandre' | 'Perche' | 'Black-Bass' | 'Silure' | 'Chevesne' | 'Truite' | 'Aspe' | 'Bar' | 'Inconnu';
-
-// --- MÉTÉO & HYDRO (Snapshot) ---
 export interface WeatherSnapshot {
-  temperature: number;
-  pressure: number;
-  clouds: number;
-  windSpeed: number;
-  windDirection?: number;
+  temperature: number;      // °C [cite: 63]
+  pressure: number;         // hPa [cite: 64]
+  windSpeed: number;        // km/h [cite: 65]
+  windDir: number;          // ° [cite: 66]
+  precip: number;           // mm [cite: 67]
+  cloudCover: number;       // % [cite: 68]
+  conditionCode: number;    // Code WMO [cite: 69]
 }
 
 export interface HydroSnapshot {
-  flow: number;
-  level: number;
-  waterTemp?: number | null; 
+  flowRaw: number;          // L/s (Donnée brute Vigicrues) [cite: 73]
+  flowLagged: number;       // m3/s (Débit corrigé pour le spot) [cite: 80]
+  level: number;            // mm [cite: 72]
+  waterTemp: number | null; // °C (Modèle EWMA) [cite: 75]
+  turbidityIdx: number;     // 0-1 (Indice de clarté) [cite: 81]
 }
 
-// --- LES PRISES (Catch) ---
+export interface BioScoreSnapshot {
+  sandre: number;           // 0-100 [cite: 86]
+  brochet: number;          // 0-100 [cite: 87]
+  perche: number;           // 0-100 [cite: 88]
+}
+
+/**
+ * Snapshot complet de l'observatoire à un instant T.
+ * Utilisé pour le Dashboard (Direct) et le stockage (Historique).
+ */
+export interface FullEnvironmentalSnapshot {
+  weather: WeatherSnapshot;
+  hydro: HydroSnapshot;
+  scores: BioScoreSnapshot;
+  metadata: {
+    sourceLogId: string;     // ID document format YYYY-MM-DD_HH00 [cite: 48]
+    calculationDate: any;    // updatedAt du log Firestore [cite: 55]
+  };
+}
+
+// --- ARSENAL & RÉFÉRENTIELS ---
+
+export interface Spot extends BaseEntity {
+  label: string; 
+  type?: 'Fleuve' | 'Etang' | 'Canal' | 'Lac' | 'Rivière' | 'Mer'; 
+  coordinates?: { lat: number; lng: number };
+}
+export type Zone = Spot;
+
+export interface Setup extends BaseEntity {
+  label: string; 
+  description?: string;
+}
+
+export interface Technique extends BaseEntity {
+  label: string; 
+}
+
+export interface RefLureType extends BaseEntity { label: string; }
+export interface RefColor extends BaseEntity { label: string; }
+export interface RefSize extends BaseEntity { label: string; }
+export interface RefWeight extends BaseEntity { label: string; }
+
+export interface Lure extends BaseEntity {
+  brand: string;
+  model: string;
+  typeId?: string;
+  colorId?: string;
+}
+
+export type SpeciesType = 'Brochet' | 'Sandre' | 'Perche' | 'Black-Bass' | 'Silure' | 'Chevesne' | 'Truite' | 'Aspe' | 'Bar' | 'Inconnu';
+
+// --- ÉVÉNEMENTS DE PÊCHE ---
+
 export interface Catch {
   id: string;
   species: SpeciesType;
+  size: number;
+  weight?: number;
   
-  // Mesures
-  size: number; // cm
-  weight?: number; // kg
-  
-  // Relations contextuelles (IDs) & Snapshots (Noms pour l'historique)
   techniqueId: string;
   technique: string;
-  
   setupId: string;
   setup: string;
   
-  // Détail Leurre V3.1
-  lureName: string; // Nom libre ou concaténé
+  lureName: string;
   lureTypeId?: string;
   lureColorId?: string;
   lureSizeId?: string;
   lureWeightId?: string;
   
-  spotId: string; // Ex-Zone
+  spotId: string;
   spotName: string;
   
-  timestamp: any; // Date précise de la prise
+  timestamp: any; 
   photoUrls?: string[];
+
+  // Stockage définitif des indicateurs au moment de la prise
+  envSnapshot?: FullEnvironmentalSnapshot | null; 
 }
 
-// --- LES RATÉS (Miss) ---
 export interface Miss {
   id: string;
   type: 'Décroché' | 'Touche Ratée' | 'Suivi' | 'Casse' | 'Coupe' | 'Inconnu';
@@ -118,25 +121,26 @@ export interface Miss {
   spotId: string;
   spotName: string;     
   timestamp: any;
-  lureName?: string; // Champ commentaire/modèle
+  lureName?: string;
   lureTypeId?: string;
   lureColorId?: string;
   lureSizeId?: string;
   lureWeightId?: string;
+
+  // Stockage définitif des indicateurs au moment du raté
+  envSnapshot?: FullEnvironmentalSnapshot | null;
 }
 
-// --- LA SESSION ---
 export interface Session extends BaseEntity {
-  date: string;
-  startTime: string; 
+  date: string;              // YYYY-MM-DD [cite: 144]
+  startTime: string;         // HH:mm [cite: 145]
   endTime: string;   
   durationMinutes: number;
 
   spotId: string;   
-  spotName: string; // Snapshot V3
-  
+  spotName: string; 
   setupId: string;
-  setupName: string; // Snapshot V3
+  setupName: string;
 
   feelingScore: number;
   catchCount: number;
@@ -146,31 +150,26 @@ export interface Session extends BaseEntity {
   misses: Miss[];
   techniquesUsed: string[];
 
-  weather?: WeatherSnapshot | null;
-  hydro?: HydroSnapshot | null;
-  waterTemp?: number | null;
-  
-  bioScore?: number;
+  // Snapshot environnemental fixé au début de la session
+  envSnapshot?: FullEnvironmentalSnapshot | null;
 }
 
-// --- CONFIGURATION GLOBALE (État App) ---
+// --- APPLICATION & PROFIL ---
+
 export interface AppData {
     spots: Spot[];
     setups: Setup[];
     techniques: Technique[];
-    // Nouvelles refs
     lureTypes: RefLureType[];
     colors: RefColor[];
     sizes: RefSize[];
     weights: RefWeight[];
-    // Legacy inventory
     lures: Lure[]; 
 }
 
 export interface UserProfile {
-  id: string; // Correspondra au userId (ex: 'user_1')
+  id: string; 
   pseudo: string;
   createdAt: any;
-  avatarBase64?: string; // AJOUT : Pour stocker l'image encodée
+  avatarBase64?: string;
 }
-

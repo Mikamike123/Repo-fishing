@@ -1,96 +1,84 @@
 // lib/environmental-service.ts
-
 import { fetchNanterreWeather } from './open-meteo-service';
-import { 
-    WaterTempData, 
-    getCachedWaterTemp, 
-    updateWaterTempCache,
-    fetchHydroRealtime,
-    fetchWaterTempJMinus1 
-} from './hubeau-service';
-import { WeatherSnapshot, HydroSnapshot } from '../types'; 
+import { fetchHydroRealtime, fetchWaterTempJMinus1, updateWaterTempCache, getCachedWaterTemp } from './hubeau-service';
+import { WeatherSnapshot, HydroSnapshot, FullEnvironmentalSnapshot } from '../types'; 
 import { db } from './firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 const CACHE_NAME = 'environmental_live';
 
-/**
- * RÉCUPÉRATION DES CONDITIONS ENVIRONNEMENTALES (V3)
- * Gère le mapping des données provenant de la Cloud Function.
- */
-export const getRealtimeEnvironmentalConditions = async (): Promise<{ 
-    weather: WeatherSnapshot | null, 
-    hydro: HydroSnapshot | null,
-    hydroMessage: string | null
-}> => {
+export const getRealtimeEnvironmentalConditions = async () => {
     const cacheRef = doc(db, 'cache', CACHE_NAME);
-    
-    // 1. Tentative de lecture du cache (validité 30 min pour réactivité accrue)
     try {
         const snap = await getDoc(cacheRef);
-        if (snap.exists()) {
-            const cached = snap.data();
-            if (Date.now() / 1000 - cached.timestamp < 1800) {
-                return { 
-                    weather: cached.weather, 
-                    hydro: cached.hydro, 
-                    hydroMessage: cached.hydroMessage 
-                };
-            }
+        if (snap.exists() && Date.now() / 1000 - snap.data().timestamp < 1800) {
+            return snap.data();
         }
-    } catch (e) {
-        console.warn("Échec lecture cache Firestore");
-    }
+    } catch (e) { console.warn("Cache error"); }
 
-    // 2. Appel des API réelles (ou Cloud Functions)
-    console.log("📡 Mise à jour des conditions environnementales...");
-    const [weatherResult, hydroRawResult] = await Promise.all([
+    const [weatherRaw, hydroRawResult] = await Promise.all([
         fetchNanterreWeather(),
         fetchHydroRealtime()
     ]);
 
-    // Extraction sécurisée des données du backend
+    const rawHydro = hydroRawResult?.data as any;
     const hydroResult: HydroSnapshot = {
-        flow: hydroRawResult?.data?.flow || 0,
-        level: hydroRawResult?.data?.level || 0,
-        waterTemp: null // Complété par getRealtimeWaterTemp
+        flowRaw: (rawHydro?.flow || 0) * 1000,
+        flowLagged: rawHydro?.flow || 0,
+        level: rawHydro?.level || 0,
+        waterTemp: null,
+        turbidityIdx: 0
     };
 
-    const result = {
-        weather: weatherResult,
-        hydro: hydroResult,
-        hydroMessage: hydroRawResult?.message || "OK",
-        timestamp: Date.now() / 1000
-    };
+    const weatherResult: WeatherSnapshot | null = weatherRaw ? {
+        temperature: weatherRaw.temperature,
+        pressure: weatherRaw.pressure,
+        windSpeed: weatherRaw.windSpeed,
+        windDir: (weatherRaw as any).windDirection || 0,
+        cloudCover: (weatherRaw as any).clouds || 0,
+        precip: 0,
+        conditionCode: 0
+    } : null;
 
-    // 3. Persistance dans le cache
-    try {
-        await setDoc(cacheRef, result);
-    } catch (e) {
-        console.error("Impossible de mettre à jour le cache Firestore", e);
-    }
-
-    return { 
-        weather: weatherResult, 
-        hydro: hydroResult, 
-        hydroMessage: result.hydroMessage 
-    }; 
+    const result = { weather: weatherResult, hydro: hydroResult, timestamp: Date.now() / 1000 };
+    try { await setDoc(cacheRef, result); } catch (e) { console.error(e); }
+    return result;
 };
 
-/**
- * RÉCUPÉRATION DE LA TEMPÉRATURE DE L'EAU
- */
-export const getRealtimeWaterTemp = async (dateString: string | null = null): Promise<WaterTempData | null> => { 
-    if (dateString) return null; // Simplification V3
+// Machine à remonter le temps pour les Dialogs
+export const getHistoricalSnapshot = async (date: string, time: string): Promise<FullEnvironmentalSnapshot | null> => {
+    try {
+        const hour = time.split(':')[0];
+        const docId = `${date}_${hour}00`;
+        const snap = await getDoc(doc(db, 'environmental_logs', docId));
 
-    // Toujours tenter de récupérer la donnée fraîche du backend (estimée ou réelle)
-    const apiData = await fetchWaterTempJMinus1();
-    
-    if (apiData) {
-        await updateWaterTempCache(apiData); 
-        return apiData;
-    }
-    
-    // Fallback sur le dernier cache Firestore si le réseau échoue
-    return getCachedWaterTemp();
+        if (snap.exists()) {
+            const d = snap.data();
+            return {
+                weather: {
+                    temperature: d.weather?.temp || 0,
+                    pressure: d.weather?.pressure || 0,
+                    windSpeed: d.weather?.windSpeed || 0,
+                    windDir: d.weather?.windDir || 0,
+                    precip: d.weather?.precip || 0,
+                    cloudCover: d.weather?.cloudCover || 0,
+                    conditionCode: d.weather?.condition_code || 0
+                },
+                hydro: {
+                    flowRaw: d.hydro?.flow || 0,
+                    flowLagged: d.computed?.flow_lagged || 0,
+                    level: d.hydro?.level || 0,
+                    waterTemp: d.hydro?.waterTemp || null,
+                    turbidityIdx: d.computed?.turbidity_idx || 0
+                },
+                scores: {
+                    sandre: d.computed?.score_sandre || 0,
+                    brochet: d.computed?.score_brochet || 0,
+                    perche: d.computed?.score_perche || 0
+                },
+                metadata: { sourceLogId: snap.id, calculationDate: d.updatedAt || d.timestamp }
+            };
+        }
+        return null;
+    } catch (e) { return null; }
 };

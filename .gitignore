@@ -54,3 +54,4 @@ venv/
 /functions/dist
 # Firebase clé privé
 /serviceAccountKey.json
+/archive

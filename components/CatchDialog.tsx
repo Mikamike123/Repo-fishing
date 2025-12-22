@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Ruler, Sparkles, Edit2, Image as ImageIcon } from 'lucide-react';
-import { SpeciesType, Zone, Technique, Catch, RefLureType, RefColor, RefSize, RefWeight } from '../types';
+import { X, Ruler, Sparkles, Edit2, Image as ImageIcon, Loader2, CloudCheck, CloudOff } from 'lucide-react';
+import { SpeciesType, Zone, Technique, Catch, RefLureType, RefColor, RefSize, RefWeight, FullEnvironmentalSnapshot } from '../types';
+import { getHistoricalSnapshot } from '../lib/environmental-service';
 
 interface CatchDialogProps {
   isOpen: boolean;
@@ -11,11 +12,11 @@ interface CatchDialogProps {
   availableTechniques: Technique[];
   sessionStartTime: string;
   sessionEndTime: string;
+  sessionDate: string; // NOUVELLE PROP REQUISE
   lureTypes: RefLureType[];
   colors: RefColor[];
   sizes: RefSize[];
   weights: RefWeight[];
-  // NOUVELLE PROP
   lastCatchDefaults?: Catch | null;
 }
 
@@ -27,7 +28,7 @@ const SPECIES_CONFIG: Record<string, { max: number }> = {
 
 const CatchDialog: React.FC<CatchDialogProps> = ({ 
   isOpen, onClose, onSave, initialData, availableZones, availableTechniques, 
-  sessionStartTime, sessionEndTime, lureTypes, colors, sizes, weights,
+  sessionStartTime, sessionEndTime, sessionDate, lureTypes, colors, sizes, weights,
   lastCatchDefaults 
 }) => {
   const [species, setSpecies] = useState<SpeciesType>('Sandre');
@@ -45,61 +46,54 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
   const [photoLink1, setPhotoLink1] = useState('');
   const [photoLink2, setPhotoLink2] = useState('');
 
+  // États pour la récupération environnementale
+  const [isLoadingEnv, setIsLoadingEnv] = useState(false);
+  const [envSnapshot, setEnvSnapshot] = useState<FullEnvironmentalSnapshot | null>(null);
+  const [envStatus, setEnvStatus] = useState<'idle' | 'found' | 'not-found'>('idle');
+
   const [error, setError] = useState<string | null>(null);
 
+  // 1. Initialisation des données
   useEffect(() => {
     if (isOpen) {
       setError(null);
-      
       if (initialData) {
-        // --- CAS 1 : ÉDITION (Priorité absolue) ---
         setSpecies(initialData.species);
         setSize(initialData.size);
-        setLureName(initialData.lureName || (initialData as any).lure || ''); 
-        
-        if (availableTechniques.length) setSelectedTechId(initialData.techniqueId || availableTechniques.find(t => t.label === initialData.technique)?.id || '');
-        if (availableZones.length) setSelectedZoneId(initialData.spotId || (initialData as any).zoneId || availableZones[0].id);
-
+        setLureName(initialData.lureName || ''); 
+        if (availableTechniques.length) setSelectedTechId(initialData.techniqueId || '');
+        if (availableZones.length) setSelectedZoneId(initialData.spotId || availableZones[0].id);
         setSelectedLureTypeId(initialData.lureTypeId || '');
         setSelectedColorId(initialData.lureColorId || '');
         setSelectedSizeId(initialData.lureSizeId || '');
         setSelectedWeightId(initialData.lureWeightId || '');
-
-        if (initialData.photoUrls && initialData.photoUrls.length > 0) {
-            setPhotoLink1(initialData.photoUrls[0] || '');
-            setPhotoLink2(initialData.photoUrls[1] || '');
-        } else {
-            setPhotoLink1('');
-            setPhotoLink2('');
-        }
+        setPhotoLink1(initialData.photoUrls?.[0] || '');
+        setPhotoLink2(initialData.photoUrls?.[1] || '');
+        setEnvSnapshot(initialData.envSnapshot || null);
+        setEnvStatus(initialData.envSnapshot ? 'found' : 'idle');
 
         if (initialData.timestamp) {
             const dateObj = initialData.timestamp instanceof Date ? initialData.timestamp : new Date((initialData.timestamp as any).seconds * 1000);
             setTime(dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
         }
-
       } else {
-        // --- CAS 2 : CRÉATION (Nouvelle prise) ---
-        
-        // Reset des champs variables
         setTime(sessionStartTime);
         setSpecies('Sandre'); 
         setSize(45);
         setPhotoLink1('');
         setPhotoLink2('');
+        setEnvSnapshot(null);
+        setEnvStatus('idle');
 
-        // LOGIQUE DE DUPLICATION INTELLIGENTE
         if (lastCatchDefaults) {
-            // On reprend la config qui marche !
             setSelectedTechId(lastCatchDefaults.techniqueId);
-            setSelectedZoneId(lastCatchDefaults.spotId || (lastCatchDefaults as any).zoneId); 
+            setSelectedZoneId(lastCatchDefaults.spotId); 
             setSelectedLureTypeId(lastCatchDefaults.lureTypeId || '');
             setSelectedColorId(lastCatchDefaults.lureColorId || '');
             setSelectedSizeId(lastCatchDefaults.lureSizeId || '');
             setSelectedWeightId(lastCatchDefaults.lureWeightId || '');
-            setLureName(lastCatchDefaults.lureName || (lastCatchDefaults as any).lure || '');
+            setLureName(lastCatchDefaults.lureName || '');
         } else {
-            // Pas d'historique dans cette session, reset total
             setLureName('');
             setSelectedLureTypeId('');
             setSelectedColorId('');
@@ -112,6 +106,26 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
     }
   }, [isOpen, initialData, lastCatchDefaults, sessionStartTime, availableZones, availableTechniques]);
 
+  // 2. Récupération automatique de l'environnement au changement d'heure
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const fetchEnv = async () => {
+      setIsLoadingEnv(true);
+      const snapshot = await getHistoricalSnapshot(sessionDate, time);
+      if (snapshot) {
+        setEnvSnapshot(snapshot);
+        setEnvStatus('found');
+      } else {
+        setEnvStatus('not-found');
+      }
+      setIsLoadingEnv(false);
+    };
+
+    const debounce = setTimeout(fetchEnv, 600);
+    return () => clearTimeout(debounce);
+  }, [time, sessionDate, isOpen]);
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -123,13 +137,11 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
 
     const zoneObj = availableZones.find(z => z.id === selectedZoneId);
     const techObj = availableTechniques.find(t => t.id === selectedTechId);
-    
     const photos = [photoLink1.trim(), photoLink2.trim()].filter(url => url.length > 0);
 
     onSave({ 
       species, size, 
       lureName: lureName.trim(),
-      lure: lureName.trim(), 
       lureTypeId: selectedLureTypeId,
       lureColorId: selectedColorId,
       lureSizeId: selectedSizeId,
@@ -137,8 +149,8 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
       time,
       technique: techObj?.label || 'Inconnue', techniqueId: selectedTechId,
       spotName: zoneObj?.label || 'Inconnue', spotId: selectedZoneId,
-      zone: zoneObj?.label || 'Inconnue', zoneId: selectedZoneId,
-      photoUrls: photos 
+      photoUrls: photos,
+      envSnapshot // SAUVEGARDE DÉFINITIVE DU SNAPSHOT
     });
     onClose();
   };
@@ -160,7 +172,11 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
           <h3 className="font-bold text-lg flex items-center gap-2 text-stone-800">
             {initialData ? <><Edit2 className="text-amber-500" size={20}/> Modifier la Prise</> : <><Sparkles className="text-amber-500" size={20}/> Nouvelle Prise</>}
           </h3>
-          <button onClick={onClose} className="p-2 text-stone-400 hover:bg-stone-100 rounded-full"><X size={20}/></button>
+          <div className="flex items-center gap-3">
+             {isLoadingEnv ? <Loader2 className="animate-spin text-amber-500" size={16}/> : 
+              envStatus === 'found' ? <CloudCheck className="text-emerald-500" size={16}/> : <CloudOff className="text-stone-300" size={16}/>}
+             <button onClick={onClose} className="p-2 text-stone-400 hover:bg-stone-100 rounded-full"><X size={20}/></button>
+          </div>
         </div>
 
         {error && <div className="bg-rose-50 text-rose-600 p-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-rose-100">{error}</div>}
@@ -212,14 +228,14 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
 
           <div className="bg-blue-50/50 p-3 rounded-2xl border border-blue-100 space-y-2">
              <label className="text-[10px] font-black uppercase text-blue-400 flex items-center gap-1">
-                <ImageIcon size={12} /> Liens Google Photos (Partage)
+                <ImageIcon size={12} /> Liens Google Photos
              </label>
              <input type="url" placeholder="Lien partage n°1" value={photoLink1} onChange={(e) => setPhotoLink1(e.target.value)} className="w-full p-2 bg-white border border-blue-100 rounded-xl text-xs text-blue-800 outline-none focus:ring-2 focus:ring-blue-200"/>
              <input type="url" placeholder="Lien partage n°2" value={photoLink2} onChange={(e) => setPhotoLink2(e.target.value)} className="w-full p-2 bg-white border border-blue-100 rounded-xl text-xs text-blue-800 outline-none focus:ring-2 focus:ring-blue-200"/>
           </div>
 
-          <button type="submit" className="w-full bg-stone-800 text-white py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-transform">
-            {initialData ? 'Mettre à jour' : 'Valider la prise'}
+          <button type="submit" disabled={isLoadingEnv} className="w-full bg-stone-800 text-white py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-transform">
+            {isLoadingEnv ? <Loader2 className="animate-spin mx-auto" /> : initialData ? 'Mettre à jour' : 'Valider la prise'}
           </button>
         </form>
       </div>
