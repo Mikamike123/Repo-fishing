@@ -317,3 +317,6 @@ async function fetchVigicruesHydro(grandeur: "Q" | "H"): Promise<number | null> 
         return (obs && obs.length > 0) ? obs[obs.length - 1].ResObsHydro : null;
     } catch { return null; }
 }
+
+// BRANCHEMENT DE LA NOUVELLE FONCTION VISION (ISOLEE DANS VISION.TS)
+export * from "./vision";

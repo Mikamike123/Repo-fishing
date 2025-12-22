@@ -2,6 +2,7 @@
 
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, doc, getDocs, deleteDoc } from "firebase/firestore"; 
+import { getFunctions } from "firebase/functions"; // Ajouté pour Oracle Vision
 import { GoogleGenAI } from "@google/genai";
 
 // ID UTILISATEUR DE DÉMONSTRATION (Utilisé pour le multi-tenancy V3)
@@ -25,7 +26,11 @@ const app = initializeApp(firebaseConfig);
 // 2. Initialisation Firestore
 export const db = getFirestore(app);
 
-// 3. Initialisation Gemini
+// 3. Initialisation Functions (Oracle Vision)
+// On exporte 'functions' pour pouvoir appeler l'IA depuis CatchDialog
+export const functions = getFunctions(app, "europe-west1");
+
+// 4. Initialisation Gemini (Usage direct possible)
 export const ai = new GoogleGenAI({ 
     apiKey: geminiApiKey as string 
 });
@@ -34,7 +39,7 @@ export const ai = new GoogleGenAI({
 
 // 3.1. Coach & Sessions
 export const chatHistoryCollection = collection(db, 'users', USER_ID, 'coach_memoire');
-export const sessionsCollection = collection(db, 'sessions'); // Collection racine avec userId interne
+export const sessionsCollection = collection(db, 'sessions'); 
 
 // 3.2. Arsenal (Nouvelle structure V3)
 export const zonesCollection = collection(db, 'zones');
@@ -42,7 +47,7 @@ export const setupsCollection = collection(db, 'setups');
 export const techniquesCollection = collection(db, 'techniques');
 export const luresCollection = collection(db, 'lures');
 
-// 3.3. Logs Environnementaux (Pour le futur Data Hoarder)
+// 3.3. Logs Environnementaux
 export const envLogsCollection = collection(db, 'environmental_logs');
 
 /**

@@ -1,7 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { X, Ruler, Sparkles, Edit2, Image as ImageIcon, Loader2, CloudCheck, CloudOff } from 'lucide-react';
-import { SpeciesType, Zone, Technique, Catch, RefLureType, RefColor, RefSize, RefWeight, FullEnvironmentalSnapshot } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+    X, Ruler, Sparkles, Edit2, Image as ImageIcon, Loader2, 
+    CloudCheck, CloudOff, Wand2, CheckCircle2, AlertCircle 
+} from 'lucide-react';
+import { 
+    SpeciesType, Zone, Technique, Catch, RefLureType, 
+    RefColor, RefSize, RefWeight, FullEnvironmentalSnapshot 
+} from '../types';
 import { getHistoricalSnapshot } from '../lib/environmental-service';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../lib/firebase';
+import ExifReader from 'exifreader';
 
 interface CatchDialogProps {
   isOpen: boolean;
@@ -12,12 +21,13 @@ interface CatchDialogProps {
   availableTechniques: Technique[];
   sessionStartTime: string;
   sessionEndTime: string;
-  sessionDate: string; // NOUVELLE PROP REQUISE
+  sessionDate: string;
   lureTypes: RefLureType[];
   colors: RefColor[];
   sizes: RefSize[];
   weights: RefWeight[];
   lastCatchDefaults?: Catch | null;
+  userPseudo?: string;
 }
 
 const SPECIES_CONFIG: Record<string, { max: number }> = {
@@ -26,10 +36,42 @@ const SPECIES_CONFIG: Record<string, { max: number }> = {
   'Black-Bass': { max: 65 }, 'Truite': { max: 80 }
 };
 
+/**
+ * HELPER : Compression d'image côté client
+ */
+const compressImageForAI = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target?.result as string;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 1200; 
+                let width = img.width;
+                let height = img.height;
+                if (width > MAX_WIDTH) {
+                    height = (MAX_WIDTH / width) * height;
+                    width = MAX_WIDTH;
+                }
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx?.drawImage(img, 0, 0, width, height);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                resolve(dataUrl.split(',')[1]);
+            };
+            img.onerror = reject;
+        };
+        reader.onerror = reject;
+    });
+};
+
 const CatchDialog: React.FC<CatchDialogProps> = ({ 
   isOpen, onClose, onSave, initialData, availableZones, availableTechniques, 
   sessionStartTime, sessionEndTime, sessionDate, lureTypes, colors, sizes, weights,
-  lastCatchDefaults 
+  lastCatchDefaults, userPseudo = "Michael"
 }) => {
   const [species, setSpecies] = useState<SpeciesType>('Sandre');
   const [size, setSize] = useState<number>(45);
@@ -46,17 +88,20 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
   const [photoLink1, setPhotoLink1] = useState('');
   const [photoLink2, setPhotoLink2] = useState('');
 
-  // États pour la récupération environnementale
   const [isLoadingEnv, setIsLoadingEnv] = useState(false);
   const [envSnapshot, setEnvSnapshot] = useState<FullEnvironmentalSnapshot | null>(null);
+  // CORRECTION TYPE ICI
   const [envStatus, setEnvStatus] = useState<'idle' | 'found' | 'not-found'>('idle');
 
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiFeedback, setAiFeedback] = useState<{ message: string; confidence: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // 1. Initialisation des données
   useEffect(() => {
     if (isOpen) {
       setError(null);
+      setAiFeedback(null);
       if (initialData) {
         setSpecies(initialData.species);
         setSize(initialData.size);
@@ -106,10 +151,8 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
     }
   }, [isOpen, initialData, lastCatchDefaults, sessionStartTime, availableZones, availableTechniques]);
 
-  // 2. Récupération automatique de l'environnement au changement d'heure
   useEffect(() => {
     if (!isOpen) return;
-
     const fetchEnv = async () => {
       setIsLoadingEnv(true);
       const snapshot = await getHistoricalSnapshot(sessionDate, time);
@@ -121,10 +164,59 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
       }
       setIsLoadingEnv(false);
     };
-
     const debounce = setTimeout(fetchEnv, 600);
     return () => clearTimeout(debounce);
   }, [time, sessionDate, isOpen]);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsAnalyzing(true);
+    setError(null);
+    setAiFeedback(null);
+
+    try {
+      const tags = await ExifReader.load(file);
+      if (tags['DateTimeOriginal']) {
+        const exifDate = tags['DateTimeOriginal'].description;
+        const timePart = exifDate.split(' ')[1];
+        if (timePart) {
+            const [h, m] = timePart.split(':');
+            setTime(`${h}:${m}`);
+        }
+      }
+
+      const compressedBase64 = await compressImageForAI(file);
+
+      const analyzeCatch = httpsCallable(functions, 'analyzeCatchImage');
+      const result: any = await analyzeCatch({ 
+          image: compressedBase64,
+          userPseudo,
+          referentials: {
+              lureTypes: lureTypes.map(l => ({ id: l.id, label: l.label })),
+              colors: colors.map(c => ({ id: c.id, label: c.label }))
+          }
+      });
+
+      const { data } = result;
+      if (data.species) setSpecies(data.species as SpeciesType);
+      if (data.size) setSize(data.size);
+      if (data.lureTypeId) setSelectedLureTypeId(data.lureTypeId);
+      if (data.lureColorId) setSelectedColorId(data.lureColorId);
+      
+      setAiFeedback({
+          message: data.enthusiastic_message,
+          confidence: data.confidence_score
+      });
+
+    } catch (err: any) {
+      console.error("Erreur Vision Oracle:", err);
+      setError("Analyse impossible. Vérifie ta connexion.");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -134,7 +226,6 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
       setError(`L'heure doit être comprise entre ${sessionStartTime} et ${sessionEndTime}.`);
       return;
     }
-
     const zoneObj = availableZones.find(z => z.id === selectedZoneId);
     const techObj = availableTechniques.find(t => t.id === selectedTechId);
     const photos = [photoLink1.trim(), photoLink2.trim()].filter(url => url.length > 0);
@@ -150,18 +241,18 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
       technique: techObj?.label || 'Inconnue', techniqueId: selectedTechId,
       spotName: zoneObj?.label || 'Inconnue', spotId: selectedZoneId,
       photoUrls: photos,
-      envSnapshot // SAUVEGARDE DÉFINITIVE DU SNAPSHOT
+      envSnapshot
     });
     onClose();
   };
 
   const SelectField = ({ label, value, onChange, options, placeholder }: any) => (
     <div className="space-y-1">
-       <label className="text-[10px] font-black uppercase text-stone-400 ml-1">{label}</label>
-       <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full p-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-700 outline-none focus:ring-2 focus:ring-amber-200">
-          <option value="">{placeholder}</option>
-          {options.map((o: any) => <option key={o.id} value={o.id}>{o.label}</option>)}
-       </select>
+        <label className="text-[10px] font-black uppercase text-stone-400 ml-1">{label}</label>
+        <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full p-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-700 outline-none focus:ring-2 focus:ring-amber-200">
+           <option value="">{placeholder}</option>
+           {options.map((o: any) => <option key={o.id} value={o.id}>{o.label}</option>)}
+        </select>
     </div>
   );
 
@@ -179,7 +270,31 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
           </div>
         </div>
 
-        {error && <div className="bg-rose-50 text-rose-600 p-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-rose-100">{error}</div>}
+        {!initialData && (
+            <div className="relative group">
+                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileSelect} />
+                <button 
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isAnalyzing}
+                    className="w-full py-4 px-6 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-white font-black text-sm flex items-center justify-center gap-3 shadow-lg shadow-orange-200 hover:shadow-orange-300 active:scale-95 transition-all disabled:opacity-50"
+                >
+                    {isAnalyzing ? <><Loader2 className="animate-spin" size={20} /> Analyse Oracle en cours...</> : <><Wand2 size={20} /> Scan Oracle Vision (One-Click)</>}
+                </button>
+            </div>
+        )}
+
+        {aiFeedback && (
+            <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl flex items-start gap-3 animate-in zoom-in-95 duration-300">
+                <CheckCircle2 className="text-emerald-500 shrink-0 mt-0.5" size={18} />
+                <div>
+                    <p className="text-emerald-800 text-xs font-bold leading-tight">{aiFeedback.message}</p>
+                    <p className="text-[9px] text-emerald-600 font-black uppercase tracking-widest mt-1">Indice de confiance : {Math.round(aiFeedback.confidence * 100)}%</p>
+                </div>
+            </div>
+        )}
+
+        {error && <div className="bg-rose-50 text-rose-600 p-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-rose-100"><AlertCircle size={16}/> {error}</div>}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -234,8 +349,8 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
              <input type="url" placeholder="Lien partage n°2" value={photoLink2} onChange={(e) => setPhotoLink2(e.target.value)} className="w-full p-2 bg-white border border-blue-100 rounded-xl text-xs text-blue-800 outline-none focus:ring-2 focus:ring-blue-200"/>
           </div>
 
-          <button type="submit" disabled={isLoadingEnv} className="w-full bg-stone-800 text-white py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-transform">
-            {isLoadingEnv ? <Loader2 className="animate-spin mx-auto" /> : initialData ? 'Mettre à jour' : 'Valider la prise'}
+          <button type="submit" disabled={isLoadingEnv || isAnalyzing} className="w-full bg-stone-800 text-white py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-transform disabled:bg-stone-300">
+            {isLoadingEnv || isAnalyzing ? <Loader2 className="animate-spin mx-auto" /> : initialData ? 'Mettre à jour' : 'Valider la prise'}
           </button>
         </form>
       </div>
