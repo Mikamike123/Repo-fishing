@@ -1,14 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { 
     Clock, Droplets, Wind, Activity, Cloud, Sun, CloudSun, 
-    CloudRain, Thermometer, Gauge, Trophy, Users, User as UserIcon 
+    CloudRain, Thermometer, Gauge, Trophy, Users, User as UserIcon, Flame 
 } from 'lucide-react';
 import { Session } from '../types';
 import SessionCard from './SessionCard';
 import SessionDetailModal from './SessionDetailModal';
 import { useCurrentConditions } from '../lib/hooks';
 import { RecordsGrid } from './RecordsGrid';
-import { ExperienceBar } from './ExperienceBar';
+import { buildUserHistory, getNextLevelCap } from '../lib/gamification';
 
 // --- HELPERS VISUELS ---
 const getWindDir = (deg?: number) => {
@@ -35,6 +35,7 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEditSession, userName, currentUserId }) => {
     // 1. Récupération des conditions Oracle en direct
     const { weather, hydro, scores, isLoading } = useCurrentConditions();
+    const currentYear = new Date().getFullYear();
 
     // 2. État du filtre News Feed (Défaut : 'my' pour Mes Sessions)
     const [feedFilter, setFeedFilter] = useState<'all' | 'my'>('my');
@@ -47,13 +48,22 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
         return base.slice(0, 5); // Affiche les 5 plus récentes après filtrage
     }, [sessions, feedFilter, currentUserId]);
 
-    // 4. Calcul de l'XP Michael (Prises cumulées du profil)
-    const userCatchesCount = useMemo(() => {
-        return sessions
-            .filter(s => s.userId === currentUserId)
-            .reduce((acc, s) => acc + s.catchCount, 0);
-    }, [sessions, currentUserId]);
+    // 4. CALCUL GAMIFICATION (ORACLE SEASON)
+    // On remplace l'ancien calcul simple par le moteur complet
+    const currentSeasonStats = useMemo(() => {
+        const userSessions = sessions.filter(s => s.userId === currentUserId);
+        const history = buildUserHistory(userSessions);
+        return history[currentYear] || { 
+            year: currentYear, levelReached: 1, xpTotal: 0, 
+            sessionCount: 0, fishCount: 0, weeksWithStreak: 0 
+        };
+    }, [sessions, currentUserId, currentYear]);
 
+    const nextLevelXP = getNextLevelCap(currentSeasonStats.levelReached);
+    const progressPercent = Math.min(100, (currentSeasonStats.xpTotal / nextLevelXP) * 100);
+    const xpRemaining = nextLevelXP - currentSeasonStats.xpTotal;
+
+    // Gestion du Modal
     const [selectedSession, setSelectedSession] = useState<Session | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
 
@@ -65,12 +75,48 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
     return (
         <div className="space-y-8 animate-in fade-in duration-500 pb-20">
             
-            {/* 1. PROGRESSION DYNAMIQUE */}
-            <ExperienceBar 
-                totalCatches={userCatchesCount} 
-                userName={userName} 
-                variant="full" 
-            />
+            {/* 1. PROGRESSION DYNAMIQUE (ORACLE SEASON PANEL) */}
+            {/* Remplacement de ExperienceBar par le Dashboard Gamification */}
+            <div className="bg-white rounded-3xl p-6 border border-stone-200 shadow-sm relative overflow-hidden">
+                {/* Background décoratif subtil */}
+                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
+                
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 relative z-10">
+                    <div>
+                        <div className="flex items-center space-x-2 mb-1">
+                            <span className="px-2 py-0.5 rounded-md bg-stone-100 text-stone-500 text-[10px] font-bold tracking-wider uppercase">
+                                Saison {currentYear}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-600 text-[10px] font-bold tracking-wider uppercase flex items-center">
+                                <Flame size={10} className="mr-1" />
+                                {currentSeasonStats.weeksWithStreak} Semaines validées
+                            </span>
+                        </div>
+                        <h2 className="text-2xl font-black text-stone-800">
+                            Niveau {currentSeasonStats.levelReached}
+                        </h2>
+                        <p className="text-sm text-stone-500 font-medium">
+                            {currentSeasonStats.xpTotal.toLocaleString()} XP <span className="text-stone-300">/ {nextLevelXP.toLocaleString()} XP</span>
+                        </p>
+                    </div>
+                    
+                    <div className="hidden md:block text-right">
+                         <div className="text-xs font-bold text-stone-400 uppercase tracking-widest">Performance</div>
+                         <div className="text-stone-800 font-bold">{currentSeasonStats.fishCount} Poissons / {currentSeasonStats.sessionCount} Sorties</div>
+                    </div>
+                </div>
+
+                {/* Barre d'XP */}
+                <div className="h-3 w-full bg-stone-100 rounded-full overflow-hidden relative z-10">
+                    <div 
+                        className="h-full bg-gradient-to-r from-amber-300 via-orange-400 to-rose-500 transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(251,146,60,0.4)]"
+                        style={{ width: `${progressPercent}%` }}
+                    />
+                </div>
+                <div className="mt-2 text-xs text-stone-400 text-right w-full font-mono">
+                   {xpRemaining.toLocaleString()} XP requis pour le niveau suivant
+                </div>
+            </div>
 
             {/* 2. ÉTAT DU SPOT (Nanterre) */}
             <div className="bg-white rounded-[2rem] p-1 shadow-organic border border-stone-100 overflow-hidden relative">

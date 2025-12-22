@@ -2,16 +2,16 @@ import React, { useState, useMemo, useRef } from 'react';
 import { 
     User, Edit2, Check, ChevronDown, Calendar, Fish, 
     AlertOctagon, Anchor, Activity, Camera, 
-    PieChart, ChevronUp
+    PieChart, ChevronUp, Trophy, Flame
 } from 'lucide-react';
 import { Session, UserProfile } from '../types';
 import { updateUserPseudo } from '../lib/user-service';
 import { doc, updateDoc } from 'firebase/firestore'; 
 import { db } from '../lib/firebase';
+import { buildUserHistory } from '../lib/gamification';
 
-// IMPORTS MODULAIRES (Supprime les erreurs d'IDE)
+// IMPORTS MODULAIRES
 import { RecordsGrid } from './RecordsGrid';
-import { ExperienceBar } from './ExperienceBar';
 
 interface ProfileViewProps {
   userProfile: UserProfile;
@@ -29,9 +29,12 @@ const ProfileView: React.FC<ProfileViewProps> = ({ userProfile, sessions, onUpda
     return sessions.filter(s => s.userId === userProfile.id);
   }, [sessions, userProfile.id]);
 
-  const totalCatches = useMemo(() => userSessions.reduce((acc, s) => acc + s.catchCount, 0), [userSessions]);
+  // Calcul de l'historique Gamifié (Oracle Season)
+  const historyStats = useMemo(() => {
+    return buildUserHistory(userSessions);
+  }, [userSessions]);
 
-  // --- 2. LOGIQUE D'AGRÉGATION ANNUELLE ---
+  // --- 2. LOGIQUE D'AGRÉGATION ANNUELLE (Existante préservée) ---
   const statsByYear = useMemo(() => {
     const stats: Record<number, any> = {};
     userSessions.forEach(session => {
@@ -86,7 +89,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ userProfile, sessions, onUpda
   return (
     <div className="pb-24 animate-in fade-in duration-300 space-y-8 px-4">
       
-      {/* HEADER AVEC EXPERIENCEBAR (PROFIL) */}
+      {/* HEADER PROFIL SIMPLIFIÉ */}
       <div className="flex flex-col items-center pt-8">
         <div className="relative w-32 h-32 bg-white rounded-full mb-6 border-[6px] border-white shadow-2xl overflow-hidden group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
           {userProfile.avatarBase64 ? <img src={userProfile.avatarBase64} className="w-full h-full object-cover" /> : <User size={56} className="m-auto mt-8 text-stone-200" />}
@@ -95,8 +98,6 @@ const ProfileView: React.FC<ProfileViewProps> = ({ userProfile, sessions, onUpda
         <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
         
         <h1 className="text-4xl font-black text-stone-800 tracking-tighter uppercase italic mb-8">{userProfile.pseudo}</h1>
-        
-        <ExperienceBar totalCatches={totalCatches} variant="full" />
       </div>
 
       {/* 🏆 HALL OF FAME GLOBAL */}
@@ -115,6 +116,10 @@ const ProfileView: React.FC<ProfileViewProps> = ({ userProfile, sessions, onUpda
         {statsByYear.map((stat) => {
           const isOpen = expandedYear === stat.year;
           const isDonutOpen = showDonutYear === stat.year;
+          
+          // Récupération des données gamifiées
+          const yearGamified = historyStats[stat.year];
+
           return (
             <div key={stat.year} className={`bg-white rounded-[2.5rem] border transition-all duration-500 ${isOpen ? 'shadow-xl border-amber-200' : 'shadow-sm border-stone-100'}`}>
               <button onClick={() => setExpandedYear(isOpen ? null : stat.year)} className="w-full flex justify-between items-center p-8 outline-none">
@@ -122,7 +127,20 @@ const ProfileView: React.FC<ProfileViewProps> = ({ userProfile, sessions, onUpda
                   <div className={`p-4 rounded-2xl transition-all ${isOpen ? 'bg-amber-500 text-white shadow-lg scale-110' : 'bg-stone-50 text-stone-300'}`}><Calendar size={28} /></div>
                   <div className="text-left">
                     <span className="block text-4xl font-black text-stone-800 tracking-tighter">{stat.year}</span>
-                    <span className="text-[10px] font-black uppercase text-stone-400 tracking-widest">{stat.sessionsCount} Sessions • {stat.catchesCount} Prises</span>
+                    
+                    {/* INFO GAMIFICATION DANS LE HEADER */}
+                    <div className="flex items-center space-x-2 mt-1">
+                        {yearGamified && (
+                            <>
+                                <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center border border-amber-200">
+                                    <Trophy size={10} className="mr-1" /> NIV {yearGamified.levelReached}
+                                </span>
+                                <span className="text-[10px] font-black uppercase text-stone-400 tracking-widest ml-1">
+                                    {yearGamified.xpTotal.toLocaleString()} XP
+                                </span>
+                            </>
+                        )}
+                    </div>
                   </div>
                 </div>
                 <ChevronDown className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : ''} text-stone-300`} />
@@ -130,6 +148,17 @@ const ProfileView: React.FC<ProfileViewProps> = ({ userProfile, sessions, onUpda
 
               {isOpen && (
                 <div className="px-8 pb-10 space-y-10 animate-in fade-in slide-in-from-top-4 duration-500">
+                  
+                  {/* INDICATEUR STREAK */}
+                  {yearGamified && yearGamified.weeksWithStreak > 0 && (
+                      <div className="flex items-center justify-center space-x-2 bg-emerald-50 py-2 rounded-xl border border-emerald-100">
+                          <Flame size={16} className="text-emerald-500" />
+                          <span className="text-xs font-bold text-emerald-700 uppercase tracking-wide">
+                              {yearGamified.weeksWithStreak} Semaines validées (Objectif Tenue)
+                          </span>
+                      </div>
+                  )}
+
                   <div className="grid grid-cols-3 gap-4">
                     <StatBox label="Sorties" value={stat.sessionsCount} icon={<Anchor size={20}/>} theme="stone" />
                     <StatBox label="Prises" value={stat.catchesCount} icon={<Fish size={20}/>} theme="amber" />

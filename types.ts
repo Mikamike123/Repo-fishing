@@ -173,3 +173,23 @@ export interface UserProfile {
   createdAt: any;
   avatarBase64?: string;
 }
+
+// --- GAMIFICATION (ORACLE SEASON v1) ---
+
+export interface YearlySnapshot {
+  year: number;
+  levelReached: number;
+  xpTotal: number;
+  sessionCount: number;
+  fishCount: number;
+  weeksWithStreak: number; // Nombre de semaines où l'objectif (2 sessions) a été tenu
+  topCatch?: Catch;        // Le poisson "MVP" de l'année
+}
+
+export interface UserStats {
+  userId: string;
+  history: Record<number, YearlySnapshot>; // Clé = année (2023, 2024...)
+  currentLevel: number;
+  currentXP: number;
+  xpToNextLevel: number;
+}
