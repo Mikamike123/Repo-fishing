@@ -13,7 +13,6 @@ import { db } from '../lib/firebase';
 import CatchDialog from './CatchDialog';
 import MissDialog from './MissDialog';
 
-// --- HELPERS VISUELS ---
 const getWindDir = (deg?: number) => {
     if (deg === undefined) return '';
     const directions = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
@@ -31,6 +30,8 @@ interface SessionFormProps {
     onAddSession: (session: Session) => void;
     onUpdateSession: (id: string, data: Partial<Session>) => void;
     initialData?: Session | null;
+    // NOUVEAU : Brouillon venant du Magic Scan
+    initialDiscovery?: { date: string, startTime: string, endTime: string, initialCatch: Catch } | null;
     zones: Zone[];
     setups: Setup[];
     techniques: Technique[];
@@ -43,37 +44,46 @@ interface SessionFormProps {
 }
 
 const SessionForm: React.FC<SessionFormProps> = ({ 
-    onAddSession, onUpdateSession, initialData, zones, setups, techniques,
+    onAddSession, onUpdateSession, initialData, initialDiscovery, zones, setups, techniques,
     lureTypes, colors, sizes, weights, lastCatchDefaults
 }) => {
-    // 1. États de base
-    const [date, setDate] = useState(initialData?.date || new Date().toISOString().split('T')[0]);
-    const [startTime, setStartTime] = useState(initialData?.startTime || "08:00");
-    const [endTime, setEndTime] = useState(initialData?.endTime || "11:00");
+    // 1. États de base (Priorité : Édition > Discovery > Défaut)
+    const [date, setDate] = useState(initialData?.date || initialDiscovery?.date || new Date().toISOString().split('T')[0]);
+    const [startTime, setStartTime] = useState(initialData?.startTime || initialDiscovery?.startTime || "08:00");
+    const [endTime, setEndTime] = useState(initialData?.endTime || initialDiscovery?.endTime || "11:00");
     const [spotId, setSpotId] = useState(initialData?.spotId || (zones[0]?.id || ''));
     const [setupId, setSetupId] = useState(initialData?.setupId || (setups[0]?.id || ''));
 
-    // 2. Architecture v4.5 : Snapshot exhaustif
     const [envSnapshot, setEnvSnapshot] = useState<FullEnvironmentalSnapshot | null>(initialData?.envSnapshot || null);
-
     const [feelingScore, setFeelingScore] = useState(initialData?.feelingScore || 5);
     const [notes, setNotes] = useState(initialData?.notes || ''); 
 
-    const [catches, setCatches] = useState<Catch[]>(initialData?.catches || []);
+    // Initialisation des prises avec celle du Discovery si présente
+    const [catches, setCatches] = useState<Catch[]>(
+        initialData?.catches || (initialDiscovery?.initialCatch ? [initialDiscovery.initialCatch] : [])
+    );
     const [misses, setMisses] = useState<Miss[]>(initialData?.misses || []);
 
     const [isLoadingEnv, setIsLoadingEnv] = useState(false);
     const [envStatus, setEnvStatus] = useState<'idle' | 'found' | 'not-found'>('idle');
-    
     const [isCatchModalOpen, setIsCatchModalOpen] = useState(false);
     const [isMissModalOpen, setIsMissModalOpen] = useState(false);
-    
     const [editingCatch, setEditingCatch] = useState<Catch | null>(null);
     const [editingMiss, setEditingMiss] = useState<Miss | null>(null);
 
-    // --- AUTO-FETCH ARCHIVES (Consistance par ID de Bucket) ---
+    // Effet pour synchroniser si initialDiscovery change (quand on clique sur le bouton Magic)
     useEffect(() => {
-        // En mode édition, si on a déjà un snapshot, on ne le remplace pas par défaut
+        if (initialDiscovery && !initialData) {
+            setDate(initialDiscovery.date);
+            setStartTime(initialDiscovery.startTime);
+            setEndTime(initialDiscovery.endTime);
+            if (initialDiscovery.initialCatch) {
+                setCatches([initialDiscovery.initialCatch]);
+            }
+        }
+    }, [initialDiscovery, initialData]);
+
+    useEffect(() => {
         if (initialData && envStatus === 'idle' && initialData.envSnapshot) {
             setEnvStatus('found');
             return;
@@ -82,18 +92,14 @@ const SessionForm: React.FC<SessionFormProps> = ({
         const fetchEnv = async () => {
             setIsLoadingEnv(true);
             setEnvStatus('idle');
-
             try {
-                // Ciblage direct du log de l'heure pile (ex: 08:30 -> 0800)
                 const hour = startTime.split(':')[0];
                 const docId = `${date}_${hour}00`;
-                
                 const docRef = doc(db, 'environmental_logs', docId);
                 const snap = await getDoc(docRef);
 
                 if (snap.exists()) {
                     const d = snap.data() as any;
-                    
                     const newSnapshot: FullEnvironmentalSnapshot = {
                         weather: {
                             temperature: d.weather?.temp || 0,
@@ -121,7 +127,6 @@ const SessionForm: React.FC<SessionFormProps> = ({
                             calculationDate: d.updatedAt || d.timestamp
                         }
                     };
-                    
                     setEnvSnapshot(newSnapshot);
                     setEnvStatus('found');
                 } else {
@@ -129,19 +134,16 @@ const SessionForm: React.FC<SessionFormProps> = ({
                     setEnvSnapshot(null);
                 }
             } catch (error) {
-                console.error("Erreur récupération archives:", error);
+                console.error("Erreur archives:", error);
                 setEnvStatus('not-found');
             } finally {
                 setIsLoadingEnv(false);
             }
         };
-
         const timeoutId = setTimeout(fetchEnv, 800);
         return () => clearTimeout(timeoutId);
-
     }, [date, startTime, initialData]);
 
-    // --- FONCTIONS DE SUPPRESSION ---
     const handleDeleteCatch = (id: string) => {
         if (window.confirm("Supprimer cette prise ?")) {
             setCatches(prev => prev.filter(c => c.id !== id));
@@ -154,7 +156,6 @@ const SessionForm: React.FC<SessionFormProps> = ({
         }
     };
 
-    // --- HANDLERS DE SAUVEGARDE MODALES ---
     const handleSaveCatch = (catchData: any) => {
         if (editingCatch) {
             setCatches(prev => prev.map(c => c.id === editingCatch.id ? { ...catchData, id: c.id } : c));
@@ -175,29 +176,17 @@ const SessionForm: React.FC<SessionFormProps> = ({
         setEditingMiss(null);
     };
 
-    // --- SOUMISSION FINALE ---
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        
         const zone = zones.find(z => z.id === spotId);
         const setup = setups.find(s => s.id === setupId);
-
         const sessionData: any = {
-            date,
-            startTime,
-            endTime,
-            spotId,
-            spotName: zone?.label || 'Inconnu',
-            setupId,
-            setupName: setup?.label || 'Inconnu',
-            feelingScore,
-            notes, 
-            catches,
-            misses,
-            envSnapshot,
+            date, startTime, endTime, spotId,
+            spotName: zone?.label || 'Inconnu', setupId,
+            setupName: setup?.label || 'Inconnu', feelingScore,
+            notes, catches, misses, envSnapshot,
             catchCount: catches.length
         };
-
         if (initialData) {
             onUpdateSession(initialData.id, sessionData);
         } else {
@@ -219,7 +208,6 @@ const SessionForm: React.FC<SessionFormProps> = ({
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-                {/* 1. INFO DE BASE */}
                 <div className="grid grid-cols-2 gap-4">
                     <div className="col-span-2">
                         <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1 block">Date</label>
@@ -250,7 +238,6 @@ const SessionForm: React.FC<SessionFormProps> = ({
                     </div>
                 </div>
 
-                {/* 2. WIDGETS ENVIRONNEMENT (V4.5) */}
                 <div className="space-y-2">
                     <div className="flex justify-between items-end px-1">
                         <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Observatoire (Début de Session)</label>
@@ -288,7 +275,6 @@ const SessionForm: React.FC<SessionFormProps> = ({
                     </div>
                 </div>
 
-                {/* 3. LISTES PRISES ET RATÉS */}
                 <div className="space-y-4 pt-2">
                     <div className="flex gap-3">
                         <button type="button" onClick={() => setIsMissModalOpen(true)} className="flex-1 py-3 bg-rose-50 text-rose-600 rounded-full text-xs font-black border border-rose-100 shadow-sm active:scale-95 transition-all flex justify-center items-center gap-2 hover:bg-rose-100">

@@ -2,7 +2,7 @@ import React from 'react';
 import { 
     X, Calendar, Clock, Anchor, Activity, CloudSun, Fish, Trophy, 
     Wind, Droplets, Image as ImageIcon, Gauge, Thermometer, 
-    Waves, Eye, CloudRain, AlertOctagon 
+    Waves, Eye, CloudRain, AlertOctagon, Maximize2 
 } from 'lucide-react';
 import { Session, SpeciesType } from '../types';
 
@@ -167,8 +167,8 @@ const SessionDetailModal: React.FC<SessionDetailModalProps> = ({ session, isOpen
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Affichage des Prises */}
               {session.catches.map((c) => (
-                <div key={c.id} className="bg-white p-5 rounded-[2rem] border border-stone-100 shadow-sm hover:border-amber-200 transition-colors">
-                  <div className="flex justify-between items-start mb-4">
+                <div key={c.id} className="bg-white p-5 rounded-[2rem] border border-stone-100 shadow-sm hover:border-amber-200 transition-colors flex flex-col gap-4">
+                  <div className="flex justify-between items-start">
                     <div className="flex gap-2 items-center">
                       <div className="px-3 py-1 bg-stone-50 rounded-xl text-[10px] font-black text-stone-500">{formatCatchTime(c)}</div>
                       <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${getSpeciesColor(c.species)}`}>{c.species}</span>
@@ -176,8 +176,25 @@ const SessionDetailModal: React.FC<SessionDetailModalProps> = ({ session, isOpen
                     </div>
                     <span className="text-3xl font-black text-stone-800 tracking-tighter">{c.size}<span className="text-sm text-stone-400 ml-0.5">cm</span></span>
                   </div>
+
+                  {/* MINIATURE DÉTAILLÉE (ADAPTÉE AUX DIMENSIONS RÉELLES) */}
+                  {c.photoUrls && c.photoUrls.length > 0 && (
+                    <div 
+                      className="relative group/photo w-full rounded-2xl overflow-hidden cursor-pointer shadow-md border border-stone-100 bg-stone-50" 
+                      onClick={() => openPhotoLink(c.photoUrls![0])}
+                    >
+                        <img 
+                            src={c.photoUrls[0]} 
+                            alt={`Prise ${c.species}`} 
+                            className="w-full h-auto block" // h-auto pour épouser la taille réelle
+                        />
+                        <div className="absolute inset-0 bg-black/10 opacity-0 group-hover/photo:opacity-100 transition-opacity flex items-center justify-center">
+                            <Maximize2 size={24} className="text-white drop-shadow-md" />
+                        </div>
+                    </div>
+                  )}
                   
-                  <div className="flex items-center justify-between pt-4 border-t border-stone-50">
+                  <div className="flex items-center justify-between pt-4 border-t border-stone-50 mt-auto">
                     <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-2 text-[10px] font-bold text-stone-600 uppercase">
                             <Anchor size={12} className="text-stone-300"/> {c.technique}
@@ -187,9 +204,9 @@ const SessionDetailModal: React.FC<SessionDetailModalProps> = ({ session, isOpen
                         </div>
                     </div>
 
-                    {c.photoUrls && c.photoUrls.length > 0 && (
+                    {c.photoUrls && c.photoUrls.length > 1 && (
                         <div className="flex gap-1.5">
-                            {c.photoUrls.map((url, idx) => (
+                            {c.photoUrls.slice(1).map((url, idx) => (
                                 <button key={idx} onClick={(e) => { e.stopPropagation(); openPhotoLink(url); }} className="w-10 h-10 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-2xl transition-all flex items-center justify-center shadow-sm">
                                     <ImageIcon size={18} />
                                 </button>
@@ -211,7 +228,6 @@ const SessionDetailModal: React.FC<SessionDetailModalProps> = ({ session, isOpen
                       <AlertOctagon className="text-rose-500" size={24} />
                   </div>
                   <div className="text-sm font-black text-rose-800 uppercase tracking-tight mb-2">{m.type}</div>
-                  {/* Le message "enregistré dans les archives" a été supprimé ici pour épurer le design */}
                 </div>
               ))}
 

@@ -13,6 +13,7 @@ import HistoryView from './components/HistoryView';
 import ArsenalView from './components/ArsenalView';
 import CoachView from './components/CoachView'; 
 import ProfileView from './components/ProfileView';
+import MagicScanButton from './components/MagicScanButton';
 
 import { Session, AppData, Spot, Setup, Technique, RefLureType, RefColor, RefSize, RefWeight, UserProfile, Catch } from './types';
 import { db, sessionsCollection } from './lib/firebase'; 
@@ -29,6 +30,9 @@ const App: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true); 
     const [editingSession, setEditingSession] = useState<Session | null>(null);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+    // --- NOUVEL ÉTAT : BROUILLON MAGIC SCAN ---
+    const [magicDraft, setMagicDraft] = useState<any>(null);
 
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [isProfileLoading, setIsProfileLoading] = useState(true);
@@ -77,7 +81,6 @@ const App: React.FC = () => {
                     notes: data.notes || '',
                     techniquesUsed: data.techniquesUsed || [], 
                     
-                    // Snapshot centralisé v4.5
                     envSnapshot: data.envSnapshot || null,
                     
                     catches: (data.catches || []).map((c: any) => ({...c, userId: c.userId || data.userId})),
@@ -110,7 +113,7 @@ const App: React.FC = () => {
         return () => { unsubSpots(); unsubSetups(); unsubTechs(); unsubLureTypes(); unsubColors(); unsubSizes(); unsubWeights(); };
     }, []);
 
-    // --- LOGIQUE lastCatchDefaults (POUR RÉSOUDRE L'ERREUR) ---
+    // --- LOGIQUE lastCatchDefaults ---
     const mySessions = sessions.filter(s => s.userId === currentUserId);
     const lastSession = mySessions.length > 0 ? mySessions[0] : null;
     const lastCatchDefaults: Catch | null = lastSession && lastSession.catches && lastSession.catches.length > 0 
@@ -139,6 +142,7 @@ const App: React.FC = () => {
                 userAvatar: userProfile?.avatarBase64 || null, 
                 createdAt: Timestamp.now() 
             });
+            setMagicDraft(null); 
             setCurrentView('dashboard'); 
         } catch (error) { console.error(error); }
     };
@@ -164,6 +168,13 @@ const App: React.FC = () => {
     const handleEditRequest = (session: Session) => {
         if (session.userId !== currentUserId) return;
         setEditingSession(session);
+        setMagicDraft(null); 
+        setCurrentView('session');
+    };
+
+    const handleMagicDiscovery = (draft: any) => {
+        setMagicDraft(draft);
+        setEditingSession(null);
         setCurrentView('session');
     };
 
@@ -172,7 +183,12 @@ const App: React.FC = () => {
         const newProfile = await createUserProfile(currentUserId, tempPseudo); setUserProfile(newProfile);
     };
 
-    const navigateFromMenu = (view: View) => { setEditingSession(null); setCurrentView(view); setIsMenuOpen(false); };
+    const navigateFromMenu = (view: View) => { 
+        setEditingSession(null); 
+        setMagicDraft(null); 
+        setCurrentView(view); 
+        setIsMenuOpen(false); 
+    };
 
     const toggleUser = () => {
         const nextUser = currentUserId === 'user_1' ? 'user_2' : 'user_1';
@@ -183,15 +199,37 @@ const App: React.FC = () => {
         if (!userProfile) return null;
 
         switch (currentView) {
-            case 'dashboard': return <Dashboard sessions={sessions} onDeleteSession={handleDeleteSession} onEditSession={handleEditRequest} userName={userProfile.pseudo} currentUserId={currentUserId} />; 
-            case 'session': return (
-                <SessionForm 
-                    onAddSession={handleAddSession} onUpdateSession={handleUpdateSession} initialData={editingSession}
-                    zones={arsenalData.spots} setups={arsenalData.setups} techniques={arsenalData.techniques} lures={arsenalData.lures}
-                    lureTypes={arsenalData.lureTypes} colors={arsenalData.colors} sizes={arsenalData.sizes} weights={arsenalData.weights} 
-                    lastCatchDefaults={lastCatchDefaults}                
-                />  
-            );
+            case 'dashboard': 
+                return (
+                    <Dashboard 
+                        sessions={sessions} 
+                        onDeleteSession={handleDeleteSession} 
+                        onEditSession={handleEditRequest} 
+                        onMagicDiscovery={handleMagicDiscovery} 
+                        userName={userProfile.pseudo} 
+                        currentUserId={currentUserId}
+                        lureTypes={arsenalData.lureTypes} 
+                        colors={arsenalData.colors} 
+                    />
+                ); 
+            case 'session': 
+                return (
+                    <SessionForm 
+                        onAddSession={handleAddSession} 
+                        onUpdateSession={handleUpdateSession} 
+                        initialData={editingSession}
+                        initialDiscovery={magicDraft} 
+                        zones={arsenalData.spots} 
+                        setups={arsenalData.setups} 
+                        techniques={arsenalData.techniques} 
+                        lures={arsenalData.lures}
+                        lureTypes={arsenalData.lureTypes} 
+                        colors={arsenalData.colors} 
+                        sizes={arsenalData.sizes} 
+                        weights={arsenalData.weights} 
+                        lastCatchDefaults={lastCatchDefaults}                
+                    />  
+                );
             case 'history': return <HistoryView sessions={sessions} onDeleteSession={handleDeleteSession} onEditSession={handleEditRequest} currentUserId={currentUserId} />;
             case 'arsenal': return (
                 <ArsenalView 
@@ -207,7 +245,7 @@ const App: React.FC = () => {
             );
             case 'coach': return <CoachView />;
             case 'profile': return <ProfileView userProfile={userProfile} sessions={sessions} onUpdateProfile={setUserProfile} />;
-            default: return <Dashboard sessions={sessions} onDeleteSession={handleDeleteSession} onEditSession={handleEditRequest} userName={userProfile.pseudo} currentUserId={currentUserId} />; 
+            default: return <Dashboard sessions={sessions} onDeleteSession={handleDeleteSession} onEditSession={handleEditRequest} onMagicDiscovery={handleMagicDiscovery} userName={userProfile.pseudo} currentUserId={currentUserId} lureTypes={arsenalData.lureTypes} colors={arsenalData.colors} />; 
         }
     };
 
@@ -275,11 +313,26 @@ const App: React.FC = () => {
             
             <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-stone-200 bg-white pb-safe shadow-lg"> 
                 <div className="mx-auto flex max-w-lg items-center justify-around py-3">
-                    <button onClick={() => { setEditingSession(null); setCurrentView('dashboard'); }} className={`flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-amber-600' : 'text-stone-400'}`}><Home size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Oracle</span></button>
-                    <button onClick={() => setCurrentView('history')} className={`flex flex-col items-center gap-1 ${currentView === 'history' ? 'text-amber-600' : 'text-stone-400'}`}><ScrollText size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Journal</span></button>
-                    <div className="relative -top-6"><button onClick={() => { setEditingSession(null); setCurrentView('session'); }} className="rounded-full border-4 border-[#FAF9F6] bg-stone-800 p-4 text-white shadow-2xl active:scale-95 transition-all"><PlusCircle size={32} /></button></div>
-                    <button onClick={() => setCurrentView('coach')} className={`flex flex-col items-center gap-1 ${currentView === 'coach' ? 'text-emerald-600' : 'text-stone-400'}`}><Bot size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Coach</span></button>
-                    <button onClick={() => setCurrentView('arsenal')} className={`flex flex-col items-center gap-1 ${currentView === 'arsenal' ? 'text-amber-600' : 'text-stone-400'}`}><Settings size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Arsenal</span></button>
+                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('dashboard'); }} className={`flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-amber-600' : 'text-stone-400'}`}><Home size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Oracle</span></button>
+                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('history'); }} className={`flex flex-col items-center gap-1 ${currentView === 'history' ? 'text-amber-600' : 'text-stone-400'}`}><ScrollText size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Journal</span></button>
+                    
+                    {/* MODIFICATION : Système de centrage partagé */}
+                    <div className="relative -top-6 flex items-center justify-center gap-3">
+                        <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('session'); }} 
+                                className="rounded-full border-4 border-[#FAF9F6] bg-stone-800 p-4 text-white shadow-2xl active:scale-95 transition-all">
+                            <PlusCircle size={32} />
+                        </button>
+                        
+                        <MagicScanButton 
+                            userPseudo={userProfile?.pseudo || "Michael"}
+                            lureTypes={arsenalData.lureTypes}
+                            colors={arsenalData.colors}
+                            onDiscoveryComplete={handleMagicDiscovery}
+                        />
+                    </div>
+
+                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('coach'); }} className={`flex flex-col items-center gap-1 ${currentView === 'coach' ? 'text-emerald-600' : 'text-stone-400'}`}><Bot size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Coach</span></button>
+                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('arsenal'); }} className={`flex flex-col items-center gap-1 ${currentView === 'arsenal' ? 'text-amber-600' : 'text-stone-400'}`}><Settings size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Arsenal</span></button>
                 </div>
             </nav>
         </div>

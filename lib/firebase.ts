@@ -2,18 +2,20 @@
 
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, doc, getDocs, deleteDoc } from "firebase/firestore"; 
-import { getFunctions } from "firebase/functions"; // Ajouté pour Oracle Vision
+import { getFunctions } from "firebase/functions"; 
+import { getStorage } from "firebase/storage"; // AJOUT : Import pour le stockage des photos
 import { GoogleGenAI } from "@google/genai";
 
 // ID UTILISATEUR DE DÉMONSTRATION (Utilisé pour le multi-tenancy V3)
 export const USER_ID = "user_1"; 
 
-// 1. Config Firebase
+// 1. Config Firebase - MISE À JOUR AVEC STORAGE BUCKET
 const firebaseConfig = {
     // @ts-ignore
     apiKey: import.meta.env.VITE_GEMINI_API_KEY, 
     authDomain: "mysupstack.firebaseapp.com",
     projectId: "mysupstack", 
+    storageBucket: "mysupstack.firebasestorage.app" // AJOUT CRITIQUE : Définit le bucket par défaut
 };
 
 const geminiApiKey = firebaseConfig.apiKey;
@@ -26,11 +28,13 @@ const app = initializeApp(firebaseConfig);
 // 2. Initialisation Firestore
 export const db = getFirestore(app);
 
-// 3. Initialisation Functions (Oracle Vision)
-// On exporte 'functions' pour pouvoir appeler l'IA depuis CatchDialog
+// 3. Initialisation Storage (Média Prises)
+export const storage = getStorage(app); // AJOUT : Instance pour l'upload One-Click
+
+// 4. Initialisation Functions (Oracle Vision)
 export const functions = getFunctions(app, "europe-west1");
 
-// 4. Initialisation Gemini (Usage direct possible)
+// 5. Initialisation Gemini (Usage direct possible)
 export const ai = new GoogleGenAI({ 
     apiKey: geminiApiKey as string 
 });
@@ -56,7 +60,8 @@ export const envLogsCollection = collection(db, 'environmental_logs');
 export const clearChatHistory = async () => {
     const snapshot = await getDocs(chatHistoryCollection);
     if (snapshot.empty) return; 
-    const deletePromises = snapshot.docs.map(d => deleteDoc(doc(chatHistoryCollection, d.id)));
+    // Correction de l'appel pour utiliser le chemin correct du document
+    const deletePromises = snapshot.docs.map(d => deleteDoc(doc(db, 'users', USER_ID, 'coach_memoire', d.id)));
     await Promise.all(deletePromises);
     console.log(`Historique de chat effacé : ${deletePromises.length} messages supprimés.`);
 };

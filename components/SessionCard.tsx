@@ -2,7 +2,8 @@ import React from 'react';
 import { 
     MapPin, Fish, Trash2, Edit2, 
     Droplets, Thermometer, Cloud, Sun, CloudSun, CloudRain, Activity, 
-    Image as ImageIcon, Wind, User, Lock, Calendar, AlertOctagon, Gauge, Waves, Eye 
+    Image as ImageIcon, Wind, User, Lock, Calendar, AlertOctagon, Gauge, Waves, Eye,
+    Maximize2
 } from 'lucide-react'; 
 import { Session, SpeciesType } from '../types';
 
@@ -40,6 +41,11 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
     const env = session.envSnapshot;
     const isOwner = session.userId === currentUserId;
 
+    // Récupération de toutes les photos de la session pour la galerie miniature
+    const allSessionPhotos = session.catches
+        .filter(c => c.photoUrls && c.photoUrls.length > 0)
+        .map(c => c.photoUrls![0]);
+
     // Helper pour les mini-widgets pastels
     const MiniEnvTile = ({ icon: Icon, value, unit, theme }: any) => {
         const themes: any = {
@@ -60,7 +66,7 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
     };
 
     return (
-        <div onClick={() => onClick && onClick(session)} className={`relative rounded-[2.5rem] p-6 border transition-all cursor-pointer group ${isOwner ? 'bg-white border-stone-100 shadow-organic' : 'bg-[#F5F4F1] border-stone-200/60'}`}>
+        <div onClick={() => onClick && onClick(session)} className={`relative rounded-[2.5rem] p-6 border transition-all cursor-pointer group ${isOwner ? 'bg-white border-stone-100 shadow-organic hover:shadow-xl' : 'bg-[#F5F4F1] border-stone-200/60'}`}>
             
             {/* --- HEADER --- */}
             <div className="flex justify-between items-start mb-4">
@@ -69,7 +75,8 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                         {isOwner ? <><MapPin size={14} className="text-amber-500 shrink-0" /> {session.spotName}</> : session.userPseudo}
                     </div>
                     <div className="text-[10px] font-bold text-stone-400 mt-0.5 flex items-center gap-2">
-                        <Calendar size={10} /> {new Date(session.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} • {session.startTime}-{session.endTime}
+                        {/* MODIFICATION : Ajout de l'année (year: 'numeric') pour l'archivage historique */}
+                        <Calendar size={10} /> {new Date(session.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })} • {session.startTime}-{session.endTime}
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -80,10 +87,29 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                         </div>
                     )}
                     <div className="w-10 h-10 rounded-full border-2 border-white overflow-hidden shadow-sm bg-stone-100 flex items-center justify-center">
-                        {session.userAvatar ? <img src={session.userAvatar} className="w-full h-full object-cover" /> : <User size={18} className="text-stone-300" />}
+                        {session.userAvatar ? <img src={session.userAvatar} className="w-full h-full object-cover" alt="Avatar" /> : <User size={18} className="text-stone-300" />}
                     </div>
                 </div>
             </div>
+
+            {/* --- MINIATURES PHOTOS (ALIGNÉES HORIZONTALEMENT) --- */}
+            {allSessionPhotos.length > 0 && (
+                <div className="flex gap-2 mb-4 overflow-x-auto pb-1 scrollbar-hide">
+                    {allSessionPhotos.map((url, idx) => (
+                        <div key={idx} className="relative h-20 bg-stone-50/50 rounded-2xl overflow-hidden border border-stone-100 shadow-sm shrink-0 group/photo">
+                            <img 
+                                src={url} 
+                                className="h-full w-auto block" 
+                                alt={`Prise ${idx + 1}`} 
+                                loading="lazy"
+                            />
+                            <div className="absolute inset-0 bg-black/5 opacity-0 group-hover/photo:opacity-100 transition-opacity flex items-center justify-center">
+                                <Maximize2 size={14} className="text-stone-600" />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
 
             {/* --- WIDGETS ENVIRONNEMENTAUX (Oracle Style) --- */}
             <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide mb-5 pb-1">
@@ -109,6 +135,7 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                 {session.catches.map(fish => (
                     <div key={fish.id} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[10px] font-black ${getSpeciesColor(fish.species)} shadow-sm`}>
                         <Fish size={10} /> {fish.species} {fish.size}cm
+                        {fish.photoUrls && fish.photoUrls.length > 0 && <ImageIcon size={8} className="ml-1 opacity-50" />}
                     </div>
                 ))}
                 {session.misses.map(miss => (

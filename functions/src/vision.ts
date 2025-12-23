@@ -1,20 +1,26 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { VertexAI } from "@google-cloud/vertexai";
 
-// Initialisation Vertex AI - Correction pour Gemini 3
+// Initialisation Vertex AI - Correction pour Gemini 3 (v4.5)
+// Utilisation de us-central1 pour l'accès prioritaire à Gemini 2.5 Flash
 const vertexAI = new VertexAI({ project: 'mysupstack', location: 'us-central1' });
 
 const SPECIES_LIST = ['Sandre', 'Brochet', 'Perche', 'Silure', 'Chevesne', 'Black-Bass', 'Aspe', 'Truite', 'Bar'];
 
+/**
+ * ORACLE VISION 3.0 - Analyse de prise par IA (One-Click Logging)
+ * Ce module traite l'image compressée pour extraire l'espèce, la taille et le matériel.
+ */
 export const analyzeCatchImage = onCall({ 
     region: "europe-west1", 
     memory: "1GiB",
     maxInstances: 5 
 }, async (request) => {
   
- // if (!request.auth) {
- //   throw new HttpsError("unauthenticated", "Michael, l'Oracle ne répond qu'aux membres authentifiés.");
- // }
+  // Note: Authentification commentée pour les tests locaux comme dans ton code source
+  // if (!request.auth) {
+  //   throw new HttpsError("unauthenticated", "Michael, l'Oracle ne répond qu'aux membres authentifiés.");
+  // }
 
   const { image, userPseudo, referentials } = request.data;
 
@@ -22,35 +28,45 @@ export const analyzeCatchImage = onCall({
     throw new HttpsError("invalid-argument", "L'image est absente de la requête.");
   }
 
-  // Instructions système optimisées pour les capacités spatiales de Gemini 3
+  /**
+   * NETTOYAGE IMAGE
+   * Retire le préfixe "data:image/jpeg;base64," si présent lors de l'envoi depuis le frontend
+   */
+  const cleanImage = image.includes(",") ? image.split(",")[1] : image;
+
+  // Instructions système optimisées pour les capacités spatiales de Gemini 2.5 Flash
   const systemInstructionContent = `
     Tu es "Oracle Vision 3.0", l'expert IA de ${userPseudo}, expert en biométrie halieutique.
     
     TA MISSION : Analyser la photo pour extraire des données structurées avec une précision chirurgicale.
     
-    CAPACITÉS SPATIALES : 
+    CAPACITÉS SPATIALES & ESTIMATION : 
     - Utilise tes capacités de raisonnement spatial pour comparer la taille du poisson aux objets de référence.
-    - RÉFÉRENCE A : Main humaine (largeur paume ~9cm).
-    - RÉFÉRENCE B : Leurre visible (consulte la liste des tailles ci-dessous).
-    - RÉFÉRENCE C : Pied ou chaussure si visible (~28cm).
+    - RÉFÉRENCE A : Main humaine (largeur paume moyenne ~9cm).
+    - RÉFÉRENCE B : Leurre visible (consulte la liste des types fournis pour le contexte).
+    - RÉFÉRENCE C : Pied ou chaussure si visible (~28cm-30cm).
+    - Sois précis à +/- 2cm.
 
-    MAPPING RÉFÉRENTIELS :
+    MAPPING RÉFÉRENTIELS (CRITIQUE) :
     - Espèces : ${SPECIES_LIST.join(', ')}.
     - Types de leurres : ${JSON.stringify(referentials.lureTypes)}
     - Couleurs : ${JSON.stringify(referentials.colors)}
+    
+    CONSIGNE MAPPING : Tu dois impérativement mapper le leurre et la couleur aux IDs fournis ci-dessus. 
+    Si tu as un doute, choisis l'ID dont le label est le plus sémantiquement proche.
 
-    RÉPONDRE UNIQUEMENT EN JSON :
+    FORMAT DE RÉPONSE : Tu dois répondre EXCLUSIVEMENT avec un objet JSON valide.
     {
-      "species": "Nom",
-      "size": nombre (cm),
+      "species": "Nom de l'espèce (ex: Sandre)",
+      "size": nombre entier (cm),
       "lureTypeId": "ID_MAPPÉ",
       "lureColorId": "ID_MAPPÉ",
-      "enthusiastic_message": "Bravo Michael !...",
-      "confidence_score": 0.98
+      "enthusiastic_message": "Message court et enthousiaste pour Michael.",
+      "confidence_score": 0.0 à 1.0
     }
   `;
 
-  // PASSAGE À GEMINI 2.5 FLASH
+  // PASSAGE À GEMINI 2.5 FLASH (Mise à jour v4.5)
   const model = vertexAI.getGenerativeModel({
     model: 'gemini-2.5-flash', 
     systemInstruction: {
@@ -59,6 +75,7 @@ export const analyzeCatchImage = onCall({
     },
     generationConfig: {
       responseMimeType: "application/json",
+      temperature: 0.1, // Basse température pour garantir la cohérence du mapping d'IDs
     },
   });
 
@@ -67,7 +84,7 @@ export const analyzeCatchImage = onCall({
       contents: [
         {
           role: 'user',
-          parts: [{ inlineData: { mimeType: "image/jpeg", data: image } }],
+          parts: [{ inlineData: { mimeType: "image/jpeg", data: cleanImage } }],
         }
       ],
     };
@@ -75,12 +92,17 @@ export const analyzeCatchImage = onCall({
     const result = await model.generateContent(apiRequest);
     const responseText = result.response.candidates?.[0].content.parts[0].text;
 
-    if (!responseText) throw new Error("Réponse vide de Gemini 3");
+    if (!responseText) throw new Error("Réponse vide de Gemini");
 
-    return JSON.parse(responseText);
+    const jsonResponse = JSON.parse(responseText);
+    
+    // Log de succès pour console Firebase (Michael)
+    console.log(`[Oracle Vision] Prise analysée pour ${userPseudo}: ${jsonResponse.species} (${jsonResponse.size}cm)`);
+    
+    return jsonResponse;
 
   } catch (error: any) {
     console.error("Erreur Oracle Vision 3.0:", error);
-    throw new HttpsError("internal", "L'Oracle Vision 3.0 rencontre un problème technique.");
+    throw new HttpsError("internal", "L'Oracle Vision 3.0 rencontre un problème technique de traitement.");
   }
 });

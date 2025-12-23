@@ -3,7 +3,7 @@ import {
     Clock, Droplets, Wind, Activity, Cloud, Sun, CloudSun, 
     CloudRain, Thermometer, Gauge, Trophy, Users, User as UserIcon, Flame 
 } from 'lucide-react';
-import { Session } from '../types';
+import { Session, RefLureType, RefColor } from '../types';
 import SessionCard from './SessionCard';
 import SessionDetailModal from './SessionDetailModal';
 import { useCurrentConditions } from '../lib/hooks';
@@ -28,11 +28,18 @@ interface DashboardProps {
     sessions: Session[];
     onDeleteSession: (id: string) => void;
     onEditSession: (session: Session) => void;
+    // Callback pour le flux "Photo-First" (reste ici pour la cohérence des props passées par App)
+    onMagicDiscovery: (draft: any) => void;
     userName?: string;
     currentUserId: string;
+    lureTypes: RefLureType[];
+    colors: RefColor[];
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEditSession, userName, currentUserId }) => {
+const Dashboard: React.FC<DashboardProps> = ({ 
+    sessions, onDeleteSession, onEditSession, onMagicDiscovery, 
+    userName, currentUserId, lureTypes, colors 
+}) => {
     // 1. Récupération des conditions Oracle en direct
     const { weather, hydro, scores, isLoading } = useCurrentConditions();
     const currentYear = new Date().getFullYear();
@@ -49,7 +56,6 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
     }, [sessions, feedFilter, currentUserId]);
 
     // 4. CALCUL GAMIFICATION (ORACLE SEASON)
-    // On remplace l'ancien calcul simple par le moteur complet
     const currentSeasonStats = useMemo(() => {
         const userSessions = sessions.filter(s => s.userId === currentUserId);
         const history = buildUserHistory(userSessions);
@@ -76,9 +82,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
         <div className="space-y-8 animate-in fade-in duration-500 pb-20">
             
             {/* 1. PROGRESSION DYNAMIQUE (ORACLE SEASON PANEL) */}
-            {/* Remplacement de ExperienceBar par le Dashboard Gamification */}
             <div className="bg-white rounded-3xl p-6 border border-stone-200 shadow-sm relative overflow-hidden">
-                {/* Background décoratif subtil */}
                 <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
                 
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 relative z-10">
@@ -106,7 +110,6 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
                     </div>
                 </div>
 
-                {/* Barre d'XP */}
                 <div className="h-3 w-full bg-stone-100 rounded-full overflow-hidden relative z-10">
                     <div 
                         className="h-full bg-gradient-to-r from-amber-300 via-orange-400 to-rose-500 transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(251,146,60,0.4)]"
@@ -169,27 +172,31 @@ const Dashboard: React.FC<DashboardProps> = ({ sessions, onDeleteSession, onEdit
                 />
             </div>
 
-            {/* 4. FIL D'ACTUALITÉ AVEC TOGGLE */}
+            {/* 4. FIL D'ACTUALITÉ */}
             <div className="space-y-4">
                 <div className="flex items-center justify-between px-2">
                     <h3 className="text-stone-800 font-bold text-lg flex items-center gap-2">
                         <Clock size={20} className="text-stone-400" /> Fil d'Actualité
                     </h3>
 
-                    {/* SELECTEUR DE FLUX */}
-                    <div className="flex bg-stone-100 p-1 rounded-xl border border-stone-200 shadow-inner">
-                        <button 
-                            onClick={() => setFeedFilter('all')}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${feedFilter === 'all' ? 'bg-white text-amber-600 shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
-                        >
-                            <Users size={12} /> TOUS
-                        </button>
-                        <button 
-                            onClick={() => setFeedFilter('my')}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${feedFilter === 'my' ? 'bg-white text-amber-600 shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
-                        >
-                            <UserIcon size={12} /> MES SESSIONS
-                        </button>
+                    <div className="flex items-center gap-3">
+                        {/* MAGIC SCAN BUTTON supprimé d'ici pour être placé dans le footer global (App.tsx) */}
+
+                        {/* SELECTEUR DE FLUX */}
+                        <div className="flex bg-stone-100 p-1 rounded-xl border border-stone-200 shadow-inner">
+                            <button 
+                                onClick={() => setFeedFilter('all')}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${feedFilter === 'all' ? 'bg-white text-amber-600 shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
+                            >
+                                <Users size={12} /> TOUS
+                            </button>
+                            <button 
+                                onClick={() => setFeedFilter('my')}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${feedFilter === 'my' ? 'bg-white text-amber-600 shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
+                            >
+                                <UserIcon size={12} /> MES SESSIONS
+                            </button>
+                        </div>
                     </div>
                 </div>
 
