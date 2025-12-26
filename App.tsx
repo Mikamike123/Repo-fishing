@@ -1,10 +1,11 @@
+// App.tsx
 import React, { useState, useEffect } from 'react'; 
-import { Home, PlusCircle, ScrollText, Settings, Fish, Bot, User, Menu, X, ChevronRight, Users } from 'lucide-react';
+import { Home, PlusCircle, ScrollText, Settings, Fish, Bot, User, Menu, X, ChevronRight, Users, MapPin } from 'lucide-react';
 
 import { 
   onSnapshot, query, orderBy, 
   QuerySnapshot, DocumentData, 
-  addDoc, deleteDoc, doc, Timestamp, updateDoc, collection 
+  addDoc, deleteDoc, doc, Timestamp, updateDoc, collection, writeBatch 
 } from 'firebase/firestore'; 
 
 import SessionForm from './components/SessionForm';
@@ -14,12 +15,14 @@ import ArsenalView from './components/ArsenalView';
 import CoachView from './components/CoachView'; 
 import ProfileView from './components/ProfileView';
 import MagicScanButton from './components/MagicScanButton';
+import LocationsManager from './components/LocationsManager'; 
 
-import { Session, AppData, Spot, Setup, Technique, RefLureType, RefColor, RefSize, RefWeight, UserProfile, Catch } from './types';
+import { Session, UserProfile, Catch } from './types';
 import { db, sessionsCollection } from './lib/firebase'; 
 import { getUserProfile, createUserProfile } from './lib/user-service';
+import { useArsenal } from './lib/useArsenal'; 
 
-type View = 'dashboard' | 'session' | 'history' | 'arsenal' | 'coach' | 'profile';
+type View = 'dashboard' | 'session' | 'history' | 'arsenal' | 'coach' | 'profile' | 'locations';
 
 const App: React.FC = () => {
     // --- GESTION USER ID ---
@@ -38,10 +41,15 @@ const App: React.FC = () => {
     const [isProfileLoading, setIsProfileLoading] = useState(true);
     const [tempPseudo, setTempPseudo] = useState("");
 
-    const [arsenalData, setArsenalData] = useState<AppData>({
-        spots: [], setups: [], techniques: [], lures: [], 
-        lureTypes: [], colors: [], sizes: [], weights: []
-    });
+    // --- UTILISATION DU HOOK ARSENAL ---
+    const { 
+        arsenalData, 
+        handleAddItem, 
+        handleDeleteItem, 
+        handleEditItem, 
+        handleMoveItem, 
+        handleToggleLocationFavorite 
+    } = useArsenal(currentUserId);
 
     // --- RECHARGER LE PROFIL AU SWITCH USER ---
     useEffect(() => {
@@ -54,7 +62,7 @@ const App: React.FC = () => {
         loadProfile();
     }, [currentUserId]); 
 
-    // --- CHARGEMENT DES SESSIONS (Architecture v4.5) ---
+    // --- CHARGEMENT DES SESSIONS ---
     useEffect(() => {
         const q = query(sessionsCollection, orderBy('date', 'desc')); 
         
@@ -89,7 +97,8 @@ const App: React.FC = () => {
                     userId: data.userId || 'inconnu',
                     userPseudo: data.userPseudo || 'Inconnu',
                     userAvatar: data.userAvatar || null,
-                    active: true
+                    active: true,
+                    displayOrder: data.displayOrder || 0
                 } as Session;
             });
             setSessions(fetchedSessions);
@@ -97,21 +106,7 @@ const App: React.FC = () => {
         });
 
         return () => unsubscribeSessions();
-    }, []);
-
-    // --- CHARGEMENT ARSENAL ---
-    useEffect(() => {
-        const getQuery = (colName: string) => query(collection(db, colName), orderBy('label'));
-        const unsubSpots = onSnapshot(getQuery('zones'), (snap) => setArsenalData(prev => ({ ...prev, spots: snap.docs.map(d => ({ id: d.id, ...d.data() } as Spot)) })));
-        const unsubSetups = onSnapshot(getQuery('setups'), (snap) => setArsenalData(prev => ({ ...prev, setups: snap.docs.map(d => ({ id: d.id, ...d.data() } as Setup)) })));
-        const unsubTechs = onSnapshot(getQuery('techniques'), (snap) => setArsenalData(prev => ({ ...prev, techniques: snap.docs.map(d => ({ id: d.id, ...d.data() } as Technique)) })));
-        const unsubLureTypes = onSnapshot(getQuery('ref_lure_types'), (snap) => setArsenalData(prev => ({ ...prev, lureTypes: snap.docs.map(d => ({ id: d.id, ...d.data() } as RefLureType)) })));
-        const unsubColors = onSnapshot(getQuery('ref_colors'), (snap) => setArsenalData(prev => ({ ...prev, colors: snap.docs.map(d => ({ id: d.id, ...d.data() } as RefColor)) })));
-        const unsubSizes = onSnapshot(getQuery('ref_sizes'), (snap) => setArsenalData(prev => ({ ...prev, sizes: snap.docs.map(d => ({ id: d.id, ...d.data() } as RefSize)) })));
-        const unsubWeights = onSnapshot(getQuery('ref_weights'), (snap) => setArsenalData(prev => ({ ...prev, weights: snap.docs.map(d => ({ id: d.id, ...d.data() } as RefWeight)) })));
-        
-        return () => { unsubSpots(); unsubSetups(); unsubTechs(); unsubLureTypes(); unsubColors(); unsubSizes(); unsubWeights(); };
-    }, []);
+    }, []); 
 
     // --- LOGIQUE lastCatchDefaults ---
     const mySessions = sessions.filter(s => s.userId === currentUserId);
@@ -119,14 +114,6 @@ const App: React.FC = () => {
     const lastCatchDefaults: Catch | null = lastSession && lastSession.catches && lastSession.catches.length > 0 
         ? lastSession.catches[lastSession.catches.length - 1] 
         : null;
-
-    // --- ACTIONS ARSENAL ---
-    const handleAddItem = async (col: string, label: string) => {
-        if (!label.trim()) return;
-        try { await addDoc(collection(db, col), { label: label.trim(), userId: currentUserId, active: true, createdAt: Timestamp.now() }); } catch (e) { console.error(e); }
-    };
-    const handleDeleteItem = async (col: string, id: string) => { try { await deleteDoc(doc(db, col, id)); } catch (e) { console.error(e); } };
-    const handleEditItem = async (col: string, id: string, label: string) => { try { await updateDoc(doc(db, col, id), { label, updatedAt: Timestamp.now() }); } catch (e) { console.error(e); } };
 
     // --- GESTION DES SESSIONS ---
     const handleAddSession = async (newSession: Session) => { 
@@ -140,7 +127,8 @@ const App: React.FC = () => {
                 userId: currentUserId, 
                 userPseudo: userProfile?.pseudo || 'Inconnu', 
                 userAvatar: userProfile?.avatarBase64 || null, 
-                createdAt: Timestamp.now() 
+                createdAt: Timestamp.now(),
+                active: true 
             });
             setMagicDraft(null); 
             setCurrentView('dashboard'); 
@@ -227,20 +215,70 @@ const App: React.FC = () => {
                         colors={arsenalData.colors} 
                         sizes={arsenalData.sizes} 
                         weights={arsenalData.weights} 
-                        lastCatchDefaults={lastCatchDefaults}                
+                        lastCatchDefaults={lastCatchDefaults}                
                     />  
                 );
             case 'history': return <HistoryView sessions={sessions} onDeleteSession={handleDeleteSession} onEditSession={handleEditRequest} currentUserId={currentUserId} />;
+            case 'locations': return (
+                <LocationsManager 
+                    locations={arsenalData.locations}
+                    spots={arsenalData.spots} 
+                    
+                    // Actions Secteurs
+                    onAddLocation={(l: string, coords: any) => handleAddItem('locations', l, coords ? { coordinates: coords } : undefined)}
+                    onEditLocation={(id: string, l: string, coords: any) => handleEditItem('locations', id, l, coords ? { coordinates: coords } : undefined)}
+                    onDeleteLocation={(id: string) => handleDeleteItem('locations', id)}
+                    onToggleFavorite={handleToggleLocationFavorite}
+                    onMoveLocation={(id: string, dir: 'up' | 'down') => handleMoveItem('locations', id, dir)} // AJOUT DU TRI SECTEURS
+                    
+                    // Actions Spots
+                    onAddSpot={(l: string, locId: string) => handleAddItem('zones', l, { locationId: locId })}
+                    onDeleteSpot={(id: string) => handleDeleteItem('zones', id)}
+                    onEditSpot={(id: string, l: string) => handleEditItem('zones', id, l)}
+
+                    onBack={() => { setCurrentView('dashboard'); }}
+                />
+            );
             case 'arsenal': return (
                 <ArsenalView 
-                    spots={arsenalData.spots} onAddSpot={(l) => handleAddItem('zones', l)} onDeleteSpot={(id) => handleDeleteItem('zones', id)} onEditSpot={(id, l) => handleEditItem('zones', id, l)}
-                    setups={arsenalData.setups} onAddSetup={(l) => handleAddItem('setups', l)} onDeleteSetup={(id) => handleDeleteItem('setups', id)} onEditSetup={(id, l) => handleEditItem('setups', id, l)}
-                    techniques={arsenalData.techniques} onAddTechnique={(l) => handleAddItem('techniques', l)} onDeleteTechnique={(id) => handleDeleteItem('techniques', id)} onEditTechnique={(id, l) => handleEditItem('techniques', id, l)}
-                    lureTypes={arsenalData.lureTypes} onAddLureType={(l) => handleAddItem('ref_lure_types', l)} onDeleteLureType={(id) => handleDeleteItem('ref_lure_types', id)} onEditLureType={(id, l) => handleEditItem('ref_lure_types', id, l)}
-                    colors={arsenalData.colors} onAddColor={(l) => handleAddItem('ref_colors', l)} onDeleteColor={(id) => handleDeleteItem('ref_colors', id)} onEditColor={(id, l) => handleEditItem('ref_colors', id, l)}
-                    sizes={arsenalData.sizes} onAddSize={(l) => handleAddItem('ref_sizes', l)} onDeleteSize={(id) => handleDeleteItem('ref_sizes', id)} onEditSize={(id, l) => handleEditItem('ref_sizes', id, l)}
-                    weights={arsenalData.weights} onAddWeight={(l) => handleAddItem('ref_weights', l)} onDeleteWeight={(id) => handleDeleteItem('ref_weights', id)} onEditWeight={(id, l) => handleEditItem('ref_weights', id, l)}
-                    currentUserId={currentUserId} 
+                    currentUserId={currentUserId}
+                    // NETTOYAGE : Suppression des props liées aux Spots/Locations
+                    
+                    setups={arsenalData.setups} 
+                    onAddSetup={(l: string) => handleAddItem('setups', l)} 
+                    onDeleteSetup={(id: string) => handleDeleteItem('setups', id)} 
+                    onEditSetup={(id: string, l: string) => handleEditItem('setups', id, l)}
+                    onMoveSetup={(id: string, dir: 'up' | 'down') => handleMoveItem('setups', id, dir)} 
+
+                    techniques={arsenalData.techniques} 
+                    onAddTechnique={(l: string) => handleAddItem('techniques', l)} 
+                    onDeleteTechnique={(id: string) => handleDeleteItem('techniques', id)} 
+                    onEditTechnique={(id: string, l: string) => handleEditItem('techniques', id, l)}
+                    onMoveTechnique={(id: string, dir: 'up' | 'down') => handleMoveItem('techniques', id, dir)} 
+
+                    lureTypes={arsenalData.lureTypes} 
+                    onAddLureType={(l: string) => handleAddItem('ref_lure_types', l)} 
+                    onDeleteLureType={(id: string) => handleDeleteItem('ref_lure_types', id)} 
+                    onEditLureType={(id: string, l: string) => handleEditItem('ref_lure_types', id, l)}
+                    onMoveLureType={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_lure_types', id, dir)} 
+
+                    colors={arsenalData.colors} 
+                    onAddColor={(l: string) => handleAddItem('ref_colors', l)} 
+                    onDeleteColor={(id: string) => handleDeleteItem('ref_colors', id)} 
+                    onEditColor={(id: string, l: string) => handleEditItem('ref_colors', id, l)}
+                    onMoveColor={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_colors', id, dir)} 
+
+                    sizes={arsenalData.sizes} 
+                    onAddSize={(l: string) => handleAddItem('ref_sizes', l)} 
+                    onDeleteSize={(id: string) => handleDeleteItem('ref_sizes', id)} 
+                    onEditSize={(id: string, l: string) => handleEditItem('ref_sizes', id, l)}
+                    onMoveSize={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_sizes', id, dir)} 
+
+                    weights={arsenalData.weights} 
+                    onAddWeight={(l: string) => handleAddItem('ref_weights', l)} 
+                    onDeleteWeight={(id: string) => handleDeleteItem('ref_weights', id)} 
+                    onEditWeight={(id: string, l: string) => handleEditItem('ref_weights', id, l)}
+                    onMoveWeight={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_weights', id, dir)} 
                 />
             );
             case 'coach': return <CoachView />;
@@ -300,6 +338,10 @@ const App: React.FC = () => {
                             <div><div className="font-black text-stone-800 text-lg leading-none">{userProfile.pseudo}</div><div className="text-xs text-stone-400 font-medium mt-1">v4.5 Soldat du Quai</div></div>
                         </div>
                         <nav className="space-y-2 flex-1">
+                            <button onClick={() => navigateFromMenu('locations')} className="w-full flex items-center justify-between p-4 rounded-2xl text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-all font-bold">
+                                <span className="flex items-center gap-3"><MapPin size={20} className="text-emerald-500"/> Mes Secteurs</span><ChevronRight size={16} />
+                            </button>
+
                             <button onClick={() => navigateFromMenu('profile')} className="w-full flex items-center justify-between p-4 rounded-2xl text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-all font-bold">
                                 <span className="flex items-center gap-3"><User size={20} className="text-amber-500"/> Mon Profil</span><ChevronRight size={16} />
                             </button>
@@ -316,7 +358,6 @@ const App: React.FC = () => {
                     <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('dashboard'); }} className={`flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-amber-600' : 'text-stone-400'}`}><Home size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Oracle</span></button>
                     <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('history'); }} className={`flex flex-col items-center gap-1 ${currentView === 'history' ? 'text-amber-600' : 'text-stone-400'}`}><ScrollText size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Journal</span></button>
                     
-                    {/* MODIFICATION : Système de centrage partagé */}
                     <div className="relative -top-6 flex items-center justify-center gap-3">
                         <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('session'); }} 
                                 className="rounded-full border-4 border-[#FAF9F6] bg-stone-800 p-4 text-white shadow-2xl active:scale-95 transition-all">

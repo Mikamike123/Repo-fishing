@@ -3,10 +3,11 @@
 // --- ENTITÉS DE BASE ---
 export interface BaseEntity {
   id: string;
-  userId: string;
-  createdAt?: any;
-  updatedAt?: any;
-  active: boolean; 
+  userId: string;           // Clé de cloisonnement (Row Level Security)
+  createdAt?: any;          // Timestamp Firestore
+  updatedAt?: any;          // Timestamp Firestore
+  active: boolean;          // Le pivot du Soft Delete : false = archivé
+  displayOrder: number;     // Pour le tri personnalisé
   userPseudo?: string;
   userAvatar?: string;
 }
@@ -14,27 +15,27 @@ export interface BaseEntity {
 // --- STRUCTURES ENVIRONNEMENTALES DÉTAILLÉES (Observables) ---
 
 export interface WeatherSnapshot {
-  temperature: number;      // °C [cite: 63]
-  pressure: number;         // hPa [cite: 64]
-  windSpeed: number;        // km/h [cite: 65]
-  windDir: number;          // ° [cite: 66]
-  precip: number;           // mm [cite: 67]
-  cloudCover: number;       // % [cite: 68]
-  conditionCode: number;    // Code WMO [cite: 69]
+  temperature: number;      // °C
+  pressure: number;         // hPa
+  windSpeed: number;        // km/h
+  windDir: number;          // °
+  precip: number;           // mm
+  cloudCover: number;       // %
+  conditionCode: number;    // Code WMO
 }
 
 export interface HydroSnapshot {
-  flowRaw: number;          // L/s (Donnée brute Vigicrues) [cite: 73]
-  flowLagged: number;       // m3/s (Débit corrigé pour le spot) [cite: 80]
-  level: number;            // mm [cite: 72]
-  waterTemp: number | null; // °C (Modèle EWMA) [cite: 75]
-  turbidityIdx: number;     // 0-1 (Indice de clarté) [cite: 81]
+  flowRaw: number;          // L/s (Donnée brute Vigicrues)
+  flowLagged: number;       // m3/s (Débit corrigé pour le spot)
+  level: number;            // mm
+  waterTemp: number | null; // °C (Modèle EWMA)
+  turbidityIdx: number;     // 0-1 (Indice de clarté)
 }
 
 export interface BioScoreSnapshot {
-  sandre: number;           // 0-100 [cite: 86]
-  brochet: number;          // 0-100 [cite: 87]
-  perche: number;           // 0-100 [cite: 88]
+  sandre: number;           // 0-100
+  brochet: number;          // 0-100
+  perche: number;           // 0-100
 }
 
 /**
@@ -46,17 +47,26 @@ export interface FullEnvironmentalSnapshot {
   hydro: HydroSnapshot;
   scores: BioScoreSnapshot;
   metadata: {
-    sourceLogId: string;     // ID document format YYYY-MM-DD_HH00 [cite: 48]
-    calculationDate: any;    // updatedAt du log Firestore [cite: 55]
+    sourceLogId: string;     // ID document format YYYY-MM-DD_HH00
+    calculationDate: any;    // updatedAt du log Firestore
   };
 }
 
 // --- ARSENAL & RÉFÉRENTIELS ---
 
+// NOUVEAU : Entité Secteur (Location)
+export interface Location extends BaseEntity {
+  label: string;
+  description?: string;
+  isFavorite?: boolean; // Gestion des favoris (Max 3 actifs)
+  coordinates?: { lat: number; lng: number }; // AJOUT : Coordonnées GPS du secteur
+}
+
 export interface Spot extends BaseEntity {
   label: string; 
   type?: 'Fleuve' | 'Etang' | 'Canal' | 'Lac' | 'Rivière' | 'Mer'; 
   coordinates?: { lat: number; lng: number };
+  locationId: string; // MODIFICATION : Lien OBLIGATOIRE vers un Secteur parent
 }
 export type Zone = Spot;
 
@@ -132,8 +142,8 @@ export interface Miss {
 }
 
 export interface Session extends BaseEntity {
-  date: string;              // YYYY-MM-DD [cite: 144]
-  startTime: string;         // HH:mm [cite: 145]
+  date: string;              // YYYY-MM-DD
+  startTime: string;         // HH:mm
   endTime: string;   
   durationMinutes: number;
 
@@ -157,6 +167,7 @@ export interface Session extends BaseEntity {
 // --- APPLICATION & PROFIL ---
 
 export interface AppData {
+    locations: Location[]; // Nouvelle liste chargée au démarrage
     spots: Spot[];
     setups: Setup[];
     techniques: Technique[];
