@@ -12,6 +12,7 @@ import { fetchUniversalWeather } from '../lib/universal-weather-service';
 import { useWaterTemp } from '../lib/useWaterTemp'; // Import du Moteur Zero-Hydro
 import { useArsenal } from '../lib/useArsenal';     // Pour la sauvegarde (handleEditItem)
 import { calculateUniversalBioScores, BioContext } from '../lib/bioScoreEngine'; // <--- NOUVEAU MOTEUR
+import OracleHero from './OracleHero';
 
 // Import des widgets extraits
 import { 
@@ -250,6 +251,10 @@ const Dashboard: React.FC<DashboardProps> = ({
                    {xpRemaining.toLocaleString()} XP requis pour le niveau suivant
                 </div>
             </div>
+
+            {/* --- NOUVEAUTÉ : ORACLE 72H (Accordéon) --- */}
+            {/* On l'insère ici pour qu'il soit accessible avant les détails météo */}
+            <OracleHero locations={locations} />
 
             {/* 2. ÉTAT DU SPOT (SÉLECTEUR DROPDOWN) */}
             <div className="bg-white rounded-[2rem] p-1 shadow-organic border border-stone-100 overflow-hidden relative">

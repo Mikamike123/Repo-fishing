@@ -2,6 +2,7 @@
 
 // --- ENTITÉS DE BASE ---
 export interface BaseEntity {
+  name: string;
   id: string;
   userId: string;           // Clé de cloisonnement (Row Level Security)
   createdAt?: any;          // Timestamp Firestore
@@ -10,6 +11,12 @@ export interface BaseEntity {
   displayOrder: number;     // Pour le tri personnalisé
   userPseudo?: string;
   userAvatar?: string;
+  // AJOUTE CES LIGNES :
+  isFavorite?: boolean;   // Pour le système de favoris Oracle
+  coordinates?: {         // Nécessaire pour l'appel Météo/Oracle
+      lat: number;
+      lng: number;
+  };
 }
 
 // --- ÉNUMÉRATIONS MÉTIER ---

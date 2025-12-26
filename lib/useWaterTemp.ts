@@ -1,5 +1,3 @@
-// lib/useWaterTemp.ts
-
 import { useState, useEffect } from 'react';
 import { Location } from '../types';
 import { fetchWeatherHistory, solveAir2Water } from './zeroHydroEngine';
@@ -17,8 +15,9 @@ export const useWaterTemp = (
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        // Sécurité : Si pas de lieu ou pas de morphologie définie, on ne fait rien
-        if (!location || !location.coordinates || !location.morphology) {
+        // SÉCURITÉ STRICTE (Fix Error 400)
+        // On vérifie que location existe ET que les coordonnées sont bien des nombres
+        if (!location || !location.coordinates || typeof location.coordinates.lat !== 'number' || typeof location.coordinates.lng !== 'number' || !location.morphology) {
             setWaterTemp(null);
             return;
         }
@@ -44,7 +43,7 @@ export const useWaterTemp = (
             try {
                 // --- STRATÉGIE 2 : COLD START ---
                 if (hoursSinceSync === null || hoursSinceSync > (INCREMENTAL_THRESHOLD_DAYS * 24)) {
-                    console.log("❄️ Zero-Hydro: Cold Start (Simulation 30 jours)...");
+                    // console.log("❄️ Zero-Hydro: Cold Start (Simulation 30 jours)...");
                     
                     const history = await fetchWeatherHistory(
                         location.coordinates!.lat, 
@@ -53,11 +52,10 @@ export const useWaterTemp = (
                     );
                     
                     if (history.length > 0) {
-                        // AJOUT : Passage du BassinType (URBAIN/AGRICOLE...)
                         computedTemp = solveAir2Water(
                             history, 
                             location.morphology!.typeId,
-                            location.morphology!.bassin // <--- Nouveau paramètre
+                            location.morphology!.bassin
                         );
                     }
                 } 
@@ -65,7 +63,7 @@ export const useWaterTemp = (
                 // --- STRATÉGIE 3 : INCREMENTAL SYNC ---
                 else {
                     const daysMissing = Math.ceil(hoursSinceSync / 24);
-                    console.log(`⚡ Zero-Hydro: Incremental Sync (${daysMissing} jours)...`);
+                    // console.log(`⚡ Zero-Hydro: Incremental Sync (${daysMissing} jours)...`);
 
                     const history = await fetchWeatherHistory(
                         location.coordinates!.lat, 
@@ -74,14 +72,11 @@ export const useWaterTemp = (
                     );
 
                     if (history.length > 0 && location.lastCalculatedTemp !== undefined) {
-                        // AJOUT : Passage du BassinType
                         computedTemp = solveAir2Water(
                             history, 
                             location.morphology!.typeId,
-                            location.morphology!.bassin, // <--- Nouveau paramètre
-                            location.lastCalculatedTemp // On enlève l'offset avant de continuer ? Non, l'offset est appliqué à la fin du moteur
-                            // NOTE TECHNIQUE : Pour l'incrémental, l'idéal serait de stocker la température "brute" sans offset, 
-                            // mais pour simplifier on considère que l'erreur est négligeable sur 1 jour.
+                            location.morphology!.bassin,
+                            location.lastCalculatedTemp
                         );
                     }
                 }
@@ -90,7 +85,10 @@ export const useWaterTemp = (
                 if (computedTemp !== undefined && !isNaN(computedTemp)) {
                     setWaterTemp(computedTemp);
                     
-                    onUpdateLocation('locations', location.id, location.label, {
+                    // On utilise 'label' ou 'name' pour le log
+                    const locLabel = (location as any).label || location.name || "Secteur";
+                    
+                    onUpdateLocation('locations', location.id, locLabel, {
                         lastCalculatedTemp: computedTemp,
                         lastSyncDate: now.toISOString()
                     });
@@ -108,7 +106,7 @@ export const useWaterTemp = (
 
         syncWaterTemp();
 
-    }, [location?.id]); 
+    }, [location?.id]); // On relance uniquement si l'ID du lieu change
 
     return { waterTemp, loading };
 };
