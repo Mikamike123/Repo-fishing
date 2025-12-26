@@ -156,6 +156,8 @@ export interface Session extends BaseEntity {
   startTime: string;
   endTime: string;   
   durationMinutes: number;
+  locationId: string;    
+  locationName: string;
   spotId: string;   
   spotName: string; 
   setupId: string;

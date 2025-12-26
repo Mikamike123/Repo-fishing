@@ -1,11 +1,11 @@
 // App.tsx
-import React, { useState, useEffect } from 'react'; 
+import React, { useState, useEffect, useMemo } from 'react'; // AJOUT useMemo
 import { Home, PlusCircle, ScrollText, Settings, Fish, Bot, User, Menu, X, ChevronRight, Users, MapPin } from 'lucide-react';
 
 import { 
   onSnapshot, query, orderBy, 
   QuerySnapshot, DocumentData, 
-  addDoc, deleteDoc, doc, Timestamp, updateDoc, collection, writeBatch 
+  addDoc, deleteDoc, doc, Timestamp, updateDoc, collection 
 } from 'firebase/firestore'; 
 
 import SessionForm from './components/SessionForm';
@@ -21,6 +21,9 @@ import { Session, UserProfile, Catch } from './types';
 import { db, sessionsCollection } from './lib/firebase'; 
 import { getUserProfile, createUserProfile } from './lib/user-service';
 import { useArsenal } from './lib/useArsenal'; 
+
+// ID du Gold Standard pour le calcul par défaut
+const GOLD_STANDARD_ID = "WYAjhoUeeikT3mS0hjip";
 
 type View = 'dashboard' | 'session' | 'history' | 'arsenal' | 'coach' | 'profile' | 'locations';
 
@@ -51,6 +54,21 @@ const App: React.FC = () => {
         handleToggleLocationFavorite 
     } = useArsenal(currentUserId);
 
+    // --- CALCUL DU SECTEUR PAR DÉFAUT ---
+    // Logique : Gold Standard > Secteur marqué par défaut > Premier de la liste
+    const defaultLocationId = useMemo(() => {
+        if (!arsenalData.locations || arsenalData.locations.length === 0) return "";
+        
+        const gold = arsenalData.locations.find(l => l.id === GOLD_STANDARD_ID);
+        if (gold) return gold.id;
+
+        const def = arsenalData.locations.find(l => (l as any).isDefault);
+        if (def) return def.id;
+
+        return arsenalData.locations[0].id;
+    }, [arsenalData.locations]);
+
+
     // --- RECHARGER LE PROFIL AU SWITCH USER ---
     useEffect(() => {
         setIsProfileLoading(true);
@@ -80,6 +98,11 @@ const App: React.FC = () => {
                     startTime: data.startTime || '08:00',
                     endTime: data.endTime || '11:00',
                     durationMinutes: data.durationMinutes || 0,
+                    
+                    // Récupération sécurisée Location
+                    locationId: data.locationId || '',
+                    locationName: data.locationName || 'Secteur Inconnu',
+
                     spotId: data.spotId || '', 
                     spotName: data.spotName || 'Spot Inconnu',
                     setupId: data.setupId || '', 
@@ -198,7 +221,6 @@ const App: React.FC = () => {
                         currentUserId={currentUserId}
                         lureTypes={arsenalData.lureTypes} 
                         colors={arsenalData.colors} 
-                        // AJOUT : Passage de locations (Correction erreur TS)
                         locations={arsenalData.locations}
                     />
                 ); 
@@ -217,7 +239,10 @@ const App: React.FC = () => {
                         colors={arsenalData.colors} 
                         sizes={arsenalData.sizes} 
                         weights={arsenalData.weights} 
-                        lastCatchDefaults={lastCatchDefaults}                
+                        lastCatchDefaults={lastCatchDefaults}
+                        // AJOUTS POUR LA GESTION LOCATION
+                        locations={arsenalData.locations}
+                        defaultLocationId={defaultLocationId}
                     />  
                 );
             case 'history': return <HistoryView sessions={sessions} onDeleteSession={handleDeleteSession} onEditSession={handleEditRequest} currentUserId={currentUserId} />;
@@ -231,7 +256,7 @@ const App: React.FC = () => {
                     onEditLocation={(id, l, extra) => handleEditItem('locations', id, l, extra)}
                     onDeleteLocation={(id: string) => handleDeleteItem('locations', id)}
                     onToggleFavorite={handleToggleLocationFavorite}
-                    onMoveLocation={(id: string, dir: 'up' | 'down') => handleMoveItem('locations', id, dir)} // AJOUT DU TRI SECTEURS
+                    onMoveLocation={(id: string, dir: 'up' | 'down') => handleMoveItem('locations', id, dir)} 
                     
                     // Actions Spots
                     onAddSpot={(l: string, locId: string) => handleAddItem('zones', l, { locationId: locId })}
@@ -244,7 +269,6 @@ const App: React.FC = () => {
             case 'arsenal': return (
                 <ArsenalView 
                     currentUserId={currentUserId}
-                    // NETTOYAGE : Suppression des props liées aux Spots/Locations
                     
                     setups={arsenalData.setups} 
                     onAddSetup={(l: string) => handleAddItem('setups', l)} 
@@ -286,7 +310,6 @@ const App: React.FC = () => {
             case 'coach': return <CoachView />;
             case 'profile': return <ProfileView userProfile={userProfile} sessions={sessions} onUpdateProfile={setUserProfile} />;
             default: return (
-                // AJOUT : Passage de locations aussi dans le default (Correction erreur TS)
                 <Dashboard 
                     sessions={sessions} 
                     onDeleteSession={handleDeleteSession} 

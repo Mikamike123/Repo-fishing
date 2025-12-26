@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { APIProvider, Map, AdvancedMarker, Pin, MapCameraChangedEvent } from '@vis.gl/react-google-maps';
-import { X, Check, MapPin } from 'lucide-react';
+import { X, Check, MapPin, Crosshair, Move } from 'lucide-react';
 
 interface LocationPickerProps {
     initialLat?: number;
@@ -14,18 +14,40 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ initialLat, initialLng,
     // Coordonnées par défaut (Nanterre) si rien n'est fourni
     const defaultCenter = { lat: 48.8924, lng: 2.2071 }; 
     
-    // État de la position du marqueur
-    const [position, setPosition] = useState<{ lat: number; lng: number }>(
+    // État de la position du marqueur (Le point rouge)
+    const [markerPosition, setMarkerPosition] = useState<{ lat: number; lng: number }>(
         initialLat && initialLng ? { lat: initialLat, lng: initialLng } : defaultCenter
     );
 
-    const handleDragEnd = (e: google.maps.MapMouseEvent) => {
+    // État du centre de la caméra (Ce que l'utilisateur regarde)
+    const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>(
+        initialLat && initialLng ? { lat: initialLat, lng: initialLng } : defaultCenter
+    );
+
+    // Helper de formatage (4 décimales)
+    const formatCoord = (val: number) => Number(val.toFixed(4));
+
+    // Gestion du Drag & Drop du marqueur
+    const handleMarkerDragEnd = (e: google.maps.MapMouseEvent) => {
         if (e.latLng) {
-            // Troncature à 4 décimales (~11m de précision) pour optimiser le cache Météo et éviter les décimales infinies
-            const lat = Number(e.latLng.lat().toFixed(4));
-            const lng = Number(e.latLng.lng().toFixed(4));
-            setPosition({ lat, lng });
+            setMarkerPosition({ 
+                lat: formatCoord(e.latLng.lat()), 
+                lng: formatCoord(e.latLng.lng()) 
+            });
         }
+    };
+
+    // Gestion du mouvement de la carte (Caméra)
+    const handleCameraChange = useCallback((ev: MapCameraChangedEvent) => {
+        setMapCenter(ev.detail.center);
+    }, []);
+
+    // Action : Téléporter le marqueur au centre de l'écran
+    const handleMoveMarkerToCenter = () => {
+        setMarkerPosition({
+            lat: formatCoord(mapCenter.lat),
+            lng: formatCoord(mapCenter.lng)
+        });
     };
 
     return (
@@ -39,7 +61,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ initialLat, initialLng,
                             <MapPin size={16} className="text-emerald-500" />
                             Définir le point GPS
                         </h3>
-                        <p className="text-[10px] text-stone-500">Déplacez le marqueur rouge</p>
+                        <p className="text-[10px] text-stone-500">Glissez la carte ou le marqueur</p>
                     </div>
                     <button onClick={onCancel} className="p-3 bg-white text-stone-400 hover:text-stone-800 rounded-full shadow-sm pointer-events-auto transition-colors">
                         <X size={20} />
@@ -48,38 +70,56 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ initialLat, initialLng,
 
                 {/* CARTE GOOGLE MAPS */}
                 <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""}>
-                    <div className="w-full h-full">
+                    <div className="w-full h-full relative">
                         <Map
                             defaultCenter={defaultCenter}
                             defaultZoom={13}
                             mapId="DEMO_MAP_ID" // Nécessaire pour AdvancedMarker
-                            disableDefaultUI={true} // Options passées en direct (Props)
+                            disableDefaultUI={true}
                             zoomControl={true}
                             streetViewControl={false}
                             mapTypeControl={false}
-                            gestureHandling={'greedy'} // Permet de bouger la carte sans CTRL
+                            gestureHandling={'greedy'}
+                            onCameraChanged={handleCameraChange} // Suivi de la caméra
                         >
                             <AdvancedMarker
-                                position={position}
+                                position={markerPosition}
                                 draggable={true}
-                                onDragEnd={handleDragEnd}
+                                onDragEnd={handleMarkerDragEnd}
                             >
                                 <Pin background={'#ef4444'} borderColor={'#b91c1c'} glyphColor={'#fff'} />
                             </AdvancedMarker>
                         </Map>
+
+                        {/* VISEUR CENTRAL (Visuel uniquement) */}
+                        <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-30 text-stone-800">
+                            <Crosshair size={24} strokeWidth={1} />
+                        </div>
+
+                        {/* BOUTON D'ACTION FLOTTANT : RAMENER LE POINT */}
+                        <div className="absolute bottom-28 right-4 flex flex-col gap-2 pointer-events-auto">
+                            <button 
+                                onClick={handleMoveMarkerToCenter}
+                                className="bg-white text-stone-700 p-3 rounded-xl shadow-lg border border-stone-100 hover:bg-stone-50 active:scale-95 transition-all flex items-center gap-2"
+                                title="Placer le marqueur au centre de l'écran"
+                            >
+                                <Move size={20} className="text-emerald-600" />
+                                <span className="text-xs font-bold hidden sm:inline">Placer ici</span>
+                            </button>
+                        </div>
                     </div>
                 </APIProvider>
 
                 {/* Footer Validation */}
                 <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/20 to-transparent pointer-events-none flex justify-center">
                     <button 
-                        onClick={() => onValidate(position)}
+                        onClick={() => onValidate(markerPosition)}
                         className="pointer-events-auto bg-stone-800 text-white px-8 py-4 rounded-2xl shadow-xl font-black flex items-center gap-3 hover:scale-105 transition-transform"
                     >
                         <Check size={20} />
                         VALIDER LA POSITION
                         <span className="text-[10px] font-normal opacity-70 bg-stone-700 px-2 py-0.5 rounded font-mono">
-                            {position.lat}, {position.lng}
+                            {markerPosition.lat}, {markerPosition.lng}
                         </span>
                     </button>
                 </div>

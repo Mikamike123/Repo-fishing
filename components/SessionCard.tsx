@@ -40,6 +40,9 @@ const getSpeciesColor = (species: SpeciesType) => {
 const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, onClick, currentUserId }) => {
     const env = session.envSnapshot;
     const isOwner = session.userId === currentUserId;
+    
+    // ID du secteur Nanterre pour l'affichage conditionnel du débit
+    const NANTERRE_SECTOR_ID = "WYAjhoUeeikT3mS0hjip";
 
     // Récupération de toutes les photos de la session pour la galerie miniature
     const allSessionPhotos = session.catches
@@ -72,7 +75,15 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
             <div className="flex justify-between items-start mb-4">
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 text-stone-800 font-black text-sm uppercase truncate">
-                        {isOwner ? <><MapPin size={14} className="text-amber-500 shrink-0" /> {session.spotName}</> : session.userPseudo}
+                        {isOwner ? (
+                            <>
+                                <MapPin size={14} className="text-amber-500 shrink-0" />
+                                {/* MODIFICATION : Affichage concaténé Secteur - Spot */}
+                                {session.locationName ? `${session.locationName} - ` : ''}{session.spotName}
+                            </>
+                        ) : (
+                            session.userPseudo
+                        )}
                     </div>
                     <div className="text-[10px] font-bold text-stone-400 mt-0.5 flex items-center gap-2">
                         {/* MODIFICATION : Ajout de l'année (year: 'numeric') pour l'archivage historique */}
@@ -123,7 +134,12 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                 <MiniEnvTile theme="amber" icon={Wind} value={env?.weather?.windSpeed ? Math.round(env.weather.windSpeed) : '--'} unit={` ${getWindDir(env?.weather?.windDirection)}`} />
                 
                 <MiniEnvTile theme="orange" icon={Droplets} value={env?.hydro?.waterTemp?.toFixed(1)} unit="°C" />
-                <MiniEnvTile theme="cyan" icon={Waves} value={env?.hydro?.flowLagged?.toFixed(0)} unit="m³/s" />
+                
+                {/* MODIFICATION : Affichage conditionnel du débit uniquement pour Nanterre */}
+                {session.locationId === NANTERRE_SECTOR_ID && (
+                    <MiniEnvTile theme="cyan" icon={Waves} value={env?.hydro?.flowLagged?.toFixed(0)} unit="m³/s" />
+                )}
+                
                 <MiniEnvTile theme="emerald" icon={Eye} value={env?.hydro?.turbidityIdx?.toFixed(2)} unit="" />
             </div>
 
