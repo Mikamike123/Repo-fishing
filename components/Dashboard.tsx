@@ -1,61 +1,185 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
-    Clock, Droplets, Wind, Activity, Cloud, Sun, CloudSun, 
-    CloudRain, Thermometer, Gauge, Trophy, Users, User as UserIcon, Flame 
+    Clock, Trophy, Users, User as UserIcon, Flame, MapPin, ChevronDown 
 } from 'lucide-react';
-import { Session, RefLureType, RefColor } from '../types';
+import { Session, RefLureType, RefColor, Location, WeatherSnapshot } from '../types';
 import SessionCard from './SessionCard';
 import SessionDetailModal from './SessionDetailModal';
 import { useCurrentConditions } from '../lib/hooks';
 import { RecordsGrid } from './RecordsGrid';
 import { buildUserHistory, getNextLevelCap } from '../lib/gamification';
+import { fetchUniversalWeather } from '../lib/universal-weather-service';
+import { useWaterTemp } from '../lib/useWaterTemp'; // Import du Moteur Zero-Hydro
+import { useArsenal } from '../lib/useArsenal';     // Pour la sauvegarde (handleEditItem)
+import { calculateUniversalBioScores, BioContext } from '../lib/bioScoreEngine'; // <--- NOUVEAU MOTEUR
 
-// --- HELPERS VISUELS ---
-const getWindDir = (deg?: number) => {
-    if (deg === undefined) return '';
-    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
-    return directions[Math.round(deg / 45) % 8];
-};
+// Import des widgets extraits
+import { 
+    getWindDir, getWeatherIcon, 
+    SpeciesScore, DataTile, 
+    ActivityIcon, CloudIcon, WindIcon, DropletsIcon, GaugeIcon, ThermometerIcon 
+} from './DashboardWidgets';
 
-const getWeatherIcon = (clouds: number) => {
-    if (clouds < 20) return <Sun size={20} className="text-amber-500" />;
-    if (clouds < 60) return <CloudSun size={20} className="text-stone-400" />;
-    if (clouds < 90) return <Cloud size={20} className="text-stone-500" />;
-    return <CloudRain size={20} className="text-stone-600" />;
+// ID du document "Gold Standard" (Nanterre - Défaut) pour fallback de sécurité
+const GOLD_STANDARD_ID = "WYAjhoUeeikT3mS0hjip";
+
+// --- CONFIGURATION DES ESPÈCES (Mapping ID -> Affichage/Clés) ---
+const SPECIES_CONFIG: Record<string, { label: string; key: string; color: string; borderColor: string }> = {
+    'Sandre': { label: 'Sandre', key: 'sandre', color: 'text-amber-600', borderColor: 'border-amber-400' },
+    'Brochet': { label: 'Brochet', key: 'brochet', color: 'text-stone-600', borderColor: 'border-stone-400' },
+    'Perche': { label: 'Perche', key: 'perche', color: 'text-emerald-600', borderColor: 'border-emerald-400' },
+    'Black-Bass': { label: 'Black-Bass', key: 'black_bass', color: 'text-lime-600', borderColor: 'border-lime-400' },
+    'Silure': { label: 'Silure', key: 'silure', color: 'text-slate-700', borderColor: 'border-slate-500' },
 };
 
 interface DashboardProps {
     sessions: Session[];
     onDeleteSession: (id: string) => void;
     onEditSession: (session: Session) => void;
-    // Callback pour le flux "Photo-First" (reste ici pour la cohérence des props passées par App)
     onMagicDiscovery: (draft: any) => void;
     userName?: string;
     currentUserId: string;
     lureTypes: RefLureType[];
     colors: RefColor[];
+    locations: Location[]; 
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
     sessions, onDeleteSession, onEditSession, onMagicDiscovery, 
-    userName, currentUserId, lureTypes, colors 
+    userName, currentUserId, lureTypes, colors, locations 
 }) => {
-    // 1. Récupération des conditions Oracle en direct
-    const { weather, hydro, scores, isLoading } = useCurrentConditions();
-    const currentYear = new Date().getFullYear();
+    // 1. Récupération des conditions Oracle en direct (Hook Base Nanterre)
+    // On renomme 'scores' en 'nanterreScores' pour éviter la confusion
+    // 'computed' contient les tendances (pression, turbidité) utiles pour les calculs locaux
+    const { weather: nanterreWeather, hydro, scores: nanterreScores, computed, isLoading: isBaseLoading } = useCurrentConditions();
+    
+    // Récupération du handler pour sauvegarder la température calculée (Hybrid Sync)
+    const { handleEditItem } = useArsenal(currentUserId);
 
-    // 2. État du filtre News Feed (Défaut : 'my' pour Mes Sessions)
+    // --- LOGIQUE SÉLECTEUR MÉTÉO ---
+
+    // A. Identifier le secteur par défaut (Gold Standard)
+    // On cherche soit le flag isDefault (si ajouté en base), soit l'ID connu
+    const defaultLocation = useMemo(() => {
+        return locations.find(l => (l as any).isDefault === true) 
+            || locations.find(l => l.id === GOLD_STANDARD_ID)
+            || locations[0]; // Fallback ultime
+    }, [locations]);
+
+    // B. Préparer la liste des options (Défaut + Favoris actifs, sans doublons)
+    const availableLocations = useMemo(() => {
+        const favorites = locations.filter(l => l.active && l.isFavorite && l.id !== defaultLocation?.id).slice(0, 3);
+        
+        // On place le défaut en premier, suivi des favoris
+        return defaultLocation ? [defaultLocation, ...favorites] : favorites;
+    }, [locations, defaultLocation]);
+
+    // State pour la location active (Initialisé avec l'ID du défaut)
+    const [activeLocationId, setActiveLocationId] = useState<string>(defaultLocation?.id || "");
+
+    // Mise à jour de l'ID actif si le defaultLocation est chargé tardivement (async)
+    useEffect(() => {
+        if (!activeLocationId && defaultLocation) {
+            setActiveLocationId(defaultLocation.id);
+        }
+    }, [defaultLocation, activeLocationId]);
+    
+    // State pour la météo affichée
+    const [displayedWeather, setDisplayedWeather] = useState<WeatherSnapshot | null>(null);
+    const [isWeatherLoading, setIsWeatherLoading] = useState(false);
+
+    // Détermine si on est sur le "Gold Standard" (Pour afficher les Bioscores et Hydro qui sont liés à la Seine)
+    const isReferenceLocation = activeLocationId === defaultLocation?.id;
+
+    // --- MOTEUR ZERO-HYDRO (Hook) ---
+    // On identifie l'objet Location complet ciblé
+    const targetLocation = useMemo(() => 
+        locations.find(l => l.id === activeLocationId) || defaultLocation || null, 
+    [locations, activeLocationId, defaultLocation]);
+
+    // Appel du hook de calcul (ne fera rien si targetLocation est null ou incomplet)
+    const { waterTemp: calculatedWaterTemp, loading: isCalculatedTempLoading } = useWaterTemp(targetLocation, handleEditItem);
+
+    // --- CALCUL DES BIOSCORES (DYNAMIQUE) ---
+    const displayedScores = useMemo(() => {
+        // Cas 1 : Nanterre (Référence) -> On prend les scores pré-calculés du Backend
+        if (isReferenceLocation) return nanterreScores;
+
+        // Cas 2 : Autre lieu -> On calcule à la volée avec le moteur Universel
+        // On a besoin de la météo locale ET de la température d'eau calculée
+        if (displayedWeather && calculatedWaterTemp !== null) {
+            
+            // On utilise les tendances régionales de Nanterre (computed) comme proxy
+            // car la pression et la turbidité sont souvent homogènes à l'échelle de l'IDF
+            const regionalProxy: BioContext = {
+                waterTemp: calculatedWaterTemp,
+                cloudCover: displayedWeather.clouds,
+                windSpeed: displayedWeather.windSpeed,
+                // Le gradient 3h (ex: -1.2 hPa) est issu de l'observatoire
+                pressureTrend: computed?.pressure_gradient_3h || 0, 
+                // L'indice de turbidité (0-1) est issu de l'observatoire
+                turbidity: computed?.turbidity_idx || 0.5 
+            };
+
+            return calculateUniversalBioScores(regionalProxy);
+        }
+
+        // En attendant le chargement, on ne retourne rien (le composant gérera le loading)
+        return null;
+    }, [isReferenceLocation, nanterreScores, displayedWeather, calculatedWaterTemp, computed]);
+
+    // --- DÉTERMINATION DES ESPÈCES À AFFICHER ---
+    const activeSpeciesList = useMemo(() => {
+        // Si Nanterre : Trio fixe historique
+        if (isReferenceLocation) {
+            return ['Sandre', 'Brochet', 'Perche'];
+        }
+        // Sinon : Espèces configurées sur le secteur (ou fallback trio si vide)
+        if (targetLocation?.speciesIds && targetLocation.speciesIds.length > 0) {
+            return targetLocation.speciesIds;
+        }
+        return ['Sandre', 'Brochet', 'Perche']; // Fallback par défaut
+    }, [isReferenceLocation, targetLocation]);
+
+    // EFFET : Mise à jour de la météo quand on change de source
+    useEffect(() => {
+        const updateWeather = async () => {
+            // Si on est sur le secteur de référence, on utilise les données du Hook (Nanterre Live)
+            if (isReferenceLocation || !activeLocationId) {
+                setDisplayedWeather(nanterreWeather);
+                setIsWeatherLoading(false);
+            } else {
+                // Sinon (Mode Custom), on va chercher la météo universelle
+                const targetLoc = locations.find(l => l.id === activeLocationId);
+                
+                if (targetLoc && targetLoc.coordinates) {
+                    setIsWeatherLoading(true);
+                    const customData = await fetchUniversalWeather(targetLoc.coordinates.lat, targetLoc.coordinates.lng);
+                    setDisplayedWeather(customData);
+                    setIsWeatherLoading(false);
+                } else {
+                    // Fallback sécurité
+                    setDisplayedWeather(nanterreWeather);
+                }
+            }
+        };
+
+        updateWeather();
+    }, [activeLocationId, nanterreWeather, locations, isReferenceLocation]);
+
+    const isLoading = isBaseLoading || isWeatherLoading;
+
+    // --- DONNÉES GAMIFICATION ---
+    const currentYear = new Date().getFullYear();
     const [feedFilter, setFeedFilter] = useState<'all' | 'my'>('my');
 
-    // 3. Logique de filtrage du Fil d'Actualité
     const filteredFeedSessions = useMemo(() => {
         const base = feedFilter === 'my' 
             ? sessions.filter(s => s.userId === currentUserId)
             : sessions;
-        return base.slice(0, 5); // Affiche les 5 plus récentes après filtrage
+        return base.slice(0, 5);
     }, [sessions, feedFilter, currentUserId]);
 
-    // 4. CALCUL GAMIFICATION (ORACLE SEASON)
     const currentSeasonStats = useMemo(() => {
         const userSessions = sessions.filter(s => s.userId === currentUserId);
         const history = buildUserHistory(userSessions);
@@ -69,7 +193,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     const progressPercent = Math.min(100, (currentSeasonStats.xpTotal / nextLevelXP) * 100);
     const xpRemaining = nextLevelXP - currentSeasonStats.xpTotal;
 
-    // Gestion du Modal
     const [selectedSession, setSelectedSession] = useState<Session | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
 
@@ -78,10 +201,17 @@ const Dashboard: React.FC<DashboardProps> = ({
         setIsDetailOpen(true);
     };
 
+    // Logique d'affichage finale de la température d'eau
+    // Si Nanterre : Source Hydro (Observatoire)
+    // Si Autre : Source Calculée (Zero-Hydro)
+    const displayWaterTemp = isReferenceLocation ? hydro?.waterTemp : calculatedWaterTemp;
+    // Loading state : Si on est sur le custom, on attend que le calcul Zero-Hydro soit fini
+    const displayWaterLoading = isReferenceLocation ? isBaseLoading : isCalculatedTempLoading;
+
     return (
         <div className="space-y-8 animate-in fade-in duration-500 pb-20">
             
-            {/* 1. PROGRESSION DYNAMIQUE (ORACLE SEASON PANEL) */}
+            {/* 1. PROGRESSION DYNAMIQUE */}
             <div className="bg-white rounded-3xl p-6 border border-stone-200 shadow-sm relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
                 
@@ -121,32 +251,144 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </div>
             </div>
 
-            {/* 2. ÉTAT DU SPOT (Nanterre) */}
+            {/* 2. ÉTAT DU SPOT (SÉLECTEUR DROPDOWN) */}
             <div className="bg-white rounded-[2rem] p-1 shadow-organic border border-stone-100 overflow-hidden relative">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
                 
                 <div className="p-6 relative z-10">
-                    <div className="flex justify-between items-center mb-8">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
                         <h3 className="text-lg font-bold text-stone-800 flex items-center gap-2">
-                            <ActivityIcon /> État du Spot (Nanterre)
+                            <ActivityIcon /> 
+                            {isReferenceLocation ? 'Météo Nanterre (Ref)' : 'Météo Secteur'}
                         </h3>
-                        <span className="px-3 py-1 bg-amber-50 text-amber-600 text-[10px] font-black uppercase tracking-wider rounded-full border border-amber-100 animate-pulse">
-                            En Direct
-                        </span>
+
+                        {/* SÉLECTEUR LISTE DÉROULANTE (DROPDOWN) */}
+                        <div className="relative w-full sm:w-auto min-w-[200px]">
+                            {/* Icône gauche */}
+                            <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-stone-400">
+                                <MapPin size={16} />
+                            </div>
+                            
+                            <select
+                                value={activeLocationId}
+                                onChange={(e) => setActiveLocationId(e.target.value)}
+                                className="appearance-none w-full bg-stone-50 border border-stone-200 text-stone-700 font-bold text-sm rounded-2xl py-3 pl-10 pr-10 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-all cursor-pointer shadow-sm hover:bg-stone-100"
+                            >
+                                {availableLocations.map(loc => (
+                                    <option key={loc.id} value={loc.id}>
+                                        {loc.label} {(loc as any).isDefault || loc.id === GOLD_STANDARD_ID ? '(Défaut)' : ''}
+                                    </option>
+                                ))}
+                                {availableLocations.length === 0 && (
+                                    <option value="">Aucun secteur actif</option>
+                                )}
+                            </select>
+
+                            {/* Chevron personnalisé droite */}
+                            <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-stone-400">
+                                <ChevronDown size={16} strokeWidth={3} />
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4 mb-8">
-                        <SpeciesScore label="Sandre" score={scores?.sandre} color="text-amber-600" borderColor="border-amber-400" loading={isLoading} />
-                        <SpeciesScore label="Brochet" score={scores?.brochet} color="text-stone-600" borderColor="border-stone-400" loading={isLoading} />
-                        <SpeciesScore label="Perche" score={scores?.perche} color="text-emerald-600" borderColor="border-emerald-400" loading={isLoading} />
+                    {/* INDICATEUR D'ACTIVITÉ (Bioscores DYNAMIQUES) */}
+                    {/* On utilise grid-cols-3 par défaut, mais ça s'adaptera si moins d'espèces */}
+                    <div className="grid grid-cols-3 gap-4 mb-8 relative justify-center">
+                        {activeSpeciesList.map(speciesId => {
+                            // Récupération de la config (couleur, label)
+                            const config = SPECIES_CONFIG[speciesId] || { 
+                                label: speciesId, 
+                                key: speciesId.toLowerCase(), 
+                                color: 'text-stone-400', 
+                                borderColor: 'border-stone-300' 
+                            };
+                            
+                            // Récupération du score dans l'objet dynamique
+                            // On cast 'displayedScores' en 'any' pour l'accès dynamique sécurisé
+                            const scoreValue = displayedScores ? (displayedScores as any)[config.key] : undefined;
+
+                            return (
+                                <SpeciesScore 
+                                    key={speciesId}
+                                    label={config.label} 
+                                    score={scoreValue} 
+                                    color={config.color} 
+                                    borderColor={config.borderColor} 
+                                    loading={isBaseLoading} 
+                                />
+                            );
+                        })}
+
+                        {/* Disclaimer dynamique */}
+                        {!isReferenceLocation && (
+                             <div className="absolute -bottom-6 left-0 right-0 text-center">
+                                <span className="text-[9px] text-stone-400 bg-stone-50 px-2 py-0.5 rounded-full border border-stone-100">
+                                    Scores localisés (Météo Site + Hydro Régionale)
+                                </span>
+                             </div>
+                        )}
+                        {isReferenceLocation && (
+                             <div className="absolute -bottom-6 left-0 right-0 text-center">
+                                <span className="text-[9px] text-stone-400 bg-stone-50 px-2 py-0.5 rounded-full border border-stone-100">
+                                    Scores calculés sur ref. Seine (Nanterre)
+                                </span>
+                             </div>
+                        )}
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                        <DataTile label="Air °C" value={weather?.temperature !== undefined ? Math.round(weather.temperature) : '--'} unit="" icon={weather ? getWeatherIcon(weather.cloudCover) : <CloudIcon />} color="bg-rose-50 text-rose-900" loading={isLoading} />
-                        <DataTile label="Vent" value={weather?.windSpeed !== undefined ? Math.round(weather.windSpeed) : '--'} unit={weather?.windDir !== undefined ? `km/h ${getWindDir(weather.windDir)}` : 'km/h'} icon={<WindIcon />} color="bg-stone-100 text-stone-600" loading={isLoading} />
-                        <DataTile label="Pression" value={weather?.pressure !== undefined ? Math.round(weather.pressure) : '--'} unit="hPa" icon={<GaugeIcon />} color="bg-indigo-50 text-indigo-900" loading={isLoading} />
-                        <DataTile label="Débit" value={hydro?.flowLagged !== undefined ? Math.round(hydro.flowLagged) : '--'} unit="m³/s" icon={<DropletsIcon />} color="bg-cyan-50 text-cyan-900" loading={isLoading} />
-                        <DataTile label="Eau" value={hydro?.waterTemp ? hydro.waterTemp.toFixed(1) : '--'} unit="°C" icon={<ThermometerIcon />} color="bg-orange-50 text-orange-900" loading={isLoading} />
+                    {/* GRILLE MÉTÉO DYNAMIQUE */}
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-8">
+                        {/* TEMPÉRATURE (DYNAMIQUE) */}
+                        <DataTile 
+                            label="Air °C" 
+                            value={displayedWeather?.temperature !== undefined ? Math.round(displayedWeather.temperature) : '--'} 
+                            unit="" 
+                            icon={displayedWeather ? getWeatherIcon(displayedWeather.clouds) : <CloudIcon />} 
+                            color="bg-rose-50 text-rose-900" 
+                            loading={isLoading} 
+                        />
+                        
+                        {/* VENT (DYNAMIQUE) */}
+                        <DataTile 
+                            label="Vent" 
+                            value={displayedWeather?.windSpeed !== undefined ? Math.round(displayedWeather.windSpeed) : '--'} 
+                            unit={displayedWeather?.windDirection !== undefined ? `km/h ${getWindDir(displayedWeather.windDirection)}` : 'km/h'} 
+                            icon={<WindIcon />} 
+                            color="bg-stone-100 text-stone-600" 
+                            loading={isLoading} 
+                        />
+
+                        {/* PRESSION (DYNAMIQUE) */}
+                        <DataTile 
+                            label="Pression" 
+                            value={displayedWeather?.pressure !== undefined ? Math.round(displayedWeather.pressure) : '--'} 
+                            unit="hPa" 
+                            icon={<GaugeIcon />} 
+                            color="bg-indigo-50 text-indigo-900" 
+                            loading={isLoading} 
+                        />
+
+                        {/* HYDRO (CONDITIONNEL : Seulement pour Nanterre) */}
+                        {isReferenceLocation && (
+                            <DataTile 
+                                label="Débit (Seine)" 
+                                value={hydro?.flowLagged !== undefined ? Math.round(hydro.flowLagged) : '--'} 
+                                unit="m³/s" 
+                                icon={<DropletsIcon />} 
+                                color="bg-cyan-50 text-cyan-900" 
+                                loading={isBaseLoading} 
+                            />
+                        )}
+                        
+                        {/* EAU (DYNAMIQUE: OBSERVATOIRE OU ZERO-HYDRO) */}
+                        <DataTile 
+                            label={isReferenceLocation ? "Eau (Seine)" : "Eau (Estimée)"} 
+                            value={displayWaterTemp !== undefined && displayWaterTemp !== null ? displayWaterTemp.toFixed(1) : '--'} 
+                            unit="°C" 
+                            icon={<ThermometerIcon />} 
+                            color="bg-orange-50 text-orange-900" 
+                            loading={displayWaterLoading} 
+                        />
                     </div>
                 </div>
             </div>
@@ -180,8 +422,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                     </h3>
 
                     <div className="flex items-center gap-3">
-                        {/* MAGIC SCAN BUTTON supprimé d'ici pour être placé dans le footer global (App.tsx) */}
-
                         {/* SELECTEUR DE FLUX */}
                         <div className="flex bg-stone-100 p-1 rounded-xl border border-stone-200 shadow-inner">
                             <button 
@@ -227,50 +467,5 @@ const Dashboard: React.FC<DashboardProps> = ({
         </div>
     );
 };
-
-// --- COMPOSANTS INTERNES ---
-const SpeciesScore = ({ label, score, color, borderColor, loading }: any) => (
-    <div className="flex flex-col items-center">
-        <div className="relative w-20 h-20 sm:w-24 sm:h-24 flex items-center justify-center">
-            <div className="absolute inset-0 border-8 border-stone-50 rounded-full"></div>
-            <div 
-                className={`absolute inset-0 border-8 ${borderColor} rounded-full border-t-transparent transition-all duration-1000`} 
-                style={{ transform: `rotate(${(score || 0) * 3.6 - 45}deg)`, opacity: loading ? 0.3 : 1 }}
-            ></div>
-            <div className="text-center z-10">
-                {loading ? (
-                    <div className="h-6 w-8 bg-stone-100 rounded animate-pulse mx-auto"></div>
-                ) : (
-                    <span className={`block text-2xl font-black ${color} tracking-tighter`}>
-                        {score !== undefined ? Math.round(score) : '0'}
-                    </span>
-                )}
-            </div>
-        </div>
-        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mt-2">{label}</span>
-    </div>
-);
-
-const ActivityIcon = () => <Activity className="text-emerald-500" size={24} />;
-const CloudIcon = () => <Cloud size={16} />;
-const WindIcon = () => <Wind size={16} />;
-const DropletsIcon = () => <Droplets size={16} />;
-const GaugeIcon = () => <Gauge size={16} />;
-const ThermometerIcon = () => <div className="flex justify-center"><Thermometer size={16} /></div>;
-
-const DataTile = ({ label, value, unit, icon, color, loading }: any) => (
-    <div className={`flex flex-col items-center justify-center p-3 rounded-2xl border border-stone-50 ${color.split(' ')[0]} bg-opacity-30 relative`}>
-        <div className={`mb-1 ${color.split(' ')[1]}`}>{icon}</div>
-        {loading ? (
-            <div className="h-4 w-8 bg-stone-200/50 rounded animate-pulse my-1"></div>
-        ) : (
-            <div className="text-sm font-black text-stone-800 leading-tight text-center">
-                {value !== undefined && value !== null ? value : '--'}
-                <span className="text-[10px] font-medium ml-0.5 text-stone-500">{unit}</span>
-            </div>
-        )}
-        <div className="text-[9px] font-bold uppercase text-stone-400 mt-0.5">{label}</div>
-    </div>
-);
 
 export default Dashboard;

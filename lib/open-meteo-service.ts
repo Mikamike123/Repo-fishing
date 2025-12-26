@@ -45,7 +45,9 @@ export const fetchNanterreWeather = async (): Promise<WeatherSnapshot | null> =>
                 clouds: data.hourly.cloud_cover[safeIndex],      // %
                 windSpeed: data.hourly.wind_speed_10m[safeIndex],
                 // AJOUT : Direction du vent
-                windDirection: data.hourly.wind_direction_10m[safeIndex] 
+                windDirection: data.hourly.wind_direction_10m[safeIndex], 
+                precip: data.hourly.precipitation[safeIndex],
+                conditionCode: data.hourly.weathercode[safeIndex]
             };
             
             return snapshot;

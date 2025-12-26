@@ -8,12 +8,15 @@ export interface LatestEnvironment {
   weather: FullEnvironmentalSnapshot['weather'] | null;
   hydro: FullEnvironmentalSnapshot['hydro'] | null;
   scores: FullEnvironmentalSnapshot['scores'] | null;
+  // AJOUT : On expose les données brutes calculées (pression gradient, turbidité)
+  // pour permettre au Dashboard de faire ses calculs locaux "Zero-Hydro"
+  computed: any | null; 
   isLoading: boolean;
 }
 
 export const useLatestEnvironment = (): LatestEnvironment => {
   const [data, setData] = useState<LatestEnvironment>({
-    weather: null, hydro: null, scores: null, isLoading: true,
+    weather: null, hydro: null, scores: null, computed: null, isLoading: true,
   });
 
   useEffect(() => {
@@ -41,8 +44,9 @@ export const useLatestEnvironment = (): LatestEnvironment => {
             temperature: d.weather?.temp || 0,
             pressure: d.weather?.pressure || 0,
             windSpeed: d.weather?.windSpeed || 0,
-            windDir: d.weather?.windDir || 0,
-            cloudCover: d.weather?.cloudCover || 0,
+            // CORRECTION DE TYPE : Mapping windDir (DB) -> windDirection (Interface)
+            windDirection: d.weather?.windDir || 0, 
+            clouds: d.weather?.cloudCover || 0,
             precip: d.weather?.precip || 0,
             conditionCode: d.weather?.condition_code || 0
           },
@@ -58,6 +62,8 @@ export const useLatestEnvironment = (): LatestEnvironment => {
             brochet: d.computed?.score_brochet || 0,
             perche: d.computed?.score_perche || 0,
           },
+          // AJOUT : Transmission de l'objet computed complet
+          computed: d.computed || null,
           isLoading: false,
         });
       } else {

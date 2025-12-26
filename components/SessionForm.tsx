@@ -105,9 +105,11 @@ const SessionForm: React.FC<SessionFormProps> = ({
                             temperature: d.weather?.temp || 0,
                             pressure: d.weather?.pressure || 0,
                             windSpeed: d.weather?.windSpeed || 0,
-                            windDir: d.weather?.windDir || 0,
+                            // CORRECTION : Mapping des champs DB (windDir -> windDirection)
+                            windDirection: d.weather?.windDir || 0, 
                             precip: d.weather?.precip || 0,
-                            cloudCover: d.weather?.cloudCover || 0,
+                            // CORRECTION : Mapping des champs DB (cloudCover -> clouds)
+                            clouds: d.weather?.cloudCover || 0, 
                             conditionCode: d.weather?.condition_code || 0
                         },
                         hydro: {
@@ -252,14 +254,16 @@ const SessionForm: React.FC<SessionFormProps> = ({
                     
                     <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide py-2">
                         <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50 text-blue-900 border border-blue-100 shrink-0 min-w-[85px] justify-center">
-                            {envSnapshot ? getWeatherIcon(envSnapshot.weather.cloudCover) : <Cloud size={16} className="text-blue-300"/>}
+                            {/* CORRECTION : cloudCover -> clouds */}
+                            {envSnapshot ? getWeatherIcon(envSnapshot.weather.clouds) : <Cloud size={16} className="text-blue-300"/>}
                             <span className="text-sm font-bold">{envSnapshot ? `${Math.round(envSnapshot.weather.temperature)}°C` : '--'}</span>
                         </div>
 
                         <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-stone-100 text-stone-600 border border-stone-200 shrink-0 min-w-[100px] justify-center">
                             <Wind size={16} className="text-stone-400" />
                             <span className="text-sm font-bold">
-                                {envSnapshot ? `${Math.round(envSnapshot.weather.windSpeed)} ${getWindDir(envSnapshot.weather.windDir)}` : '--'}
+                                {/* CORRECTION : windDir -> windDirection */}
+                                {envSnapshot ? `${Math.round(envSnapshot.weather.windSpeed)} ${getWindDir(envSnapshot.weather.windDirection)}` : '--'}
                             </span>
                         </div>
 
@@ -314,11 +318,11 @@ const SessionForm: React.FC<SessionFormProps> = ({
                 </div>
 
                 <div className="pt-2">
-                     <label className="text-[10px] font-bold text-stone-400 uppercase mb-3 flex justify-between">
+                      <label className="text-[10px] font-bold text-stone-400 uppercase mb-3 flex justify-between">
                         <span>Ressenti Global</span>
                         <span className="text-amber-500 text-lg font-black">{feelingScore}/10</span>
-                     </label>
-                     <input type="range" min="1" max="10" value={feelingScore} onChange={e => setFeelingScore(parseInt(e.target.value))} className="w-full h-2 bg-stone-100 rounded-lg appearance-none cursor-pointer accent-amber-500"/>
+                      </label>
+                      <input type="range" min="1" max="10" value={feelingScore} onChange={e => setFeelingScore(parseInt(e.target.value))} className="w-full h-2 bg-stone-100 rounded-lg appearance-none cursor-pointer accent-amber-500"/>
                 </div>
 
                 <textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Observations sur la session..." className="w-full p-4 bg-stone-50 rounded-2xl text-sm outline-none resize-none focus:ring-2 focus:ring-stone-200 transition-all" />

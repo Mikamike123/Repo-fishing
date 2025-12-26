@@ -113,10 +113,15 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
 
             {/* --- WIDGETS ENVIRONNEMENTAUX (Oracle Style) --- */}
             <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide mb-5 pb-1">
-                <MiniEnvTile theme="blue" icon={() => getWeatherIcon(env?.weather?.cloudCover || 0)} value={env?.weather?.cloudCover} unit="%" />
+                {/* CORRECTION : cloudCover -> clouds */}
+                <MiniEnvTile theme="blue" icon={() => getWeatherIcon(env?.weather?.clouds || 0)} value={env?.weather?.clouds} unit="%" />
+                
                 <MiniEnvTile theme="rose" icon={Thermometer} value={env?.weather?.temperature ? Math.round(env.weather.temperature) : '--'} unit="°C" />
                 <MiniEnvTile theme="indigo" icon={Gauge} value={env?.weather?.pressure?.toFixed(0)} unit=" hPa" />
-                <MiniEnvTile theme="amber" icon={Wind} value={env?.weather?.windSpeed ? Math.round(env.weather.windSpeed) : '--'} unit={` ${getWindDir(env?.weather?.windDir)}`} />
+                
+                {/* CORRECTION : windDir -> windDirection */}
+                <MiniEnvTile theme="amber" icon={Wind} value={env?.weather?.windSpeed ? Math.round(env.weather.windSpeed) : '--'} unit={` ${getWindDir(env?.weather?.windDirection)}`} />
+                
                 <MiniEnvTile theme="orange" icon={Droplets} value={env?.hydro?.waterTemp?.toFixed(1)} unit="°C" />
                 <MiniEnvTile theme="cyan" icon={Waves} value={env?.hydro?.flowLagged?.toFixed(0)} unit="m³/s" />
                 <MiniEnvTile theme="emerald" icon={Eye} value={env?.hydro?.turbidityIdx?.toFixed(2)} unit="" />
@@ -133,7 +138,8 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
             {/* --- TAGS PRISES ET RATÉS --- */}
             <div className="flex flex-wrap gap-2 mb-5">
                 {session.catches.map(fish => (
-                    <div key={fish.id} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[10px] font-black ${getSpeciesColor(fish.species)} shadow-sm`}>
+                    // CORRECTION : Casting as SpeciesType
+                    <div key={fish.id} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[10px] font-black ${getSpeciesColor(fish.species as SpeciesType)} shadow-sm`}>
                         <Fish size={10} /> {fish.species} {fish.size}cm
                         {fish.photoUrls && fish.photoUrls.length > 0 && <ImageIcon size={8} className="ml-1 opacity-50" />}
                     </div>

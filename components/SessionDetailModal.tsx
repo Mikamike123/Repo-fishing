@@ -130,11 +130,16 @@ const SessionDetailModal: React.FC<SessionDetailModalProps> = ({ session, isOpen
                 <CloudSun size={14} /> Atmosphère
               </h3>
               <div className="grid grid-cols-3 gap-3">
-                <DataTile label="Couverture" value={env?.weather?.cloudCover} unit="%" icon={CloudSun} theme="slate" />
+                {/* CORRECTION : cloudCover -> clouds */}
+                <DataTile label="Couverture" value={env?.weather?.clouds} unit="%" icon={CloudSun} theme="slate" />
+                
                 <DataTile label="Temp. Air" value={env?.weather?.temperature ? Math.round(env.weather.temperature) : null} unit="°C" icon={Thermometer} theme="rose" />
                 <DataTile label="Pression" value={env?.weather?.pressure?.toFixed(0)} unit="hPa" icon={Gauge} theme="indigo" />
                 <DataTile label="Vitesse Vent" value={env?.weather?.windSpeed ? Math.round(env.weather.windSpeed) : null} unit="km/h" icon={Wind} theme="amber" />
-                <DataTile label="Direction" value={getWindDir(env?.weather?.windDir)} unit="" icon={Wind} theme="amber" />
+                
+                {/* CORRECTION : windDir -> windDirection */}
+                <DataTile label="Direction" value={getWindDir(env?.weather?.windDirection)} unit="" icon={Wind} theme="amber" />
+                
                 <DataTile label="Précip." value={env?.weather?.precip} unit="mm" icon={CloudRain} theme="blue" />
               </div>
             </div>
@@ -171,7 +176,8 @@ const SessionDetailModal: React.FC<SessionDetailModalProps> = ({ session, isOpen
                   <div className="flex justify-between items-start">
                     <div className="flex gap-2 items-center">
                       <div className="px-3 py-1 bg-stone-50 rounded-xl text-[10px] font-black text-stone-500">{formatCatchTime(c)}</div>
-                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${getSpeciesColor(c.species)}`}>{c.species}</span>
+                      {/* CORRECTION : Casting explicite as SpeciesType */}
+                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${getSpeciesColor(c.species as SpeciesType)}`}>{c.species}</span>
                       {c.size >= 60 && <Trophy size={16} className="text-amber-500" />}
                     </div>
                     <span className="text-3xl font-black text-stone-800 tracking-tighter">{c.size}<span className="text-sm text-stone-400 ml-0.5">cm</span></span>

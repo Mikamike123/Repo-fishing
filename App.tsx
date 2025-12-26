@@ -198,6 +198,8 @@ const App: React.FC = () => {
                         currentUserId={currentUserId}
                         lureTypes={arsenalData.lureTypes} 
                         colors={arsenalData.colors} 
+                        // AJOUT : Passage de locations (Correction erreur TS)
+                        locations={arsenalData.locations}
                     />
                 ); 
             case 'session': 
@@ -226,7 +228,7 @@ const App: React.FC = () => {
                     
                     // Actions Secteurs
                     onAddLocation={(l: string, coords: any) => handleAddItem('locations', l, coords ? { coordinates: coords } : undefined)}
-                    onEditLocation={(id: string, l: string, coords: any) => handleEditItem('locations', id, l, coords ? { coordinates: coords } : undefined)}
+                    onEditLocation={(id, l, extra) => handleEditItem('locations', id, l, extra)}
                     onDeleteLocation={(id: string) => handleDeleteItem('locations', id)}
                     onToggleFavorite={handleToggleLocationFavorite}
                     onMoveLocation={(id: string, dir: 'up' | 'down') => handleMoveItem('locations', id, dir)} // AJOUT DU TRI SECTEURS
@@ -283,7 +285,20 @@ const App: React.FC = () => {
             );
             case 'coach': return <CoachView />;
             case 'profile': return <ProfileView userProfile={userProfile} sessions={sessions} onUpdateProfile={setUserProfile} />;
-            default: return <Dashboard sessions={sessions} onDeleteSession={handleDeleteSession} onEditSession={handleEditRequest} onMagicDiscovery={handleMagicDiscovery} userName={userProfile.pseudo} currentUserId={currentUserId} lureTypes={arsenalData.lureTypes} colors={arsenalData.colors} />; 
+            default: return (
+                // AJOUT : Passage de locations aussi dans le default (Correction erreur TS)
+                <Dashboard 
+                    sessions={sessions} 
+                    onDeleteSession={handleDeleteSession} 
+                    onEditSession={handleEditRequest} 
+                    onMagicDiscovery={handleMagicDiscovery} 
+                    userName={userProfile.pseudo} 
+                    currentUserId={currentUserId} 
+                    lureTypes={arsenalData.lureTypes} 
+                    colors={arsenalData.colors} 
+                    locations={arsenalData.locations}
+                />
+            ); 
         }
     };
 

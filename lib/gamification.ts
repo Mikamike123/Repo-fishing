@@ -88,7 +88,9 @@ export const getNextLevelCap = (level: number): number => {
 
 // Calcul XP d'une capture unique
 export const calculateCatchXP = (c: Catch, isYearlyPB: boolean): number => {
-  const rules = SPECIES_XP[c.species] || SPECIES_XP['Inconnu'];
+  // CORRECTION : Cast explicite de c.species en SpeciesType pour l'indexation
+  const speciesKey = (c.species as SpeciesType) || 'Inconnu';
+  const rules = SPECIES_XP[speciesKey] || SPECIES_XP['Inconnu'];
   
   let xp = rules.base;
   
@@ -96,8 +98,8 @@ export const calculateCatchXP = (c: Catch, isYearlyPB: boolean): number => {
   const sizeDelta = Math.max(0, c.size - rules.maille);
   xp += sizeDelta * rules.perCm;
 
-  // Bonus Poutre/Monstre
-  xp += getSizeBonus(c.species, c.size);
+  // Bonus Poutre/Monstre (CORRECTION : Cast explicite)
+  xp += getSizeBonus(speciesKey, c.size);
 
   // Bonus PB Saison
   if (isYearlyPB) xp += XP_RULES.YEARLY_PB;
@@ -118,6 +120,8 @@ export const calculateSeasonStats = (allSessions: Session[], year: number): Year
   let weeksWithStreak = 0;
   
   const yearPBs: Record<string, number> = {}; 
+  
+  // CORRECTION : On utilise topCatch (type Catch) pour matcher types.ts
   let topCatch: Catch | undefined;
   let topCatchScore = 0;
 
@@ -151,8 +155,10 @@ export const calculateSeasonStats = (allSessions: Session[], year: number): Year
       const fishXP = calculateCatchXP(fish, isPB);
       xpTotal += fishXP;
 
+      // Mise à jour du "Top Catch"
       if (fishXP > topCatchScore) {
         topCatchScore = fishXP;
+        // CORRECTION : On stocke l'objet Catch complet
         topCatch = fish;
       }
     });
@@ -166,6 +172,7 @@ export const calculateSeasonStats = (allSessions: Session[], year: number): Year
     }
   });
 
+  // CORRECTION : Retour conforme à l'interface YearlySnapshot de types.ts
   return {
     year,
     levelReached: getLevelFromXP(xpTotal),
@@ -173,7 +180,7 @@ export const calculateSeasonStats = (allSessions: Session[], year: number): Year
     sessionCount: yearSessions.length,
     fishCount,
     weeksWithStreak,
-    topCatch
+    topCatch 
   };
 };
 

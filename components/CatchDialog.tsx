@@ -74,6 +74,7 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
   sessionStartTime, sessionEndTime, sessionDate, lureTypes, colors, sizes, weights,
   lastCatchDefaults, userPseudo = "Michael"
 }) => {
+  // Initialisation par défaut sécurisée
   const [species, setSpecies] = useState<SpeciesType>('Sandre');
   const [size, setSize] = useState<number>(45);
   const [selectedTechId, setSelectedTechId] = useState('');
@@ -101,38 +102,65 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
       setError(null);
       setAiFeedback(null);
       if (initialData) {
-        setSpecies(initialData.species);
+        // Casting sécurisé pour l'espèce venant de la BDD
+        setSpecies((initialData.species as SpeciesType) || 'Sandre');
         setSize(initialData.size);
         setLureName(initialData.lureName || ''); 
+        
+        // Gestion des techniques et spots
         if (availableTechniques.length) setSelectedTechId(initialData.techniqueId || '');
-        if (availableZones.length) setSelectedZoneId(initialData.spotId || availableZones[0].id);
+        if (availableZones.length) setSelectedZoneId(initialData.spotId || availableZones[0]?.id || '');
+        
         setSelectedLureTypeId(initialData.lureTypeId || '');
         setSelectedColorId(initialData.lureColorId || '');
         setSelectedSizeId(initialData.lureSizeId || '');
         setSelectedWeightId(initialData.lureWeightId || '');
-        setPhotoLink1(initialData.photoUrls?.[0] || '');
-        setPreviewUrl(initialData.photoUrls?.[0] || null);
+        
+        // Gestion photo sécurisée
+        const photo = initialData.photoUrls && initialData.photoUrls.length > 0 ? initialData.photoUrls[0] : '';
+        setPhotoLink1(photo);
+        setPreviewUrl(photo || null);
+        
+        // Gestion Snapshot
         setEnvSnapshot(initialData.envSnapshot || null);
         setEnvStatus(initialData.envSnapshot ? 'found' : 'idle');
+        
+        // Gestion du timestamp Firestore ou Date JS
         if (initialData.timestamp) {
-            const dateObj = initialData.timestamp instanceof Date ? initialData.timestamp : new Date((initialData.timestamp as any).seconds * 1000);
+            let dateObj: Date;
+            if (initialData.timestamp instanceof Date) {
+                dateObj = initialData.timestamp;
+            } else if ((initialData.timestamp as any).seconds) {
+                dateObj = new Date((initialData.timestamp as any).seconds * 1000);
+            } else {
+                dateObj = new Date(); // Fallback
+            }
             setTime(dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
         }
       } else {
+        // Mode création : Reset total
         setTime(sessionStartTime);
-        setSpecies('Sandre'); setSize(45); setPhotoLink1('');
-        setPreviewUrl(null); setEnvSnapshot(null); setEnvStatus('idle');
+        setSpecies('Sandre'); 
+        setSize(45); 
+        setPhotoLink1('');
+        setPreviewUrl(null); 
+        setEnvSnapshot(null); 
+        setEnvStatus('idle');
+        
         if (lastCatchDefaults) {
-            setSelectedTechId(lastCatchDefaults.techniqueId);
-            setSelectedZoneId(lastCatchDefaults.spotId); 
+            setSelectedTechId(lastCatchDefaults.techniqueId || '');
+            setSelectedZoneId(lastCatchDefaults.spotId || ''); 
             setSelectedLureTypeId(lastCatchDefaults.lureTypeId || '');
             setSelectedColorId(lastCatchDefaults.lureColorId || '');
             setSelectedSizeId(lastCatchDefaults.lureSizeId || '');
             setSelectedWeightId(lastCatchDefaults.lureWeightId || '');
             setLureName(lastCatchDefaults.lureName || '');
         } else {
-            setLureName(''); setSelectedLureTypeId(''); setSelectedColorId('');
-            setSelectedSizeId(''); setSelectedWeightId('');
+            setLureName(''); 
+            setSelectedLureTypeId(''); 
+            setSelectedColorId('');
+            setSelectedSizeId(''); 
+            setSelectedWeightId('');
             if (availableZones.length > 0) setSelectedZoneId(availableZones[0].id);
             if (availableTechniques.length > 0) setSelectedTechId(availableTechniques[0].id);
         }
@@ -144,6 +172,7 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
     if (!isOpen) return;
     const fetchEnv = async () => {
       setIsLoadingEnv(true);
+      // Appel au service existant (compatible Nanterre)
       const snapshot = await getHistoricalSnapshot(sessionDate, time);
       if (snapshot) { setEnvSnapshot(snapshot); setEnvStatus('found'); } 
       else { setEnvStatus('not-found'); }
@@ -166,6 +195,7 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
         if (timePart) { const [h, m] = timePart.split(':'); setTime(`${h}:${m}`); }
       }
       const { blob, base64 } = await compressImageForAI(file);
+      
       const analyzePromise = httpsCallable(functions, 'analyzeCatchImage')({ 
           image: base64, userPseudo,
           referentials: {
@@ -173,18 +203,23 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
               colors: colors.map(c => ({ id: c.id, label: c.label }))
           }
       });
+      
       const fileName = `catch_${Date.now()}_${file.name.replace(/\s/g, '_')}`;
       const storageRef = ref(storage, `catches/${USER_ID}/${fileName}`);
       const uploadPromise = uploadBytes(storageRef, blob);
+      
       const [aiResult, uploadResult] = await Promise.all([analyzePromise, uploadPromise]);
       const { data }: any = aiResult;
-      if (data.species) setSpecies(data.species as SpeciesType);
+      
+      if (data.species) setSpecies(data.species as SpeciesType); // Casting explicite
       if (data.size) setSize(data.size);
       if (data.lureTypeId) setSelectedLureTypeId(data.lureTypeId);
       if (data.lureColorId) setSelectedColorId(data.lureColorId);
+      
       setAiFeedback({ message: data.enthusiastic_message, confidence: data.confidence_score });
       const downloadUrl = await getDownloadURL(uploadResult.ref);
       setPhotoLink1(downloadUrl);
+      
     } catch (err: any) {
       console.error("Erreur Vision/Storage:", err);
       setError("Analyse ou upload impossible. Vérifie ta connexion.");
@@ -201,17 +236,24 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
     const techObj = availableTechniques.find(t => t.id === selectedTechId);
     const photos = [photoLink1.trim()].filter(url => url.length > 0);
     
-    // On appelle onSave (parent)
+    // Construction de l'objet Catch compatible avec types.ts
     onSave({ 
-      species, size, lureName: lureName.trim(),
-      lureTypeId: selectedLureTypeId, lureColorId: selectedColorId,
-      lureSizeId: selectedSizeId, lureWeightId: selectedWeightId,
-      time, technique: techObj?.label || 'Inconnue', techniqueId: selectedTechId,
-      spotName: zoneObj?.label || 'Inconnue', spotId: selectedZoneId,
-      photoUrls: photos, envSnapshot
+      species, 
+      size, 
+      lureName: lureName.trim(),
+      lureTypeId: selectedLureTypeId, 
+      lureColorId: selectedColorId,
+      lureSizeId: selectedSizeId, 
+      lureWeightId: selectedWeightId,
+      time, 
+      technique: techObj?.label || 'Inconnue', 
+      techniqueId: selectedTechId,
+      spotName: zoneObj?.label || 'Inconnue', 
+      spotId: selectedZoneId,
+      photoUrls: photos, 
+      envSnapshot // Le snapshot est bien renvoyé
     });
     
-    // On ferme impérativement
     onClose();
   };
 
@@ -229,7 +271,7 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center bg-stone-900/40 backdrop-blur-sm animate-in fade-in duration-200 sm:items-center p-4">
-      <div className="w-full max-w-lg bg-[#FAF9F6] rounded-3xl shadow-2xl p-6 space-y-4 border border-white/50 max-h-[90vh] overflow-y-auto">
+      <div className="w-full max-w-lg bg-[#FAF9F6] rounded-3xl shadow-2xl p-6 space-y-4 border border-white/50 max-h-[90vh] overflow-y-auto custom-scrollbar">
         
         {/* Header */}
         <div className="flex justify-between items-center border-b border-stone-100 pb-4">
