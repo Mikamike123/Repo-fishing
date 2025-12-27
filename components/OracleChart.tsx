@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -12,13 +12,12 @@ import {
   ReferenceLine,
   ReferenceArea
 } from 'recharts';
-import { Sun, Moon } from 'lucide-react';
-import { format, startOfDay, addDays, setHours, getMonth } from 'date-fns';
+import { Sun, Moon, Maximize2, Search } from 'lucide-react';
+import { format, startOfDay, addDays, setHours, getMonth, endOfDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useHistoricalWeather } from '../lib/hooks';
 
-// --- CONFIGURATION COULEURS ---
-
+// --- CONFIGURATION ---
 const SPECIES_CONFIG: Record<string, { label: string; color: string; fill: string }> = {
   'sandre': { label: 'Sandre', color: '#f59e0b', fill: '#fef3c7' }, 
   'brochet': { label: 'Brochet', color: '#10b981', fill: '#d1fae5' }, 
@@ -29,10 +28,8 @@ const SPECIES_CONFIG: Record<string, { label: string; color: string; fill: strin
 };
 
 const LOCATION_COLORS = [
-  { stroke: '#ea580c', fill: '#ffedd5' }, 
-  { stroke: '#0891b2', fill: '#ecfeff' }, 
-  { stroke: '#16a34a', fill: '#f0fdf4' }, 
-  { stroke: '#7c3aed', fill: '#f5f3ff' }, 
+  { stroke: '#ea580c', fill: '#ffedd5' }, { stroke: '#0891b2', fill: '#ecfeff' }, 
+  { stroke: '#16a34a', fill: '#f0fdf4' }, { stroke: '#7c3aed', fill: '#f5f3ff' }, 
   { stroke: '#4b5563', fill: '#f3f4f6' }, 
 ];
 
@@ -47,9 +44,7 @@ const sanitizeId = (str: string) => str.replace(/[^a-zA-Z0-9]/g, '_');
 
 const getStyle = (key: string, index: number, isComparisonMode: boolean) => {
     const safeIndex = index < 0 ? 0 : index;
-    if (SPECIES_CONFIG[key.toLowerCase()] && !isComparisonMode) {
-        return SPECIES_CONFIG[key.toLowerCase()];
-    }
+    if (SPECIES_CONFIG[key.toLowerCase()] && !isComparisonMode) return SPECIES_CONFIG[key.toLowerCase()];
     const theme = LOCATION_COLORS[safeIndex % LOCATION_COLORS.length];
     return theme ? { label: key, color: theme.stroke, fill: theme.fill } : { label: key, color: '#a8a29e', fill: '#e7e5e4' };
 };
@@ -59,63 +54,65 @@ export type TargetSpecies = 'sandre' | 'brochet' | 'perche';
 
 interface OracleChartProps {
   lat?: number; lng?: number; date: Date; externalData?: any[]; 
-  title?: string; subTitle?: string; mode?: ChartMode; 
+  title?: string; subTitle?: string; mode?: ChartMode; targetSpecies?: TargetSpecies;
+  isComparisonMode?: boolean;
 }
 
-const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData, title, subTitle }) => {
-  const { data: historyData, loading, error } = useHistoricalWeather(lat, lng, date, { 
-    enabled: !externalData || externalData.length === 0 
-  });
-
-  const chartData = externalData || historyData;
-  const isLoading = !externalData && loading;
+const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData, title, subTitle, isComparisonMode: propsIsComparisonMode }) => {
+  const { data: historyData, loading } = useHistoricalWeather(lat, lng, date, { enabled: !externalData || externalData.length === 0 });
+  const [zoomRange, setZoomRange] = useState<{ start: number, end: number, label: string } | null>(null);
+  const rawData = externalData || historyData;
   const nowTimestamp = new Date().getTime();
 
-  // --- LOGIQUE TRANSITIONS DE JOURS (CENTREÉS SUR MIDI) ---
+  const chartData = useMemo(() => {
+    if (!rawData || !zoomRange) return rawData;
+    return rawData.filter((d: any) => d.time >= zoomRange.start && d.time <= zoomRange.end);
+  }, [rawData, zoomRange]);
+
   const dayTransitions = useMemo(() => {
-    if (!chartData || chartData.length === 0) return [];
-    const transitions: { midnight: number, center: number, label: string }[] = [];
-    const maxTime = chartData[chartData.length - 1].time;
-    
-    for (let i = 1; i <= 3; i++) {
+    if (!rawData || rawData.length === 0) return [];
+    const transitions = [];
+    const maxTime = rawData[rawData.length - 1].time;
+    for (let i = 0; i <= 3; i++) {
         const dayDate = addDays(new Date(), i);
         const midnight = startOfDay(dayDate).getTime();
-        const centerOfDay = setHours(startOfDay(dayDate), 12).getTime(); // Position à MIDI
-        
         if (midnight < maxTime) {
             transitions.push({
                 midnight,
-                center: centerOfDay,
-                label: format(midnight, 'EEEE', { locale: fr }).toUpperCase()
+                center: setHours(startOfDay(dayDate), 12).getTime(),
+                label: i === 0 ? "AUJOURD'HUI" : format(midnight, 'EEEE', { locale: fr }).toUpperCase(),
+                start: startOfDay(dayDate).getTime(),
+                end: endOfDay(dayDate).getTime()
             });
         }
     }
     return transitions;
-  }, [chartData]);
+  }, [rawData]);
 
-  // --- LOGIQUE CYCLES SOLAIRES ---
   const solarCycles = useMemo(() => {
     if (!chartData || chartData.length === 0) return [];
-    const cycles: { start: number, end: number, type: 'day' | 'night' }[] = [];
+    const cycles = [];
     const minTime = chartData[0].time;
     const maxTime = chartData[chartData.length - 1].time;
-    
-    let currentDay = startOfDay(new Date(minTime));
-    const endLimit = addDays(startOfDay(new Date(maxTime)), 1);
+    let currentPos = minTime;
 
-    while (currentDay < endLimit) {
-      const solar = SOLAR_PROXY[getMonth(currentDay)];
-      const sunrise = setHours(currentDay, solar.sunrise).getTime();
-      const sunset = setHours(currentDay, solar.sunset).getTime();
-      const nextSunrise = setHours(addDays(currentDay, 1), solar.sunrise).getTime();
-      
-      if (sunrise < maxTime && sunset > minTime) {
-        cycles.push({ start: Math.max(sunrise, minTime), end: Math.min(sunset, maxTime), type: 'day' });
+    while (currentPos < maxTime) {
+      const checkDate = new Date(currentPos);
+      const solar = SOLAR_PROXY[getMonth(checkDate)];
+      const sunrise = setHours(startOfDay(checkDate), solar.sunrise).getTime();
+      const sunset = setHours(startOfDay(checkDate), solar.sunset).getTime();
+      const nextSunrise = setHours(addDays(startOfDay(checkDate), 1), solar.sunrise).getTime();
+
+      if (currentPos < sunrise) {
+        cycles.push({ start: currentPos, end: Math.min(sunrise, maxTime), type: 'night' });
+        currentPos = sunrise;
+      } else if (currentPos < sunset) {
+        cycles.push({ start: currentPos, end: Math.min(sunset, maxTime), type: 'day' });
+        currentPos = sunset;
+      } else {
+        cycles.push({ start: currentPos, end: Math.min(nextSunrise, maxTime), type: 'night' });
+        currentPos = nextSunrise;
       }
-      if (sunset < maxTime && nextSunrise > minTime) {
-        cycles.push({ start: Math.max(sunset, minTime), end: Math.min(nextSunrise, maxTime), type: 'night' });
-      }
-      currentDay = addDays(currentDay, 1);
     }
     return cycles;
   }, [chartData]);
@@ -123,135 +120,107 @@ const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData,
   const { pastData, futureData } = useMemo(() => {
     if (!chartData || chartData.length === 0) return { pastData: [], futureData: [] };
     const splitIndex = chartData.findIndex((pt: any) => pt.time > nowTimestamp);
-    if (splitIndex === -1) return { pastData: chartData, futureData: [] };
-    if (splitIndex === 0) return { pastData: [], futureData: chartData };
-    return { pastData: chartData.slice(0, splitIndex + 1), futureData: chartData.slice(splitIndex - 1) };
+    return { 
+        pastData: chartData.slice(0, splitIndex === -1 ? chartData.length : splitIndex + 1), 
+        futureData: splitIndex === -1 ? [] : chartData.slice(splitIndex) 
+    };
   }, [chartData, nowTimestamp]);
 
-  const containerStyle = { minHeight: '340px', height: '340px', width: '100%' };
-  const containerClass = "w-full bg-white rounded-2xl border border-stone-100 mt-4 overflow-hidden shadow-sm";
+  if (!rawData && loading) return <div className="h-64 flex items-center justify-center animate-pulse text-stone-400 font-medium">Analyse...</div>;
 
-  if (isLoading) return <div className={containerClass} style={containerStyle}><div className="h-full flex flex-col items-center justify-center animate-pulse"><div className="h-6 w-6 border-b-2 border-amber-500 rounded-full animate-spin mb-3"></div><p className="text-stone-400 text-sm">Calcul des prévisions...</p></div></div>;
-  if (error || !chartData || chartData.length === 0) return <div className={containerClass} style={containerStyle}><div className="h-full flex items-center justify-center"><p className="text-red-400 text-sm">Données indisponibles</p></div></div>;
-
-  const finalKeys = Object.keys(chartData[0] || {}).filter(k => 
-    !['time', 'hourLabel', 'isForecast', 'timestamp', 'temperature_2m'].includes(k)
-  ).length > 0 ? Object.keys(chartData[0] || {}).filter(k => 
-    !['time', 'hourLabel', 'isForecast', 'timestamp', 'temperature_2m'].includes(k)
-  ) : (externalData ? [] : ['temperature_2m']);
-  
-  const isComparisonMode = finalKeys.some(k => !SPECIES_CONFIG[k.toLowerCase()]);
+  const finalKeys = Object.keys(chartData?.[0] || {}).filter(k => !['time', 'hourLabel', 'isForecast', 'timestamp', 'temperature_2m'].includes(k));
+  const isComparisonMode = propsIsComparisonMode ?? finalKeys.some(k => !SPECIES_CONFIG[k.toLowerCase()]);
 
   return (
-    <div className={containerClass} style={containerStyle}>
-      <div className="p-5 h-full flex flex-col">
-        <div className="flex justify-between items-start mb-2 flex-shrink-0 border-b border-stone-50 pb-2">
+    <div className="w-full bg-white rounded-2xl border border-stone-100 mt-4 overflow-hidden shadow-sm h-[360px]">
+      <div className="p-6 h-full flex flex-col">
+        <div className="flex justify-between items-start mb-2 border-b border-stone-50 pb-3">
             <div>
-                <h3 className="text-sm font-black text-stone-800 uppercase tracking-tight flex items-center gap-2">{title || (isComparisonMode ? 'COMPARATIF SECTEURS' : 'ANALYSE DU SECTEUR')}</h3>
-                <p className="text-[10px] text-stone-500 font-medium mt-0.5">{subTitle || 'Prévisions sur 72h'}</p>
+                <h3 className="text-sm font-black text-stone-800 uppercase tracking-tight leading-none">
+                  {title || (isComparisonMode ? 'COMPARATIF SECTEURS' : 'ORACLE : ANALYSE')}
+                </h3>
+                {/* Ajout d'une marge supérieure (mt-3) pour aérer le bloc temporel */}
+                <div className="flex items-center gap-2 mt-3">
+                    <p className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">
+                      {zoomRange ? 'Zoom Temporel' : 'Vue 72 Heures'}
+                    </p>
+                    {zoomRange && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[9px] font-black uppercase tracking-widest border border-indigo-100">
+                        {zoomRange.label}
+                      </span>
+                    )}
+                </div>
             </div>
-            <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${isComparisonMode ? 'bg-amber-50 text-amber-600' : 'bg-stone-100 text-stone-500'}`}>{isComparisonMode ? 'MULTI-ZONES' : 'FOCUS ZONE'}</span>
+            {zoomRange && (
+                <button 
+                  onClick={() => setZoomRange(null)} 
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase bg-stone-50 text-stone-500 hover:bg-stone-100 transition-all border border-stone-100"
+                >
+                    <Maximize2 size={11} /> Vue 72H
+                </button>
+            )}
         </div>
 
-        <div className="flex-1 min-h-0 select-none relative -ml-2">
+        <div className="flex-1 min-h-0 relative -ml-2">
             <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 30, right: 10, left: 0, bottom: 25 }}>
-                <defs>
-                {finalKeys.map((key, index) => {
-                    const style = getStyle(key, index, isComparisonMode);
-                    return (
-                    <linearGradient key={key} id={`color-${sanitizeId(key)}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={style.fill} stopOpacity={0.6}/><stop offset="95%" stopColor={style.fill} stopOpacity={0.1}/>
-                    </linearGradient>
-                    );
-                })}
-                </defs>
-
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 30 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f4" />
                 
                 {solarCycles.map((cycle, idx) => (
-                  <ReferenceArea 
-                    key={`${cycle.type}-${idx}`}
-                    x1={cycle.start}
-                    x2={cycle.end}
-                    fill={cycle.type === 'night' ? '#eef2ff' : 'transparent'} 
-                    fillOpacity={0.6}
-                    stroke="none"
+                  <ReferenceArea key={`${cycle.type}-${idx}`} x1={cycle.start} x2={cycle.end} fill={cycle.type === 'night' ? '#f1f5f9' : 'transparent'} fillOpacity={0.5} stroke="none" 
                     label={({ viewBox }: any) => {
                         const { x, y, width } = viewBox;
+                        if (width < 25) return null;
                         return (
-                            <foreignObject x={x + (width / 2) - 10} y={y - 25} width="20" height="20">
-                                {cycle.type === 'day' ? (
-                                    <Sun size={14} className="text-amber-400 opacity-80" />
-                                ) : (
-                                    <Moon size={14} className="text-indigo-400 opacity-80" />
-                                )}
+                            <foreignObject x={x + (width / 2) - 10} y={y + 10} width="20" height="20">
+                                {cycle.type === 'day' ? <Sun size={14} className="text-amber-400 opacity-80" /> : <Moon size={14} className="text-slate-400 opacity-80" />}
                             </foreignObject>
                         );
                     }}
                   />
                 ))}
 
-                <XAxis 
-                    dataKey="time" 
-                    type="number" 
-                    domain={['dataMin', 'dataMax']} 
-                    tick={false}
-                    axisLine={false} 
-                    tickLine={false} 
-                />
-                
+                <XAxis dataKey="time" type="number" domain={['dataMin', 'dataMax']} ticks={zoomRange ? [setHours(startOfDay(new Date(zoomRange.start)), 12).getTime()] : []} tickFormatter={() => "MIDI"} tick={zoomRange ? { fontSize: 9, fontWeight: 'bold', fill: '#a8a29e' } : false} axisLine={false} tickLine={false} />
                 <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#a8a29e' }} axisLine={false} tickLine={false} dx={-5} />
 
-                <Tooltip 
-                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgb(0 0 0 / 0.1)', padding: '12px' }}
-                  labelFormatter={(l: number) => format(new Date(l), 'EEEE d MMMM à HH:mm', { locale: fr })}
-                  formatter={(v: any, name: any) => [`${Math.round(v)} %`, String(name || '')]}
-                />
+                <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgb(0 0 0 / 0.1)', padding: '12px' }} labelFormatter={(l: number) => format(new Date(l), 'EEEE d MMMM à HH:mm', { locale: fr })} formatter={(v: any, name: any) => [`${Math.round(v)} %`, String(name || '')]} />
                 
-                <Legend verticalAlign="bottom" align="center" iconType="circle" iconSize={8} wrapperStyle={{ paddingTop: '20px', fontSize: '10px', fontWeight: 700, color: '#78716c', textTransform: 'uppercase' }} />
+                <Legend verticalAlign="bottom" align="center" iconType="circle" iconSize={8} wrapperStyle={{ position: 'relative', marginTop: '10px', fontSize: '10px', fontWeight: 800, color: '#a8a29e', textTransform: 'uppercase', letterSpacing: '0.05em' }} />
                 
-                <ReferenceLine x={nowTimestamp} stroke="#a8a29e" strokeDasharray="3 3" strokeWidth={1} label={{ position: 'insideTopLeft', value: 'LIVE', fill: '#a8a29e', fontSize: 9, fontWeight: 'bold', offset: 5 }} />
+                <ReferenceLine x={nowTimestamp} stroke="#d6d3d1" strokeDasharray="3 3" strokeWidth={1} label={{ position: 'insideTopLeft', value: 'LIVE', fill: '#a8a29e', fontSize: 9, fontWeight: 'bold', offset: 5 }} />
+                {zoomRange && <ReferenceLine x={setHours(startOfDay(new Date(zoomRange.start)), 12).getTime()} stroke="#e2e8f0" strokeDasharray="3 3" />}
 
-                {/* LIGNES DE MINUIT (SANS TEXTE) */}
-                {dayTransitions.map((dt, idx) => (
-                    <ReferenceLine 
-                        key={`line-${idx}`}
-                        x={dt.midnight} 
-                        stroke="#818cf8" 
-                        strokeWidth={1} 
-                        strokeOpacity={0.3}
-                    />
+                {!zoomRange && dayTransitions.map((dt, idx) => (
+                    <ReferenceLine key={`line-${idx}`} x={dt.midnight} stroke="#e2e8f0" strokeWidth={1} />
                 ))}
 
-                {/* LABELS DE JOURS (CENTRÉS SUR MIDI) */}
-                {dayTransitions.map((dt, idx) => (
+                {!zoomRange && dayTransitions.map((dt, idx) => (
                     <ReferenceLine 
-                        key={`label-${idx}`}
-                        x={dt.center} // On se place au milieu de la journée
-                        stroke="transparent" // Ligne invisible, on ne veut que le label
-                        label={{ 
-                            position: 'bottom',
-                            value: dt.label, 
-                            fill: '#818cf8', 
-                            fontSize: 9, 
-                            fontWeight: 'bold',
-                            dy: 15,
-                            textAnchor: 'middle' // Centrage parfait du texte
+                        key={`btn-${idx}`} 
+                        x={dt.center} 
+                        stroke="transparent" 
+                        label={({ viewBox }: any) => {
+                            const { x, y, height } = viewBox;
+                            return (
+                                <g transform={`translate(${x},${y + height + 15})`} onClick={() => setZoomRange({ start: dt.start, end: dt.end, label: dt.label })} style={{ cursor: 'pointer' }}>
+                                    <rect x="-40" y="-12" width="80" height="20" rx="6" fill="white" stroke="#f1f5f9" strokeWidth="1" className="hover:stroke-indigo-200 transition-colors" />
+                                    <text x="-4" y="2" textAnchor="middle" fill="#6366f1" fontSize="8" fontWeight="900" className="uppercase tracking-tighter">{dt.label}</text>
+                                    <foreignObject x="25" y="-7" width="10" height="10"><Search size={9} className="text-indigo-200" /></foreignObject>
+                                </g>
+                            );
                         }} 
                     />
                 ))}
 
                 {finalKeys.map((key, index) => {
-                const style = getStyle(key, index, isComparisonMode);
-                const gradientId = `color-${sanitizeId(key)}`;
-                return (
-                    <React.Fragment key={key}>
-                        <Area type="monotone" dataKey={key} stroke="none" fillOpacity={1} fill={`url(#${gradientId})`} legendType="none" tooltipType="none" activeDot={false} />
-                        <Line type="monotone" data={pastData} dataKey={key} name={style.label} stroke={style.color} strokeWidth={2.5} dot={false} activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff', fill: style.color }} />
-                        <Line type="monotone" data={futureData} dataKey={key} stroke={style.color} strokeWidth={2.5} strokeDasharray="5 5" dot={false} legendType="none" tooltipType="none" activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff', fill: style.color }} />
-                    </React.Fragment>
-                );
+                    const style = getStyle(key, index, isComparisonMode);
+                    return (
+                        <React.Fragment key={key}>
+                            <Area type="monotone" dataKey={key} stroke="none" fill={style.fill} fillOpacity={0.25} tooltipType="none" legendType="none" />
+                            <Line type="monotone" data={pastData} dataKey={key} name={style.label} stroke={style.color} strokeWidth={2.5} dot={false} activeDot={{ r: 4, strokeWidth: 2 }} />
+                            <Line type="monotone" data={futureData} dataKey={key} stroke={style.color} strokeWidth={2.5} strokeDasharray="6 4" dot={false} tooltipType="none" legendType="none" />
+                        </React.Fragment>
+                    );
                 })}
             </AreaChart>
             </ResponsiveContainer>
