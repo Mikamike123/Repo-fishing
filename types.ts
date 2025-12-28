@@ -161,6 +161,12 @@ export interface Miss {
   time: string;
   spotId: string;
   userId?: string;
+// Ajouts pour le narratif et les jointures
+  lureTypeId?: string;   // ID Arsenal
+  lureColorId?: string;  // ID Arsenal
+  lureSizeId?: string;   // ID Arsenal
+  lureWeightId?: string; // ID Arsenal
+  envSnapshot?: FullEnvironmentalSnapshot;
 }
 
 export interface Session extends BaseEntity {

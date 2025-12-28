@@ -3,9 +3,26 @@ import { db } from "./firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { HydroSnapshot } from '../types'; 
 
-const CLOUD_FUNCTION_URL = import.meta.env.VITE_CLOUD_FUNCTION_URL;
+/**
+ * Michael : Utilisation du helper pour détecter l'URL de la Cloud Function
+ * que ce soit dans le navigateur (Vite) ou en script (Node/TSX).
+ */
+const getEnvVar = (key: string): string | undefined => {
+    // @ts-ignore
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+        return process.env[key];
+    }
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+        // @ts-ignore
+        return import.meta.env[key];
+    }
+    return undefined;
+};
 
-console.log("DEBUG: Appel CF via", CLOUD_FUNCTION_URL);
+const CLOUD_FUNCTION_URL = getEnvVar('VITE_CLOUD_FUNCTION_URL');
+
+console.log("DEBUG: Configuration CF chargée");
 
 export interface WaterTempData {
     date: string;
@@ -18,10 +35,23 @@ export interface HydroResult {
     message: string;
 }
 
+/**
+ * Michael : Correction des erreurs TS2353. 
+ * L'objet par défaut doit désormais inclure flowRaw, flowLagged et turbidityIdx.
+ */
 export const fetchHydroRealtime = async (): Promise<HydroResult> => {
     if (!CLOUD_FUNCTION_URL) {
-        console.error("❌ VITE_CLOUD_FUNCTION_URL manquante dans le .env");
-        return { data: { flow: 0, level: 0, waterTemp: null }, message: "URL CF Manquante" };
+        console.error("❌ VITE_CLOUD_FUNCTION_URL manquante");
+        return { 
+            data: { 
+                flowRaw: 0, 
+                flowLagged: 0, 
+                level: 0, 
+                waterTemp: null, 
+                turbidityIdx: 0 
+            }, 
+            message: "URL CF Manquante" 
+        };
     }
     
     const queryUrl = `${CLOUD_FUNCTION_URL}?type=realtime`;
@@ -32,11 +62,21 @@ export const fetchHydroRealtime = async (): Promise<HydroResult> => {
         return result;
     } catch (error) {
         console.error("❌ Erreur CF Hydrométrie:", error);
-        return { data: { flow: 0, level: 0, waterTemp: null }, message: "Erreur réseau" }; 
+        return { 
+            data: { 
+                flowRaw: 0, 
+                flowLagged: 0, 
+                level: 0, 
+                waterTemp: null, 
+                turbidityIdx: 0 
+            }, 
+            message: "Erreur réseau" 
+        }; 
     }
 };
 
 export const fetchWaterTempJMinus1 = async (): Promise<WaterTempData | null> => {
+    if (!CLOUD_FUNCTION_URL) return null;
     const queryUrl = `${CLOUD_FUNCTION_URL}?type=watertemp`;
     try {
         const response = await fetch(queryUrl);

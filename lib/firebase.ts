@@ -3,55 +3,61 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, doc, getDocs, deleteDoc } from "firebase/firestore"; 
 import { getFunctions } from "firebase/functions"; 
-import { getStorage } from "firebase/storage"; // AJOUT : Import pour le stockage des photos
+import { getStorage } from "firebase/storage"; 
 import { GoogleGenAI } from "@google/genai";
 
-// ID UTILISATEUR DE DÉMONSTRATION (Utilisé pour le multi-tenancy V3)
+/**
+ * Michael : Fonction utilitaire pour détecter l'environnement (Scripts Node vs Frontend Vite).
+ */
+const getEnvVar = (key: string): string | undefined => {
+    // @ts-ignore
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+        return process.env[key];
+    }
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+        // @ts-ignore
+        return import.meta.env[key];
+    }
+    return undefined;
+};
+
+// ID UTILISATEUR DE DÉMONSTRATION
 export const USER_ID = "user_1"; 
 
-// 1. Config Firebase - MISE À JOUR AVEC STORAGE BUCKET
+// 1. Config Firebase
 const firebaseConfig = {
-    // @ts-ignore
-    apiKey: import.meta.env.VITE_GEMINI_API_KEY, 
+    apiKey: getEnvVar('VITE_GEMINI_API_KEY'), 
     authDomain: "mysupstack.firebaseapp.com",
     projectId: "mysupstack", 
-    storageBucket: "mysupstack.firebasestorage.app" // AJOUT CRITIQUE : Définit le bucket par défaut
+    storageBucket: "mysupstack.firebasestorage.app"
 };
 
 const geminiApiKey = firebaseConfig.apiKey;
 if (!geminiApiKey) {
-    console.error("❌ ERREUR CRITIQUE: Clé API Gemini manquante.");
+    console.warn("⚠️ Attention: Clé API Gemini non détectée.");
 }
 
 const app = initializeApp(firebaseConfig);
 
-// 2. Initialisation Firestore
+// 2. Initialisation des Services
 export const db = getFirestore(app);
-
-// 3. Initialisation Storage (Média Prises)
-export const storage = getStorage(app); // AJOUT : Instance pour l'upload One-Click
-
-// 4. Initialisation Functions (Oracle Vision)
+export const storage = getStorage(app);
 export const functions = getFunctions(app, "europe-west1");
 
-// 5. Initialisation Gemini (Usage direct possible)
+// 3. Initialisation Gemini
+// Michael : Correction TS2559 - On passe un objet { apiKey: string }
 export const ai = new GoogleGenAI({ 
-    apiKey: geminiApiKey as string 
+    apiKey: geminiApiKey || "" 
 });
 
-// --- CHEMINS D'ACCÈS AUX COLLECTIONS (Architecture V3) ---
-
-// 3.1. Coach & Sessions
+// --- CHEMINS D'ACCÈS AUX COLLECTIONS ---
 export const chatHistoryCollection = collection(db, 'users', USER_ID, 'coach_memoire');
 export const sessionsCollection = collection(db, 'sessions'); 
-
-// 3.2. Arsenal (Nouvelle structure V3)
 export const zonesCollection = collection(db, 'zones');
 export const setupsCollection = collection(db, 'setups');
 export const techniquesCollection = collection(db, 'techniques');
 export const luresCollection = collection(db, 'lures');
-
-// 3.3. Logs Environnementaux
 export const envLogsCollection = collection(db, 'environmental_logs');
 
 /**
@@ -60,8 +66,13 @@ export const envLogsCollection = collection(db, 'environmental_logs');
 export const clearChatHistory = async () => {
     const snapshot = await getDocs(chatHistoryCollection);
     if (snapshot.empty) return; 
-    // Correction de l'appel pour utiliser le chemin correct du document
-    const deletePromises = snapshot.docs.map(d => deleteDoc(doc(db, 'users', USER_ID, 'coach_memoire', d.id)));
+    
+    const deletePromises = snapshot.docs.map(d => 
+        deleteDoc(doc(db, 'users', USER_ID, 'coach_memoire', d.id))
+    );
+    
     await Promise.all(deletePromises);
     console.log(`Historique de chat effacé : ${deletePromises.length} messages supprimés.`);
 };
+
+export { app };

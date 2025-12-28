@@ -1,7 +1,7 @@
 // App.tsx
 import React, { useState, useEffect, useMemo } from 'react'; // AJOUT useMemo
 import { Home, PlusCircle, ScrollText, Settings, Fish, Bot, User, Menu, X, ChevronRight, Users, MapPin } from 'lucide-react';
-
+import { useCurrentConditions } from './lib/hooks';
 import { 
   onSnapshot, query, orderBy, 
   QuerySnapshot, DocumentData, 
@@ -17,10 +17,12 @@ import ProfileView from './components/ProfileView';
 import MagicScanButton from './components/MagicScanButton';
 import LocationsManager from './components/LocationsManager'; 
 
-import { Session, UserProfile, Catch } from './types';
+import { Session, UserProfile, Catch, WeatherSnapshot, Location } from './types'; // Ajout WeatherSnapshot
 import { db, sessionsCollection } from './lib/firebase'; 
 import { getUserProfile, createUserProfile } from './lib/user-service';
 import { useArsenal } from './lib/useArsenal'; 
+import { fetchOracleChartData, OracleDataPoint } from './lib/oracle-service'; // Michael : Import Oracle pour AI
+import { fetchUniversalWeather } from './lib/universal-weather-service'; // Michael : Import Météo universelle pour AI
 
 // ID du Gold Standard pour le calcul par défaut
 const GOLD_STANDARD_ID = "WYAjhoUeeikT3mS0hjip";
@@ -43,6 +45,16 @@ const App: React.FC = () => {
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [isProfileLoading, setIsProfileLoading] = useState(true);
     const [tempPseudo, setTempPseudo] = useState("");
+    // Appel du hook pour récupérer les donnée live pour l'AI
+    const liveData = useCurrentConditions();
+    console.log("💎 STRUCTURE LIVE DATA:", liveData); // Ajoute ça
+
+    // --- MICHAEL : ÉTATS LIFTÉS DU DASHBOARD POUR SYNCHRONISATION COACH ---
+    const [activeLocationId, setActiveLocationId] = useState<string>("");
+    const [oraclePoints, setOraclePoints] = useState<OracleDataPoint[]>([]);
+    const [isOracleLoading, setIsOracleLoading] = useState(false);
+    const [displayedWeather, setDisplayedWeather] = useState<WeatherSnapshot | null>(null);
+    const [isWeatherLoading, setIsWeatherLoading] = useState(false);
 
     // --- UTILISATION DU HOOK ARSENAL ---
     const { 
@@ -55,20 +67,91 @@ const App: React.FC = () => {
     } = useArsenal(currentUserId);
 
     // --- CALCUL DU SECTEUR PAR DÉFAUT ---
-    // Logique : Gold Standard > Secteur marqué par défaut > Premier de la liste
+    // Michael : Inversion de priorité pour respecter le choix utilisateur (isDefault) avant Nanterre (Gold)
     const defaultLocationId = useMemo(() => {
         if (!arsenalData.locations || arsenalData.locations.length === 0) return "";
         
-        const gold = arsenalData.locations.find(l => l.id === GOLD_STANDARD_ID);
-        if (gold) return gold.id;
-
         const def = arsenalData.locations.find(l => (l as any).isDefault);
         if (def) return def.id;
+
+        const gold = arsenalData.locations.find(l => l.id === GOLD_STANDARD_ID);
+        if (gold) return gold.id;
 
         return arsenalData.locations[0].id;
     }, [arsenalData.locations]);
 
+    // Michael : Initialisation de la sélection
+    useEffect(() => { 
+        if (!activeLocationId && defaultLocationId) setActiveLocationId(defaultLocationId); 
+    }, [defaultLocationId, activeLocationId]);
 
+    // Michael : Identification de l'objet location actif
+    const activeLocation = useMemo(() => {
+        return arsenalData.locations.find(l => l.id === activeLocationId) || arsenalData.locations.find(l => l.id === defaultLocationId);
+    }, [arsenalData.locations, activeLocationId, defaultLocationId]);
+
+    // Michael : Sync Oracle pour l'AI (Permet d'avoir les scores de Gennevilliers, Vitrolles, etc.)
+    useEffect(() => {
+        const syncOracle = async () => {
+            if (!activeLocation?.coordinates) return;
+            setIsOracleLoading(true);
+            try {
+                const points = await fetchOracleChartData(activeLocation.coordinates.lat, activeLocation.coordinates.lng, activeLocation.morphology);
+                setOraclePoints(points);
+            } catch (err) { console.error("Oracle Sync Error:", err); }
+            finally { setIsOracleLoading(false); }
+        };
+        syncOracle();
+    }, [activeLocationId, activeLocation]);
+
+    const liveOraclePoint = useMemo(() => {
+        if (!oraclePoints.length) return null;
+        const nowTs = Date.now();
+        return oraclePoints.reduce((prev, curr) => Math.abs(curr.timestamp - nowTs) < Math.abs(prev.timestamp - nowTs) ? curr : prev);
+    }, [oraclePoints]);
+
+    // Michael : Sync Météo pour l'AI
+    useEffect(() => {
+        const updateWeather = async () => {
+            const isReferenceLocation = activeLocationId === GOLD_STANDARD_ID;
+            if (isReferenceLocation || !activeLocationId) { 
+                setDisplayedWeather(liveData.weather); 
+                setIsWeatherLoading(false); 
+            } else {
+                if (activeLocation?.coordinates) {
+                    setIsWeatherLoading(true);
+                    const customData = await fetchUniversalWeather(activeLocation.coordinates.lat, activeLocation.coordinates.lng);
+                    setDisplayedWeather(customData);
+                    setIsWeatherLoading(false);
+                }
+            }
+        };
+        updateWeather();
+    }, [activeLocationId, liveData.weather, activeLocation]);
+
+    // Michael : Construction du snapshot final pour le Coach
+    const currentLiveSnapshot = useMemo(() => {
+    if (isOracleLoading || liveData.isLoading) return null;
+    const isReference = activeLocationId === GOLD_STANDARD_ID;
+
+    // Michael : Si on n'est pas à Nanterre, on prend la température locale de l'Oracle point
+    // Tes logs ont montré que liveOraclePoint possède une clé waterTemp !
+    const localWaterTemp = isReference ? liveData.hydro?.waterTemp : liveOraclePoint?.waterTemp;
+
+    return {
+        locationName: activeLocation?.label || "Secteur inconnu",
+        // Michael : On récupère le pseudo dynamique ici
+        userName: userProfile?.pseudo || "Pêcheur",
+        env: {
+            hydro: { 
+                ...liveData.hydro, 
+                waterTemp: localWaterTemp // On injecte la vraie température locale ici
+            },
+            weather: displayedWeather || liveData.weather
+        },
+        scores: isReference ? liveData.scores : liveOraclePoint
+     };
+    }, [liveData, activeLocation, activeLocationId, liveOraclePoint, isOracleLoading, displayedWeather, userProfile]);
     // --- RECHARGER LE PROFIL AU SWITCH USER ---
     useEffect(() => {
         setIsProfileLoading(true);
@@ -222,6 +305,11 @@ const App: React.FC = () => {
                         lureTypes={arsenalData.lureTypes} 
                         colors={arsenalData.colors} 
                         locations={arsenalData.locations}
+                        // Michael : Passage des états liftés pour le contrôle Dashboard
+                        activeLocationId={activeLocationId}
+                        setActiveLocationId={setActiveLocationId}
+                        oraclePoints={oraclePoints}
+                        isOracleLoading={isOracleLoading}
                     />
                 ); 
             case 'session': 
@@ -307,7 +395,15 @@ const App: React.FC = () => {
                     onMoveWeight={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_weights', id, dir)} 
                 />
             );
-            case 'coach': return <CoachView />;
+            case 'coach': 
+                return (
+                    <CoachView 
+                        sessions={sessions} 
+                        arsenalData={arsenalData} 
+                        // Michael : Branchement direct sur le snapshot live dynamique
+                        liveSnapshot={currentLiveSnapshot} 
+                    />
+                );
             case 'profile': return <ProfileView userProfile={userProfile} sessions={sessions} onUpdateProfile={setUserProfile} />;
             default: return (
                 <Dashboard 
@@ -320,6 +416,10 @@ const App: React.FC = () => {
                     lureTypes={arsenalData.lureTypes} 
                     colors={arsenalData.colors} 
                     locations={arsenalData.locations}
+                    activeLocationId={activeLocationId}
+                    setActiveLocationId={setActiveLocationId}
+                    oraclePoints={oraclePoints}
+                    isOracleLoading={isOracleLoading}
                 />
             ); 
         }

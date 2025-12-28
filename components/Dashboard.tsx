@@ -24,10 +24,6 @@ import {
 
 const GOLD_STANDARD_ID = "WYAjhoUeeikT3mS0hjip";
 
-/**
- * [HARMONISATION] Utilisation des codes Hex du graphique stable[cite: 506, 508].
- * Ces couleurs servent de source de vérité pour les jauges et les courbes.
- */
 const SPECIES_CONFIG: Record<string, { label: string; key: string; hexColor: string }> = {
     'Sandre': { label: 'Sandre', key: 'sandre', hexColor: '#f59e0b' },
     'Brochet': { label: 'Brochet', key: 'brochet', hexColor: '#10b981' },
@@ -46,16 +42,24 @@ interface DashboardProps {
     lureTypes: RefLureType[];
     colors: RefColor[];
     locations: Location[]; 
+    // Michael : AJOUTS POUR SYNCHRONISATION
+    activeLocationId: string;
+    setActiveLocationId: (id: string) => void;
+    oraclePoints: OracleDataPoint[];
+    isOracleLoading: boolean;
 }
 
 const Dashboard: React.FC<DashboardProps> = (props) => {
-    const { sessions, currentUserId, locations } = props;
+    // Michael : Extraction de TOUTES les props, y compris les nouvelles pour la synchro
+    const { 
+        sessions, currentUserId, locations, 
+        activeLocationId, setActiveLocationId, oraclePoints, isOracleLoading 
+    } = props;
+
     const { weather: nanterreWeather, hydro, scores: nanterreScores, computed, isLoading: isBaseLoading } = useCurrentConditions();
     
-    const [activeLocationId, setActiveLocationId] = useState<string>("");
-    const [oraclePoints, setOraclePoints] = useState<OracleDataPoint[]>([]);
-    const [isOracleLoading, setIsOracleLoading] = useState(false);
-    
+    // Michael : Les états locaux sont supprimés/commentés car ils viennent des PROPS désormais
+    // const [displayedWeather, setDisplayedWeather] = useState<WeatherSnapshot | null>(null);
     const [displayedWeather, setDisplayedWeather] = useState<WeatherSnapshot | null>(null);
     const [isWeatherLoading, setIsWeatherLoading] = useState(false);
     const [selectedSession, setSelectedSession] = useState<Session | null>(null);
@@ -83,27 +87,17 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
         return final;
     }, [uniqueLocationsList, defaultLocation]);
 
+    // Michael : La synchronisation de l'ID se fait désormais au niveau de App.tsx, mais on garde une sécurité
     useEffect(() => { if (!activeLocationId && defaultLocation) setActiveLocationId(defaultLocation.id); }, [defaultLocation, activeLocationId]);
 
     const targetLocation = useMemo(() => uniqueLocationsMap.get(activeLocationId) || defaultLocation || null, [uniqueLocationsMap, activeLocationId, defaultLocation]);
     const isReferenceLocation = activeLocationId === defaultLocation?.id;
 
-    // --- SYNCHRONISATION ORACLE ---
-    useEffect(() => {
-        const syncOracle = async () => {
-            if (!targetLocation?.coordinates) return;
-            setIsOracleLoading(true);
-            try {
-                const points = await fetchOracleChartData(targetLocation.coordinates.lat, targetLocation.coordinates.lng, targetLocation.morphology);
-                setOraclePoints(points);
-            } catch (err) { console.error("Oracle Sync Error:", err); }
-            finally { setIsOracleLoading(false); }
-        };
-        syncOracle();
-    }, [activeLocationId, targetLocation]);
+    // Michael : La synchronisation Oracle (fetchOracleChartData) est maintenant gérée par App.tsx
+    // pour que l'AI Coach et le Dashboard partagent la même donnée.
 
     const liveOraclePoint = useMemo(() => {
-        if (!oraclePoints.length) return null;
+        if (!oraclePoints || !oraclePoints.length) return null;
         const nowTs = Date.now();
         return oraclePoints.reduce((prev, curr) => Math.abs(curr.timestamp - nowTs) < Math.abs(prev.timestamp - nowTs) ? curr : prev);
     }, [oraclePoints]);
@@ -162,7 +156,7 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
     );
 };
 
-// --- SOUS-COMPOSANTS ---
+// ... (Le reste des sous-composants ProgressionHeader, LiveStatusSection, etc. reste inchangé)
 
 const ProgressionHeader: React.FC<{ sessions: Session[], currentUserId: string }> = ({ sessions, currentUserId }) => {
     const currentYear = new Date().getFullYear();

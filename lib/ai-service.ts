@@ -1,45 +1,29 @@
 // lib/ai-service.ts
-
-// Import sessionsCollection et getCachedWaterTemp
-import { ai, chatHistoryCollection, sessionsCollection } from './firebase'; 
+import { ai, chatHistoryCollection } from './firebase'; 
 import { query, orderBy, limit, getDocs, addDoc, Timestamp } from "firebase/firestore";
-import { Session } from '../types'; 
-import { GoogleGenAI, Content, GenerateContentResponse } from '@google/genai'; 
-import { ChatMessage } from '../components/CoachView'; 
-import { getCachedWaterTemp } from './hubeau-service'; // Import pour la température actuelle
+import { Content, GenerateContentResponse } from '@google/genai'; 
+import { getCachedWaterTemp } from './hubeau-service'; 
 
-// Constantes pour l'appel AI
 const MODEL_NAME = "gemini-2.5-flash"; 
-const CONTEXT_READ_LIMIT = 10; 
+const CONTEXT_READ_LIMIT = 15; 
 
-/**
- * Charge l'historique de discussion depuis Firestore (Mémoire conversationnelle).
- */
+// Michael : Chargement de l'historique conversationnel
 const loadChatHistory = async (): Promise<Content[]> => {
     const q = query(chatHistoryCollection, orderBy('timestamp', 'asc'), limit(CONTEXT_READ_LIMIT));
     const snapshot = await getDocs(q);
-
     return snapshot.docs
         .map(doc => {
             const data = doc.data();
             const textContent = (data.content || '').toString(); 
-            
-            // Filtre nécessaire contre l'erreur 400
-            if (textContent.trim().length === 0) {
-                return null; 
-            }
-
+            if (textContent.trim().length === 0) return null; 
             return {
-                role: (data.role || 'user') as 'user' | 'model',
+                role: (data.role === 'model' ? 'model' : 'user') as 'user' | 'model',
                 parts: [{ text: textContent }]
             } as Content;
         })
         .filter((content): content is Content => content !== null);
 };
 
-/**
- * Sauvegarde un message (utilisateur ou IA) dans Firestore.
- */
 const saveMessage = async (role: 'user' | 'model', content: string) => {
     await addDoc(chatHistoryCollection, {
         role: role,
@@ -49,96 +33,63 @@ const saveMessage = async (role: 'user' | 'model', content: string) => {
 };
 
 /**
- * CHARGEMENT DES DONNÉES DE PÊCHE RÉELLES
- * Lit les 5 dernières sessions pour les inclure dans le prompt IA.
+ * askFishingCoach - Moteur de l'Oracle Pêche
+ * Michael : Signature mise à jour à 5 arguments pour inclure le pseudo dynamique.
  */
-const loadFishingContext = async (): Promise<Partial<Session>[]> => {
-    // Lire les 5 sessions les plus récentes de la base réelle
-    const q = query(sessionsCollection, orderBy('date', 'desc'), limit(5));
-    const snapshot = await getDocs(q);
-    
-    return snapshot.docs.map(doc => {
-        const data = doc.data();
-        
-        // Sélection des champs pertinents pour l'analyse IA
-        return {
-            date: data.date ? data.date.toDate().toISOString().split('T')[0] : 'N/A',
-            zone: data.zone,
-            setup: data.setup,
-            feelingScore: data.feelingScore,
-            catchCount: data.catchCount,
-            waterTemp: data.waterTemp ?? null, // <<< DONNÉE WATER TEMP RÉELLE
-        } as Partial<Session>;
-    });
-};
-
-
-export const askFishingCoach = async (userMessage: string, currentLocation: { lat: number, lng: number }) => {
-    
-    console.log("--- DÉBUT APPEL IA (askFishingCoach) ---");
-    
-    // 1. Sauvegarder d'abord le message utilisateur
+export const askFishingCoach = async (
+    userMessage: string, 
+    currentLocation: { lat: number, lng: number },
+    narrativeContext: string = "",
+    liveContext: string = "",
+    userName: string = "Michael" // Michael : 5ème argument ajouté pour corriger TS2554
+): Promise<string> => {
     await saveMessage('user', userMessage);
-    
     try {
-        // 2. Charger la mémoire de discussion (chat history)
         const history = await loadChatHistory();
-        
-        // 3. Charger le contexte de pêche réel (5 dernières sessions)
-        const fishingContext = await loadFishingContext();
-
-        // 4. Charger la température de l'eau J-1 (pour le conseil immédiat)
         const currentWaterTempData = await getCachedWaterTemp();
-        const currentWaterTemp = currentWaterTempData ? `${currentWaterTempData.temperature.toFixed(1)} °C (J-1)` : 'Non disponible';
+        const currentWaterTemp = currentWaterTempData ? `${currentWaterTempData.temperature.toFixed(1)} °C` : 'Non disponible';
 
-
-        // 5. Préparer le prompt système, incluant la température actuelle et l'historique détaillé
+        // --- OPTION C : L'ANALYSTE MÉTÉO-TACTIQUE (VERSION PERSONNALISÉE) ---
         const systemInstruction = `
-            Tu es le "Coach Oracle", un expert en pêche tactique. 
-            TON RÔLE: Analyser les données fournies pour donner des conseils précis.
+            Tu es le "Coach Oracle", l'expert tactique et le binôme de pêche de ${userName}. 
             
-            CONTEXTE ACTUEL HYDROLOGIQUE: Température de l'eau : ${currentWaterTemp}.
-            
-            SON HISTORIQUE PERTINENT (5 dernières sessions) : ${JSON.stringify(fishingContext)}
-            
-            MISSION: Réponds à la question de l'utilisateur en te basant sur la température de l'eau actuelle et sur les setups/zones qui ont le mieux fonctionné ou échoué dans son historique. Réponse concise et amicale.
+            TON TON : 
+            - Agis comme un analyste météo-pêche professionnel (style "expert de terrain").
+            - Interpelle ${userName} par son nom de temps en temps pour renforcer la complicité.
+            - Ne sois pas une simple base de données : synthétise les infos de manière humaine.
+            - Sois direct, amical, mais d'une précision chirurgicale sur les patterns.
+
+            TES RÈGLES DE RÉPONSE (SYNTHÈSE & NUANCE) :
+            1. L'OUVERTURE (SYNTHÈSE ENVIRONNEMENTALE) : Ne liste pas les chiffres un par un. Fais une phrase qui résume le "mood" global de la session (Air/Ciel/Vent/Pression). 
+            2. ANALYSE HYDRO : Interprète le débit et la turbidité. Explique à ${userName} si les conditions sont "confortables" ou si le poisson risque d'être collé au fond.
+            3. STRATÉGIE (LE CONSEIL) : Propose une approche basée sur le BioScore le plus haut et le matériel de son Arsenal.
+            4. CORRÉLATION ARCHIVES (RAG) : Ne récite JAMAIS ses sessions passées sous forme de liste. Cite un fait passé uniquement s'il valide ou invalide ta théorie actuelle.
+            5. CONCISION : Reste sous les 120 mots. Utilise impérativement le **gras** pour les leurres et techniques.
+
+            CONTEXTE LIVE (SUR LE QUAI) :
+            ${liveContext}
+            Note : La température de l'eau HubEau (référence Seine) est de ${currentWaterTemp}.
+
+            SOURCE DE VÉRITÉ / ARCHIVES DE ${userName.toUpperCase()} (LE PASSÉ) :
+            ${narrativeContext}
         `;
 
-        // 6. Construire le contenu complet de la conversation
         const contents: Content[] = [...history, { role: 'user', parts: [{ text: userMessage }] }];
 
-        // 7. Lancer l'appel à l'API Gemini
         const response: GenerateContentResponse = await ai.models.generateContent({
             model: MODEL_NAME,
             contents: contents,
             config: {
                 systemInstruction: systemInstruction,
-                temperature: 0.7,
+                temperature: 0.65, 
             },
         });
         
-        const aiResponse = response.text?.trim();
-
-        if (!aiResponse) {
-             throw new Error("L'API n'a pas retourné de réponse textuelle.");
-        }
-
-        // 8. Sauvegarder la réponse de l'IA
+        const aiResponse = response.text?.trim() || `Désolé ${userName}, mon analyse est floue.`;
         await saveMessage('model', aiResponse);
-
         return aiResponse;
-
     } catch (error) {
-        console.error("Erreur détaillée lors de l'appel à l'IA:", error); 
-        
-        let errorMessage = "Une erreur inattendue est survenue lors de l'appel AI.";
-        if (error instanceof Error) {
-            if (error.message.includes('API_KEY_INVALID') || error.message.includes('billing')) {
-                errorMessage = "Mon cerveau d'IA est déconnecté. Vérifiez votre clé API ou votre facturation Gemini.";
-            }
-        }
-        
-        await saveMessage('model', errorMessage); 
-        throw new Error(errorMessage);
+        console.error("Erreur Oracle Michael :", error);
+        return "L'Oracle est momentanément indisponible suite à une erreur technique.";
     }
 };
