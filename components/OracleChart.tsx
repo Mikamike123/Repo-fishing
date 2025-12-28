@@ -22,6 +22,10 @@ const SPECIES_CONFIG: Record<string, { label: string; color: string; fill: strin
   'sandre': { label: 'Sandre', color: '#f59e0b', fill: '#fef3c7' }, 
   'brochet': { label: 'Brochet', color: '#10b981', fill: '#d1fae5' }, 
   'perche': { label: 'Perche', color: '#f43f5e', fill: '#ffe4e6' }, 
+  // [NOUVEAU] Ajout du Black-Bass
+  'blackbass': { label: 'Black-Bass', color: '#8b5cf6', fill: '#ede9fe' },
+  
+  // IDs Legacy
   'VFHQwajXIUyOQO3It7pW': { label: 'Sandre', color: '#f59e0b', fill: '#fef3c7' },
   'WYAjhoUeeikT3mS0hjip': { label: 'Brochet', color: '#10b981', fill: '#d1fae5' },
   'iW3E1yjaAELMagFPxMKD': { label: 'Perche', color: '#f43f5e', fill: '#ffe4e6' },
@@ -40,8 +44,6 @@ const SOLAR_PROXY: Record<number, { sunrise: number, sunset: number }> = {
   9: { sunrise: 8, sunset: 18 }, 10: { sunrise: 8, sunset: 17 }, 11: { sunrise: 8, sunset: 17 },
 };
 
-const sanitizeId = (str: string) => str.replace(/[^a-zA-Z0-9]/g, '_');
-
 const getStyle = (key: string, index: number, isComparisonMode: boolean) => {
     const safeIndex = index < 0 ? 0 : index;
     if (SPECIES_CONFIG[key.toLowerCase()] && !isComparisonMode) return SPECIES_CONFIG[key.toLowerCase()];
@@ -50,7 +52,7 @@ const getStyle = (key: string, index: number, isComparisonMode: boolean) => {
 };
 
 export type ChartMode = 'single' | 'compare'; 
-export type TargetSpecies = 'sandre' | 'brochet' | 'perche';
+export type TargetSpecies = 'sandre' | 'brochet' | 'perche' | 'blackbass';
 
 interface OracleChartProps {
   lat?: number; lng?: number; date: Date; externalData?: any[]; 
@@ -61,7 +63,18 @@ interface OracleChartProps {
 const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData, title, subTitle, isComparisonMode: propsIsComparisonMode }) => {
   const { data: historyData, loading } = useHistoricalWeather(lat, lng, date, { enabled: !externalData || externalData.length === 0 });
   const [zoomRange, setZoomRange] = useState<{ start: number, end: number, label: string } | null>(null);
-  const rawData = externalData || historyData;
+  
+  // --- 1. NORMALISATION DES DONNÉES (Timestamp vs Time) ---
+  const rawData = useMemo(() => {
+      if (externalData && externalData.length > 0) {
+          return externalData.map(d => ({
+              ...d,
+              time: d.timestamp || d.time 
+          }));
+      }
+      return historyData;
+  }, [externalData, historyData]);
+
   const nowTimestamp = new Date().getTime();
 
   const chartData = useMemo(() => {
@@ -80,7 +93,7 @@ const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData,
             transitions.push({
                 midnight,
                 center: setHours(startOfDay(dayDate), 12).getTime(),
-                label: i === 0 ? "AUJOURD'HUI" : format(midnight, 'EEEE', { locale: fr }).toUpperCase(),
+                label: i === 0 ? `AUJOURD'HUI ${format(midnight, 'd')}` : format(midnight, 'EEEE d', { locale: fr }).toUpperCase(),
                 start: startOfDay(dayDate).getTime(),
                 end: endOfDay(dayDate).getTime()
             });
@@ -128,7 +141,20 @@ const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData,
 
   if (!rawData && loading) return <div className="h-64 flex items-center justify-center animate-pulse text-stone-400 font-medium">Analyse...</div>;
 
-  const finalKeys = Object.keys(chartData?.[0] || {}).filter(k => !['time', 'hourLabel', 'isForecast', 'timestamp', 'temperature_2m'].includes(k));
+  // FIX DOUBLONS #1 : Utilisation d'un Set pour garantir l'unicité des clés
+  const finalKeys = useMemo(() => {
+      const keys = new Set<string>();
+      if (chartData && chartData.length > 0) {
+          // On scanne les clés du premier point pour trouver les séries
+          Object.keys(chartData[0]).forEach(k => {
+              if (!['time', 'hourLabel', 'isForecast', 'timestamp', 'temperature_2m', 'dissolvedOxygen', 'turbidityNTU', 'bestScore', 'waterTemp', 'tFond', 'waveHeight'].includes(k)) {
+                  keys.add(k);
+              }
+          });
+      }
+      return Array.from(keys);
+  }, [chartData]);
+
   const isComparisonMode = propsIsComparisonMode ?? finalKeys.some(k => !SPECIES_CONFIG[k.toLowerCase()]);
 
   return (
@@ -139,7 +165,6 @@ const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData,
                 <h3 className="text-sm font-black text-stone-800 uppercase tracking-tight leading-none">
                   {title || (isComparisonMode ? 'COMPARATIF SECTEURS' : 'ORACLE : ANALYSE')}
                 </h3>
-                {/* Ajout d'une marge supérieure (mt-3) pour aérer le bloc temporel */}
                 <div className="flex items-center gap-2 mt-3">
                     <p className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">
                       {zoomRange ? 'Zoom Temporel' : 'Vue 72 Heures'}
@@ -183,7 +208,92 @@ const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData,
                 <XAxis dataKey="time" type="number" domain={['dataMin', 'dataMax']} ticks={zoomRange ? [setHours(startOfDay(new Date(zoomRange.start)), 12).getTime()] : []} tickFormatter={() => "MIDI"} tick={zoomRange ? { fontSize: 9, fontWeight: 'bold', fill: '#a8a29e' } : false} axisLine={false} tickLine={false} />
                 <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#a8a29e' }} axisLine={false} tickLine={false} dx={-5} />
 
-                <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgb(0 0 0 / 0.1)', padding: '12px' }} labelFormatter={(l: number) => format(new Date(l), 'EEEE d MMMM à HH:mm', { locale: fr })} formatter={(v: any, name: any) => [`${Math.round(v)} %`, String(name || '')]} />
+                {/* MODIFICATION CRITIQUE : Glassmorphism + Neutralisation du wrapper Recharts */}
+                <Tooltip 
+                    contentStyle={{ backgroundColor: 'transparent', border: 'none', boxShadow: 'none' }}
+                    wrapperStyle={{ outline: 'none' }}
+                    content={({ active, payload, label }) => {
+                        if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            const dateLabel = label ? new Date(label) : new Date();
+
+                            // DÉDOUBLONNAGE DU PAYLOAD
+                            const uniquePayload = Array.from(
+                                new Map(payload.map((p: any) => [p.name, p])).values()
+                            );
+
+                            return (
+                                <div style={{ 
+                                    borderRadius: '16px', 
+                                    border: '1px solid rgba(255, 255, 255, 0.3)', 
+                                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)', 
+                                    padding: '12px', 
+                                    backgroundColor: 'rgba(255, 255, 255, 0.75)', // Opacité 75%
+                                    backdropFilter: 'blur(12px)',               // Flou arrière-plan
+                                    WebkitBackdropFilter: 'blur(12px)',          // Compatibilité iOS/Safari
+                                }}>
+                                    <p className="text-xs font-bold text-stone-800 mb-2 border-b border-stone-200/50 pb-1">
+                                        {format(dateLabel, 'EEEE d MMMM à HH:mm', { locale: fr })}
+                                    </p>
+                                    
+                                    {(data.dissolvedOxygen !== undefined || data.turbidityNTU !== undefined) && (
+                                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-3 bg-stone-100/40 p-2 rounded-lg">
+                                            <div className="flex flex-col">
+                                                <span className="text-[9px] text-stone-400 uppercase font-bold">Oxygène</span>
+                                                <span className={`text-xs font-black ${data.dissolvedOxygen < 4 ? 'text-red-500' : 'text-stone-600'}`}>
+                                                    {data.dissolvedOxygen} <span className="text-[8px] font-normal">mg/L</span>
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-[9px] text-stone-400 uppercase font-bold">Turbidité</span>
+                                                <span className="text-xs font-black text-stone-600">
+                                                    {data.turbidityNTU} <span className="text-[8px] font-normal">NTU</span>
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-[9px] text-stone-400 uppercase font-bold">Temp. Eau</span>
+                                                <span className="text-xs font-black text-stone-600">
+                                                    {data.waterTemp || data.temperature_2m}°C
+                                                </span>
+                                            </div>
+
+                                            {data.tFond !== undefined && (
+                                                <div className="flex flex-col">
+                                                    <span className="text-[9px] text-indigo-400 uppercase font-bold">Temp. Fond</span>
+                                                    <span className="text-xs font-black text-indigo-600">
+                                                        {data.tFond}°C
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            {data.waveHeight !== undefined && (
+                                                <div className="flex flex-col col-span-2 border-t border-stone-200/50 pt-1 mt-1">
+                                                    <span className="text-[9px] text-stone-400 uppercase font-bold">Hauteur Vagues (Hs)</span>
+                                                    <span className="text-xs font-black text-stone-600">
+                                                        {data.waveHeight} <span className="text-[8px] font-normal">cm</span>
+                                                        {data.waveHeight > 15 && <span className="ml-2 text-[9px] text-amber-500 font-bold italic">"Walleye Chop"</span>}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {uniquePayload.map((p: any, idx: number) => (
+                                        <div key={idx} className="flex items-center justify-between gap-4">
+                                            <span style={{ color: p.stroke, fontSize: '10px', fontWeight: 800, textTransform: 'uppercase' }}>
+                                                {p.name}
+                                            </span>
+                                            <span className="text-xs font-black text-stone-800">
+                                                {Math.round(p.value)} %
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            );
+                        }
+                        return null;
+                    }}
+                />
                 
                 <Legend verticalAlign="bottom" align="center" iconType="circle" iconSize={8} wrapperStyle={{ position: 'relative', marginTop: '10px', fontSize: '10px', fontWeight: 800, color: '#a8a29e', textTransform: 'uppercase', letterSpacing: '0.05em' }} />
                 

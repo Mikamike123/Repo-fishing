@@ -23,9 +23,17 @@ const BASSIN_OFFSET: Record<BassinType, number> = {
 const TURBIDITY_CONSTANTS = {
     ALPHA_SED: 2.5,
     BETA: 0.8,       // Profil Z_RIVER par défaut
-    K_DECAY: 0.6,
+    K_DECAY: 0.15,   // Ajusté à 0.15 (heure) pour la dynamique Oracle
     BASE_NTU: 5.0,
     MAX_NTU: 80.0
+};
+
+// Facteurs de sensibilité morphologique (Pour solveTurbidity)
+const MORPHO_TURBIDITY_FACTOR: Record<MorphologyID, number> = {
+    'Z_POND': 0.5,   
+    'Z_MED': 0.3,    
+    'Z_DEEP': 0.1,   
+    'Z_RIVER': 1.2   
 };
 
 // --- 2. INTERFACES ---
@@ -33,32 +41,15 @@ const TURBIDITY_CONSTANTS = {
 export interface DailyWeather {
     date: string;
     avgTemp: number;
-    precipitation?: number; // Pour Turbidité
-    windSpeed?: number;     // Pour BioScores
-    pressure?: number;      // Pour BioScores
-    cloudCover?: number;    // Pour BioScores
-}
-
-export interface BioContext {
-    waterTemp: number;      // °C
-    cloudCover: number;     // %
-    windSpeed: number;      // km/h
-    pressureTrend: number;  // hPa (dP sur 3h ou 24h selon dispo)
-    turbidity: number;      // 0-1 (Indice calculé)
-    date?: Date;            
-}
-
-export interface BioScores {
-    sandre: number;
-    brochet: number;
-    perche: number;
+    precipitation?: number; 
+    windSpeed?: number;     
+    pressure?: number;      
+    cloudCover?: number;    
 }
 
 // --- 3. MOTEUR D'ACQUISITION (OPEN-METEO) ---
+// (Conservé tel quel pour compatibilité existante)
 
-/**
- * Récupère l'historique météo complet via Open-Meteo Archive
- */
 export const fetchWeatherHistory = async (lat: number, lng: number, daysNumber: number): Promise<DailyWeather[]> => {
     const endDate = new Date();
     const startDate = new Date();
@@ -66,7 +57,6 @@ export const fetchWeatherHistory = async (lat: number, lng: number, daysNumber: 
 
     const formatDate = (d: Date) => d.toISOString().split('T')[0];
 
-    // On demande toutes les variables nécessaires aux 3 moteurs
     const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}&start_date=${formatDate(startDate)}&end_date=${formatDate(endDate)}&daily=temperature_2m_mean,precipitation_sum,wind_speed_10m_max,surface_pressure_mean,cloud_cover_mean&timezone=Europe%2FParis`;
 
     try {
@@ -92,7 +82,7 @@ export const fetchWeatherHistory = async (lat: number, lng: number, daysNumber: 
 // --- 4. MOTEUR THERMIQUE (Air2Water) ---
 
 export const solveAir2Water = (
-    weatherHistory: DailyWeather[],
+    weatherHistory: DailyWeather[] | { temp: number; date: string }[], // Compatible avec les deux formats
     morphoType: MorphologyID,
     bassinType: BassinType, 
     initialWaterTemp?: number
@@ -101,122 +91,103 @@ export const solveAir2Water = (
     const offset = BASSIN_OFFSET[bassinType] || 0;
     const { delta, mu } = params;
 
-    let waterTemp = initialWaterTemp ?? weatherHistory[0].avgTemp;
+    // Normalisation de l'entrée (gestion des deux formats d'historique)
+    const normalizedHistory = weatherHistory.map(d => {
+        if ('avgTemp' in d) return { temp: d.avgTemp, date: d.date };
+        return d;
+    });
 
-    weatherHistory.forEach((day, index) => {
+    let waterTemp = initialWaterTemp ?? normalizedHistory[0].temp;
+
+    normalizedHistory.forEach((day, index) => {
         if (index === 0 && initialWaterTemp === undefined) return;
+        
+        // Calcul physique
         const dayOfYear = getDayOfYear(new Date(day.date));
         const solarTerm = mu * Math.sin((2 * Math.PI * (dayOfYear - PHI)) / 365);
-        const dTw_dt = (1 / delta) * (day.avgTemp - waterTemp) + solarTerm;
+        
+        // Équation différentielle discrétisée
+        const dTw_dt = (1 / delta) * ((day.temp + offset) - waterTemp) + solarTerm;
+        
         waterTemp += dTw_dt;
     });
 
-    return Number((waterTemp + offset).toFixed(1));
+    return Number(waterTemp.toFixed(1));
 };
 
 // --- 5. MOTEUR OPTIQUE (Turbidité) ---
 
 /**
- * Calcule l'indice de clarté (0.0 - 1.0) basé sur l'historique des pluies
+ * [MISE À JOUR] Calcule la turbidité physique (NTU)
+ * Remplace l'ancien calcul d'index pour permettre la simulation Oracle précise
  */
-export const calculateTurbidityIndex = (weatherHistory: DailyWeather[]): number => {
-    let currentNTU = TURBIDITY_CONSTANTS.BASE_NTU;
-
-    weatherHistory.forEach((day) => {
-        const rain = day.precipitation || 0;
-
-        // 1. Décroissance (Loi de Stokes)
-        const excess = Math.max(0, currentNTU - TURBIDITY_CONSTANTS.BASE_NTU);
-        currentNTU = TURBIDITY_CONSTANTS.BASE_NTU + (excess * Math.exp(-TURBIDITY_CONSTANTS.K_DECAY));
-
-        // 2. Accrétion (First Flush) - Seuil > 2mm
-        if (rain > 2.0) {
-            currentNTU += TURBIDITY_CONSTANTS.ALPHA_SED * rain * TURBIDITY_CONSTANTS.BETA;
-        }
-    });
-
-    // Normalisation 0-1 (1.0 = Eau chocolat)
-    return Math.min(1.0, currentNTU / TURBIDITY_CONSTANTS.MAX_NTU);
-};
-
-// --- 6. MOTEUR BIOLOGIQUE (BioScores) ---
-
-export const calculateUniversalBioScores = (ctx: BioContext): BioScores => {
-    // Pré-calculs des facteurs environnementaux
-    const lux = calculateLux(ctx.date || new Date(), ctx.cloudCover);
-    const windF = Math.min(1.0, Math.max(0.2, 0.2 + 0.8 * (ctx.windSpeed / 30)));
+export const solveTurbidity = (
+    precipHistory: number[], 
+    morphoId: MorphologyID = 'Z_RIVER',
+    lastKnownNTU: number = TURBIDITY_CONSTANTS.BASE_NTU
+): number => {
+    let currentNTU = lastKnownNTU;
+    const sensitivity = MORPHO_TURBIDITY_FACTOR[morphoId] || 1.0;
     
-    return {
-        sandre: computeSandreScore(ctx, lux),
-        brochet: computeBrochetScore(ctx, windF),
-        perche: computePercheScore(ctx)
-    };
+    const alpha = TURBIDITY_CONSTANTS.ALPHA_SED * sensitivity;
+    const decay = TURBIDITY_CONSTANTS.K_DECAY;
+
+    for (const rainMm of precipHistory) {
+        // 1. Décantation (Loi de Stokes simplifiée)
+        const decanted = currentNTU * (1 - decay);
+        currentNTU = Math.max(TURBIDITY_CONSTANTS.BASE_NTU, decanted);
+
+        // 2. Accrétion (Ruissellement)
+        if (rainMm > 0.2) {
+            const influx = rainMm * alpha;
+            currentNTU += influx;
+        }
+    }
+
+    return Math.min(Math.round(currentNTU * 10) / 10, TURBIDITY_CONSTANTS.MAX_NTU);
 };
 
-// HELPER: SANDRE
-const computeSandreScore = (ctx: BioContext, lux: number): number => {
-    // Pression (Stabilité)
-    const fP = 1 / (1 + Math.exp(2.0 * (ctx.pressureTrend - 0.5)));
-    // Lumière / Turbidité (Fonction Vampire)
-    const fLT = (1 - lux) + lux * Math.tanh(4 * ctx.turbidity);
-    // Température
-    const fT = Math.exp(-Math.pow(ctx.waterTemp - 17, 2) / 128);
-
-    const score = 100 * Math.pow(fP, 0.4) * Math.pow(fLT, 0.4) * Math.pow(fT, 0.2);
-    return Math.min(Math.round(score), 100);
+// Gardé pour rétro-compatibilité temporaire (alias vers la nouvelle logique)
+export const calculateTurbidityIndex = (weatherHistory: DailyWeather[]): number => {
+    const rains = weatherHistory.map(w => w.precipitation || 0);
+    const ntu = solveTurbidity(rains, 'Z_RIVER');
+    return Math.min(1.0, ntu / TURBIDITY_CONSTANTS.MAX_NTU);
 };
 
-// HELPER: BROCHET
-const computeBrochetScore = (ctx: BioContext, windF: number): number => {
-    // Veto Éthique
-    if (ctx.waterTemp > 24.0) return 0;
+// --- 6. MOTEUR CHIMIQUE (Oxygène Dissous) ---
+// [NOUVEAU] Requis par Oracle Service
 
-    // Température (Aime le frais)
-    const fT = 1 / (1 + Math.exp(0.8 * (ctx.waterTemp - 21)));
-    // Visibilité (Déteste l'eau trouble)
-    const fVis = Math.exp(-2.5 * ctx.turbidity);
+/**
+ * Calcule l'Oxygène Dissous (DO) théorique en mg/L
+ * Basé sur la loi de Henry (Température) et la Pression Atmosphérique
+ */
+export const solveDissolvedOxygen = (
+    waterTemp: number, 
+    pressurehPa: number
+): number => {
+    // 1. Saturation à 100% (Formule Benson & Krause)
+    const T = waterTemp;
+    let doSaturation = 14.652 - (0.41022 * T) + (0.007991 * Math.pow(T, 2)) - (0.000077774 * Math.pow(T, 3));
 
-    const score = 100 * Math.pow(fT, 0.5) * Math.pow(fVis, 0.3) * Math.pow(windF, 0.2);
-    return Math.min(Math.round(score), 100);
+    if (doSaturation < 0) doSaturation = 0;
+
+    // 2. Correction Pression
+    const pressureCorrection = pressurehPa / 1013.25;
+
+    const finalDO = doSaturation * pressureCorrection;
+    
+    return Number(finalDO.toFixed(2));
 };
 
-// HELPER: PERCHE
-const computePercheScore = (ctx: BioContext): number => {
-    // Température (Optimum 21°C)
-    const fT = Math.exp(-Math.pow(ctx.waterTemp - 21, 2) / 72);
-    // Stabilité Pression
-    const dP = ctx.pressureTrend;
-    const fP = Math.max(Math.exp(-2 * Math.abs(dP)), 1 / (1 + Math.exp(3.0 * (dP + 1.5))));
+// --- HELPER: UTILS ---
 
-    const score = 100 * Math.pow(fT, 0.5) * Math.pow(fP, 0.5);
-    return Math.min(Math.round(score), 100);
-};
-
-// HELPER: LUMINOSITÉ (LUX)
-function calculateLux(date: Date, cloudCover: number): number {
-    try {
-        const hour = date.getHours() + (date.getMinutes() / 60);
-        const month = date.getMonth() + 1;
-
-        const schedule: { [key: number]: [number, number] } = {
-            1: [8.5, 17.0], 2: [8.0, 18.0], 3: [7.0, 19.0], 4: [6.0, 20.5], 
-            5: [5.5, 21.5], 6: [5.5, 22.0], 7: [6.0, 21.5], 8: [6.5, 20.5], 
-            9: [7.5, 19.5], 10: [8.0, 18.5], 11: [8.0, 17.0], 12: [8.5, 16.5]
-        };
-
-        const [rise, set] = schedule[month] || [7, 19];
-        if (hour < rise || hour > set) return 0;
-
-        const elev = Math.sin(Math.PI * (hour - rise) / (set - rise));
-        const cloudFactor = 1 - 0.75 * Math.pow(cloudCover / 100, 2);
-
-        return Math.max(0, elev * cloudFactor);
-    } catch { return 0.5; }
-}
-
-// HELPER: UTILS
 const getDayOfYear = (date: Date): number => {
     const start = new Date(date.getFullYear(), 0, 0);
     const diff = date.getTime() - start.getTime();
-    return Math.floor(diff / (1000 * 60 * 60 * 24));
+    const oneDay = 1000 * 60 * 60 * 24;
+    return Math.floor(diff / oneDay);
 };
+
+// NOTE DE MIGRATION :
+// Les fonctions BioScores (calculateUniversalBioScores, computeSandreScore, etc.) 
+// ont été déplacées dans 'bioScoreEngine.ts' pour supporter le Black-Bass et l'Oxygène.

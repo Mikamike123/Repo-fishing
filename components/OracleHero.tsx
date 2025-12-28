@@ -31,14 +31,18 @@ const OracleHero: React.FC<OracleHeroProps> = ({ locations }) => {
         return null;
     };
 
-    // --- 1. GESTION DES FAVORIS ---
+    // --- 1. GESTION DES FAVORIS (DÉDOUBLONNAGE) ---
     const validLocations = useMemo(() => {
-        return locations.filter(l => getSafeCoordinates(l) !== null);
+        const withCoords = locations.filter(l => getSafeCoordinates(l) !== null);
+        const map = new Map();
+        withCoords.forEach(l => {
+            if (!map.has(l.id)) map.set(l.id, l);
+        });
+        return Array.from(map.values()) as Location[];
     }, [locations]);
 
     const favorites = useMemo(() => {
         const favs = validLocations.filter((l: any) => l.isFavorite === true);
-        // Si aucun favori, on prend les 3 premiers valides par défaut
         return favs.length > 0 ? favs.slice(0, 3) : validLocations.slice(0, 3);
     }, [validLocations]);
 
@@ -60,7 +64,13 @@ const OracleHero: React.FC<OracleHeroProps> = ({ locations }) => {
             const coords = getSafeCoordinates(loc);
             if (coords) {
                 try {
-                    const points = await fetchOracleChartData(coords.lat, coords.lng);
+                    // --- CORRECTION CRITIQUE ICI ---
+                    // On transmet la morphologie au moteur de calcul
+                    const points = await fetchOracleChartData(
+                        coords.lat, 
+                        coords.lng,
+                        loc.morphology
+                    );
                     newCache[loc.id] = points;
                 } catch (e) {
                     console.error(`Erreur Oracle pour ${loc.name}`, e);
@@ -92,24 +102,26 @@ const OracleHero: React.FC<OracleHeroProps> = ({ locations }) => {
                 time: pt.timestamp,
                 sandre: pt.sandre,
                 brochet: pt.brochet,
-                perche: pt.perche
+                perche: pt.perche,
+                blackbass: pt.blackbass,
+                dissolvedOxygen: pt.dissolvedOxygen,
+                turbidityNTU: pt.turbidityNTU,
+                waterTemp: pt.waterTemp
             }));
 
         } else {
-            // Mode Compare : Fusionner les données des favoris
             const baseData = cache[favorites[0]?.id];
             if (!baseData) return [];
 
             return baseData.map((pt, index) => {
                 const mergedPoint: any = { time: pt.timestamp };
-                
                 favorites.forEach(loc => {
                     const locData = cache[loc.id];
                     if (locData && locData[index]) {
-                        // FIX: Utilisation du Label ou du Nom pour la légende
-                        // (loc as any).label gère le cas où l'objet a une propriété label (fréquent dans tes types)
-                        const keyName = (loc as any).label || loc.name || `Secteur ${loc.id.substring(0,4)}`;
-                        mergedPoint[keyName] = (locData[index] as any)[targetSpecies];
+                        const baseLabel = (loc as any).label || loc.name || 'Secteur';
+                        // Clé unique pour éviter les doublons graphiques
+                        const uniqueKey = `${baseLabel} (${loc.id.substring(0, 3)})`;
+                        mergedPoint[uniqueKey] = (locData[index] as any)[targetSpecies];
                     }
                 });
                 return mergedPoint;
@@ -117,25 +129,21 @@ const OracleHero: React.FC<OracleHeroProps> = ({ locations }) => {
         }
     }, [mode, selectedLocId, cache, favorites, targetSpecies]);
 
-    // --- 4. TEXTES DYNAMIQUES (FIX TITRES) ---
+    // --- 4. TEXTES DYNAMIQUES ---
     const selectedLocation = validLocations.find(l => l.id === selectedLocId);
     const selectedCoords = selectedLocation ? getSafeCoordinates(selectedLocation) : null;
-    
-    // FIX : Récupération propre du nom pour l'affichage
     const selectedLocName = selectedLocation 
         ? ((selectedLocation as any).label || selectedLocation.name) 
         : 'Secteur Inconnu';
 
-    // Titre envoyé au Graphique
     const chartTitle = mode === 'single' 
-        ? `ORACLE : ${selectedLocName.toUpperCase()}` // Affiche le nom du lieu
+        ? `ORACLE : ${selectedLocName.toUpperCase()}`
         : `COMPARATIF : ${targetSpecies.toUpperCase()}`;
     
     const chartSubTitle = mode === 'single'
         ? 'Analyse Bio-Halieutique (72h)'
         : `Comparaison de l'activité sur ${favorites.length} secteurs`;
 
-    // Résumé pour le header fermé
     const summaryInfo = useMemo(() => {
         const currentData = cache[selectedLocId];
         if (!currentData || currentData.length === 0) return null;
@@ -147,7 +155,8 @@ const OracleHero: React.FC<OracleHeroProps> = ({ locations }) => {
         const scores = [
             { name: 'Sandre', score: current.sandre },
             { name: 'Brochet', score: current.brochet },
-            { name: 'Perche', score: current.perche }
+            { name: 'Perche', score: current.perche },
+            { name: 'Black-Bass', score: current.blackbass || 0 }
         ];
         return scores.sort((a, b) => b.score - a.score)[0];
     }, [cache, selectedLocId]);
@@ -222,7 +231,6 @@ const OracleHero: React.FC<OracleHeroProps> = ({ locations }) => {
                     {mode === 'single' && favorites.length > 1 && (
                         <div className="flex overflow-x-auto gap-2 mb-4 pb-1 scrollbar-hide">
                             {favorites.map(loc => {
-                                // FIX: Nom propre dans les pills
                                 const pillLabel = (loc as any).label || loc.name || 'Secteur';
                                 return (
                                     <button
@@ -238,19 +246,16 @@ const OracleHero: React.FC<OracleHeroProps> = ({ locations }) => {
                                     </button>
                                 )
                             })}
-                            <button className="whitespace-nowrap px-3 py-2 rounded-xl text-xs font-bold bg-stone-50 text-stone-400 border border-stone-100 border-dashed flex items-center">
-                                <Plus size={14} className="mr-1"/> Plus
-                            </button>
                         </div>
                     )}
 
                     {mode === 'compare' && (
-                        <div className="flex gap-2 mb-4 justify-center bg-stone-50 p-1.5 rounded-xl border border-stone-100 w-fit mx-auto">
-                            {(['sandre', 'brochet', 'perche'] as TargetSpecies[]).map(species => (
+                        <div className="flex gap-2 mb-4 justify-center bg-stone-50 p-1.5 rounded-xl border border-stone-100 w-fit mx-auto overflow-x-auto max-w-full">
+                            {(['sandre', 'brochet', 'perche', 'blackbass'] as TargetSpecies[]).map(species => (
                                 <button
                                     key={species}
                                     onClick={() => setTargetSpecies(species)}
-                                    className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase transition-all ${
+                                    className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase transition-all whitespace-nowrap ${
                                         targetSpecies === species
                                         ? 'bg-white text-stone-800 shadow-sm border border-stone-200 transform scale-105'
                                         : 'text-stone-400 hover:text-stone-600'
@@ -271,7 +276,6 @@ const OracleHero: React.FC<OracleHeroProps> = ({ locations }) => {
                     </div>
 
                     <div className="w-full">
-                        {/* CHART AVEC TITRES DYNAMIQUES */}
                         <OracleChart 
                             date={new Date()}
                             lat={selectedCoords?.lat}

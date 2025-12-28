@@ -40,7 +40,10 @@ export interface HydroSnapshot {
   flowLagged: number;       // m3/s (Débit corrigé pour le spot)
   level: number;            // mm
   waterTemp: number | null; // °C (Modèle EWMA ou Zero-Hydro)
+  tFond?: number;            //Température de fond pour milieux profonds
   turbidityIdx: number;     // 0-1 (Indice de clarté)
+  dissolvedOxygen?: number; // mg/L (Calculé par ZeroHydro)
+  waveHeight?: number;       // Hs en cm (SMB Equations)
 }
 
 export interface BioScoreSnapshot {
@@ -65,12 +68,14 @@ export interface FullEnvironmentalSnapshot {
 
 export type MorphologyID = 'Z_RIVER' | 'Z_POND' | 'Z_MED' | 'Z_DEEP';
 export type DepthCategoryID = 'Z_LESS_3' | 'Z_3_15' | 'Z_MORE_15';
-export type BassinType = 'URBAIN' | 'AGRICOLE' | 'NATUREL';
+export type BassinType = 'URBAIN' | 'AGRICOLE' | 'PRAIRIE' | 'FORESTIER';
 
 export interface LocationMorphology {
   typeId: MorphologyID;      
   depthId: DepthCategoryID;  
-  bassin: BassinType;        
+  bassin: BassinType;  
+  surfaceArea?: number;      // En m2 pour calcul du Fetch
+  shapeFactor?: number;      // 1.0 (rond) à 2.0 (allongé) pour Fetch effectif      
 }
 
 export interface Location extends BaseEntity {
