@@ -1,11 +1,12 @@
+// components/SessionCard.tsx
 import React from 'react';
 import { 
     MapPin, Fish, Trash2, Edit2, 
     Droplets, Thermometer, Cloud, Sun, CloudSun, CloudRain, Activity, 
-    Image as ImageIcon, Wind, User, Lock, Calendar, AlertOctagon, Gauge, Waves, Eye,
-    Maximize2
+    Image as ImageIcon, Wind, User, Calendar, AlertOctagon, Gauge, Waves, Eye,
+    Maximize2, ShieldCheck, Zap
 } from 'lucide-react'; 
-import { Session, SpeciesType } from '../types';
+import { Session, SpeciesType, FullEnvironmentalSnapshot } from '../types';
 
 interface SessionCardProps {
     session: Session;
@@ -18,6 +19,7 @@ interface SessionCardProps {
 const getWindDir = (deg?: number) => {
     if (deg === undefined) return '';
     const directions = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+    // Correction ici : Utilisation de Math.round
     return directions[Math.round(deg / 45) % 8];
 };
 
@@ -33,23 +35,31 @@ const getSpeciesColor = (species: SpeciesType) => {
         case 'Sandre': return 'bg-amber-100 text-amber-800 border-amber-200';
         case 'Perche': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
         case 'Brochet': return 'bg-stone-200 text-stone-700 border-stone-300';
+        case 'Black-Bass': return 'bg-green-100 text-green-800 border-green-200';
         default: return 'bg-stone-100 text-stone-600 border-stone-200';
     }
 };
 
+const SPECIES_MAP: Record<string, string> = {
+    'Sandre': 'sandre',
+    'Brochet': 'brochet',
+    'Perche': 'perche',
+    'Black-Bass': 'blackbass'
+};
+
 const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, onClick, currentUserId }) => {
-    const env = session.envSnapshot;
+    const env = session.envSnapshot as FullEnvironmentalSnapshot;
     const isOwner = session.userId === currentUserId;
     
-    // ID du secteur Nanterre pour l'affichage conditionnel du débit
-    const NANTERRE_SECTOR_ID = "WYAjhoUeeikT3mS0hjip";
+    // Identifiant Nanterre (Gold Standard) [cite: 645]
+    const NANTERRE_SECTOR_ID = "WYAjhoUeeikT3mS0hjip"; 
 
-    // Récupération de toutes les photos de la session pour la galerie miniature
+    const allowedSpecies = (session as any).speciesIds || ['Sandre', 'Brochet', 'Perche', 'Black-Bass'];
+
     const allSessionPhotos = session.catches
         .filter(c => c.photoUrls && c.photoUrls.length > 0)
         .map(c => c.photoUrls![0]);
 
-    // Helper pour les mini-widgets pastels
     const MiniEnvTile = ({ icon: Icon, value, unit, theme }: any) => {
         const themes: any = {
             rose: "bg-rose-50/60 border-rose-100 text-rose-700",
@@ -58,7 +68,8 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
             amber: "bg-amber-50/60 border-amber-100 text-amber-700",
             orange: "bg-orange-50/60 border-orange-100 text-orange-700",
             cyan: "bg-cyan-50/60 border-cyan-100 text-cyan-700",
-            emerald: "bg-emerald-50/60 border-emerald-100 text-emerald-700"
+            emerald: "bg-emerald-50/60 border-emerald-100 text-emerald-700",
+            purple: "bg-purple-50/60 border-purple-100 text-purple-700"
         };
         return (
             <div className={`${themes[theme] || 'bg-stone-50'} flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-black shrink-0`}>
@@ -71,22 +82,25 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
     return (
         <div onClick={() => onClick && onClick(session)} className={`relative rounded-[2.5rem] p-6 border transition-all cursor-pointer group ${isOwner ? 'bg-white border-stone-100 shadow-organic hover:shadow-xl' : 'bg-[#F5F4F1] border-stone-200/60'}`}>
             
-            {/* --- HEADER --- */}
             <div className="flex justify-between items-start mb-4">
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 text-stone-800 font-black text-sm uppercase truncate">
                         {isOwner ? (
                             <>
                                 <MapPin size={14} className="text-amber-500 shrink-0" />
-                                {/* MODIFICATION : Affichage concaténé Secteur - Spot */}
                                 {session.locationName ? `${session.locationName} - ` : ''}{session.spotName}
                             </>
                         ) : (
                             session.userPseudo
                         )}
+                        {/* Badge de données simulées [cite: 647] */}
+                        {env?.metadata?.calculationMode === 'ZERO_HYDRO' && (
+                            <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-600 text-[8px] rounded-md flex items-center gap-0.5">
+                                <Zap size={8} fill="currentColor" /> SIMULÉ
+                            </span>
+                        )}
                     </div>
                     <div className="text-[10px] font-bold text-stone-400 mt-0.5 flex items-center gap-2">
-                        {/* MODIFICATION : Ajout de l'année (year: 'numeric') pour l'archivage historique */}
                         <Calendar size={10} /> {new Date(session.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })} • {session.startTime}-{session.endTime}
                     </div>
                 </div>
@@ -103,17 +117,11 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                 </div>
             </div>
 
-            {/* --- MINIATURES PHOTOS (ALIGNÉES HORIZONTALEMENT) --- */}
             {allSessionPhotos.length > 0 && (
                 <div className="flex gap-2 mb-4 overflow-x-auto pb-1 scrollbar-hide">
                     {allSessionPhotos.map((url, idx) => (
                         <div key={idx} className="relative h-20 bg-stone-50/50 rounded-2xl overflow-hidden border border-stone-100 shadow-sm shrink-0 group/photo">
-                            <img 
-                                src={url} 
-                                className="h-full w-auto block" 
-                                alt={`Prise ${idx + 1}`} 
-                                loading="lazy"
-                            />
+                            <img src={url} className="h-full w-auto block" alt={`Prise ${idx + 1}`} loading="lazy" />
                             <div className="absolute inset-0 bg-black/5 opacity-0 group-hover/photo:opacity-100 transition-opacity flex items-center justify-center">
                                 <Maximize2 size={14} className="text-stone-600" />
                             </div>
@@ -122,28 +130,23 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                 </div>
             )}
 
-            {/* --- WIDGETS ENVIRONNEMENTAUX (Oracle Style) --- */}
-            <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide mb-5 pb-1">
-                {/* CORRECTION : cloudCover -> clouds */}
-                <MiniEnvTile theme="blue" icon={() => getWeatherIcon(env?.weather?.clouds || 0)} value={env?.weather?.clouds} unit="%" />
-                
+            <div className="flex flex-wrap items-center gap-2 mb-5">
+                <MiniEnvTile theme="blue" icon={() => getWeatherIcon(env?.weather?.clouds || 0)} value={env?.weather?.clouds || 0} unit="%" />
                 <MiniEnvTile theme="rose" icon={Thermometer} value={env?.weather?.temperature ? Math.round(env.weather.temperature) : '--'} unit="°C" />
-                <MiniEnvTile theme="indigo" icon={Gauge} value={env?.weather?.pressure?.toFixed(0)} unit=" hPa" />
-                
-                {/* CORRECTION : windDir -> windDirection */}
+                <MiniEnvTile theme="indigo" icon={Gauge} value={env?.weather?.pressure ? Math.round(env.weather.pressure) : '--'} unit=" hPa" />
                 <MiniEnvTile theme="amber" icon={Wind} value={env?.weather?.windSpeed ? Math.round(env.weather.windSpeed) : '--'} unit={` ${getWindDir(env?.weather?.windDirection)}`} />
+                <MiniEnvTile theme="orange" icon={Droplets} value={env?.hydro?.waterTemp?.toFixed(1) || '--'} unit="°C" />
                 
-                <MiniEnvTile theme="orange" icon={Droplets} value={env?.hydro?.waterTemp?.toFixed(1)} unit="°C" />
-                
-                {/* MODIFICATION : Affichage conditionnel du débit uniquement pour Nanterre */}
+                {/* Widgets masqués automatiquement hors Nanterre [cite: 81, 646] */}
                 {session.locationId === NANTERRE_SECTOR_ID && (
-                    <MiniEnvTile theme="cyan" icon={Waves} value={env?.hydro?.flowLagged?.toFixed(0)} unit="m³/s" />
+                    <>
+                        <MiniEnvTile theme="cyan" icon={Waves} value={env?.hydro?.flowLagged?.toFixed(0) || '--'} unit="m³/s" />
+                        <MiniEnvTile theme="purple" icon={ShieldCheck} value={env?.hydro?.level ? Math.round(env.hydro.level) : '--'} unit="mm" />
+                    </>
                 )}
-                
-                <MiniEnvTile theme="emerald" icon={Eye} value={env?.hydro?.turbidityIdx?.toFixed(2)} unit="" />
+                <MiniEnvTile theme="emerald" icon={Eye} value={env?.hydro?.turbidityIdx?.toFixed(2) || '--'} unit="" />
             </div>
 
-            {/* --- COMMENTAIRE SESSION (ASPECT SOCIAL) --- */}
             {session.notes && (
                 <div className="mb-5 px-4 py-3 bg-amber-50/30 rounded-2xl border border-amber-100/50 relative italic text-sm text-stone-600 leading-snug">
                     <div className="absolute -top-2 left-4 px-2 bg-white text-[8px] font-black text-amber-500 uppercase tracking-widest border border-amber-100 rounded-full">Observation</div>
@@ -151,10 +154,8 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                 </div>
             )}
 
-            {/* --- TAGS PRISES ET RATÉS --- */}
             <div className="flex flex-wrap gap-2 mb-5">
                 {session.catches.map(fish => (
-                    // CORRECTION : Casting as SpeciesType
                     <div key={fish.id} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[10px] font-black ${getSpeciesColor(fish.species as SpeciesType)} shadow-sm`}>
                         <Fish size={10} /> {fish.species} {fish.size}cm
                         {fish.photoUrls && fish.photoUrls.length > 0 && <ImageIcon size={8} className="ml-1 opacity-50" />}
@@ -170,18 +171,30 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                 )}
             </div>
 
-            {/* --- SCORES BIO --- */}
             <div className="flex justify-between items-center pt-4 border-t border-stone-50">
-                <div className="flex gap-4">
-                    {['sandre', 'brochet', 'perche'].map(s => (
-                        <div key={s} className="flex flex-col">
-                            <span className="text-[8px] font-black text-stone-300 uppercase tracking-tighter">{s}</span>
-                            <div className="flex items-center gap-1 text-[10px] font-black text-stone-600">
-                                <Activity size={10} className={(env?.scores as any)?.[s] > 50 ? "text-emerald-500" : "text-amber-500"} />
-                                {(env?.scores as any)?.[s]?.toFixed(0) || '--'}
+                <div className="flex flex-wrap gap-4">
+                    {allowedSpecies.map((label: string) => {
+                        // Veto sur le Black-Bass pour le Gold Standard de Nanterre [cite: 176]
+                        if (session.locationId === NANTERRE_SECTOR_ID && label === 'Black-Bass') return null;
+
+                        const scoreKey = SPECIES_MAP[label];
+                        const scoreValue = (env?.scores as any)?.[scoreKey];
+                        
+                        // Masquage si aucune donnée n'est disponible [cite: 19]
+                        if (scoreValue === undefined || scoreValue === null) return null;
+
+                        return (
+                            <div key={label} className="flex flex-col">
+                                <span className="text-[8px] font-black text-stone-300 uppercase tracking-tighter">
+                                    {label === 'Black-Bass' ? 'Bass' : label}
+                                </span>
+                                <div className="flex items-center gap-1 text-[10px] font-black text-stone-600">
+                                    <Activity size={10} className={scoreValue > 50 ? "text-emerald-500" : "text-amber-500"} />
+                                    {Math.round(scoreValue)}
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
                 <div className={`text-[10px] font-black px-3 py-1 rounded-full ${session.feelingScore >= 7 ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-amber-50 text-amber-700 border border-amber-100'}`}>
                     FEELING: {session.feelingScore}/10

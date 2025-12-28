@@ -1,7 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { X, AlertOctagon, Edit2, Loader2, CloudCheck, CloudOff } from 'lucide-react';
-import { Miss, Zone, RefLureType, RefColor, RefSize, RefWeight, FullEnvironmentalSnapshot } from '../types';
-import { getHistoricalSnapshot } from '../lib/environmental-service';
+// components/MissDialog.tsx
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, AlertOctagon, Edit2, Loader2, Cloud, CloudOff, Check } from 'lucide-react';
+import { 
+    Miss, Zone, RefLureType, RefColor, RefSize, RefWeight, 
+    FullEnvironmentalSnapshot, Location 
+} from '../types';
+import { doc, getDoc } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions'; 
+import { getApp } from 'firebase/app';
+import { db } from '../lib/firebase';
+import { fetchHistoricalWeatherContext } from '../lib/universal-weather-service';
 
 interface MissDialogProps {
   isOpen: boolean;
@@ -9,9 +17,11 @@ interface MissDialogProps {
   onSave: (data: any) => void;
   initialData?: Miss | null;
   availableZones: Zone[];
+  locationId: string;   // REQUIS pour le filtrage par secteur
+  locations: Location[]; // REQUIS pour la simulation Gold Standard
   sessionStartTime: string;
   sessionEndTime: string;
-  sessionDate: string; // NOUVELLE PROP
+  sessionDate: string;
   lureTypes: RefLureType[];
   colors: RefColor[];
   sizes: RefSize[];
@@ -19,7 +29,7 @@ interface MissDialogProps {
 }
 
 const MissDialog: React.FC<MissDialogProps> = ({ 
-  isOpen, onClose, onSave, initialData, availableZones, 
+  isOpen, onClose, onSave, initialData, availableZones, locationId, locations,
   sessionStartTime, sessionEndTime, sessionDate, lureTypes, colors, sizes, weights 
 }) => {
   const [type, setType] = useState<Miss['type']>('Décroché');
@@ -33,26 +43,35 @@ const MissDialog: React.FC<MissDialogProps> = ({
 
   const [isLoadingEnv, setIsLoadingEnv] = useState(false);
   const [envSnapshot, setEnvSnapshot] = useState<FullEnvironmentalSnapshot | null>(null);
-  const [envStatus, setEnvStatus] = useState<'idle' | 'found' | 'not-found'>('idle');
+  const [envStatus, setEnvStatus] = useState<'idle' | 'found' | 'not-found' | 'simulated'>('idle');
 
   const [error, setError] = useState<string | null>(null);
 
+  // --- 1. FILTRAGE DES SPOTS PAR SECTEUR ---
+  const filteredSpots = useMemo(() => {
+    return availableZones.filter(z => z.locationId === locationId);
+  }, [availableZones, locationId]);
+
+  // --- 2. INITIALISATION DES DONNÉES ---
   useEffect(() => {
     if (isOpen) {
       setError(null);
-      if (initialData) {
-        setType(initialData.type);
-        setLocation(initialData.location || '');
-        setSelectedZoneId(initialData.spotId || availableZones[0]?.id || '');
-        setSelectedLureTypeId(initialData.lureTypeId || '');
-        setSelectedColorId(initialData.lureColorId || '');
-        setSelectedSizeId(initialData.lureSizeId || '');
-        setSelectedWeightId(initialData.lureWeightId || '');
-        setEnvSnapshot(initialData.envSnapshot || null);
-        setEnvStatus(initialData.envSnapshot ? 'found' : 'idle');
+      const data = initialData as any; // Cast pour éviter les erreurs TS sur les champs manquants dans l'interface
 
-        if (initialData.timestamp) {
-            const dateObj = initialData.timestamp instanceof Date ? initialData.timestamp : new Date((initialData.timestamp as any).seconds * 1000);
+      if (data) {
+        setType(data.type);
+        setLocation(data.location || '');
+        // Priorité au spot déjà enregistré, sinon premier spot du secteur filtré
+        setSelectedZoneId(data.spotId || (filteredSpots[0]?.id || ''));
+        setSelectedLureTypeId(data.lureTypeId || '');
+        setSelectedColorId(data.lureColorId || '');
+        setSelectedSizeId(data.lureSizeId || '');
+        setSelectedWeightId(data.lureWeightId || '');
+        setEnvSnapshot(data.envSnapshot || null);
+        setEnvStatus(data.envSnapshot ? 'found' : 'idle');
+
+        if (data.timestamp) {
+            const dateObj = data.timestamp instanceof Date ? data.timestamp : new Date(data.timestamp.seconds * 1000);
             setTime(dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
         }
       } else {
@@ -65,27 +84,100 @@ const MissDialog: React.FC<MissDialogProps> = ({
         setSelectedWeightId('');
         setEnvSnapshot(null);
         setEnvStatus('idle');
-        if (availableZones.length > 0) setSelectedZoneId(availableZones[0].id);
+        if (filteredSpots.length > 0) setSelectedZoneId(filteredSpots[0].id);
       }
     }
-  }, [isOpen, initialData, sessionStartTime, availableZones]);
+  }, [isOpen, initialData, sessionStartTime, filteredSpots]);
 
+  // --- 3. ACQUISITION ENVIRONNEMENTALE (MODÈLE UNIFIÉ) ---
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !time || !locationId) return;
+
     const fetchEnv = async () => {
       setIsLoadingEnv(true);
-      const snapshot = await getHistoricalSnapshot(sessionDate, time);
-      if (snapshot) {
-        setEnvSnapshot(snapshot);
-        setEnvStatus('found');
-      } else {
+      const NANTERRE_SECTOR_ID = "WYAjhoUeeikT3mS0hjip";
+      
+      try {
+        if (locationId === NANTERRE_SECTOR_ID) {
+          const hourStr = time.split(':')[0];
+          const docId = `${sessionDate}_${hourStr}00`;
+          const snap = await getDoc(doc(db, 'environmental_logs', docId));
+
+          if (snap.exists()) {
+            const d = snap.data() as any;
+            setEnvSnapshot({
+              weather: {
+                temperature: d.weather?.temp || 0,
+                pressure: d.weather?.pressure || 0,
+                windSpeed: d.weather?.windSpeed || 0,
+                windDirection: d.weather?.windDir || 0,
+                precip: d.weather?.precip || 0,
+                clouds: d.weather?.cloudCover || 0,
+                conditionCode: d.weather?.condition_code || 0
+              },
+              hydro: {
+                flowRaw: d.hydro?.flow || 0,
+                flowLagged: d.computed?.flow_lagged || 0,
+                level: d.hydro?.level || 0,
+                waterTemp: d.hydro?.waterTemp || null,
+                turbidityIdx: d.computed?.turbidity_idx || 0
+              },
+              scores: {
+                sandre: d.computed?.score_sandre || 0,
+                brochet: d.computed?.score_brochet || 0,
+                perche: d.computed?.score_perche || 0,
+                blackbass: d.computed?.score_blackbass || 0
+              },
+              metadata: { sourceLogId: snap.id, calculationDate: d.updatedAt || d.timestamp }
+            });
+            setEnvStatus('found');
+          } else {
+            setEnvStatus('not-found');
+          }
+        } else {
+          // Simulation Gold Standard pour les autres secteurs
+          const currentLocation = locations.find(l => l.id === locationId);
+          if (currentLocation?.coordinates) {
+            const weatherContext = await fetchHistoricalWeatherContext(
+                currentLocation.coordinates.lat, 
+                currentLocation.coordinates.lng, 
+                sessionDate
+            );
+
+            if (weatherContext) {
+                const functions = getFunctions(getApp(), 'europe-west1');
+                const getHistoricalContext = httpsCallable(functions, 'getHistoricalContext');
+                const result = await getHistoricalContext({
+                    weather: weatherContext.snapshot,
+                    weatherHistory: weatherContext.history,
+                    location: currentLocation,
+                    dateStr: sessionDate
+                });
+
+                const cloudData = result.data as any;
+                if (cloudData) {
+                    setEnvSnapshot({
+                        weather: { ...weatherContext.snapshot },
+                        hydro: { flowRaw: 0, flowLagged: 0, level: 0, waterTemp: cloudData.waterTemp, turbidityIdx: cloudData.turbidityNTU / 80 },
+                        scores: cloudData.scores,
+                        metadata: { sourceLogId: 'gold_standard_simulated', calculationDate: new Date().toISOString() }
+                    });
+                    setEnvStatus('simulated');
+                }
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Erreur récupération environnement (Miss) Michael :", e);
         setEnvStatus('not-found');
+      } finally {
+        setIsLoadingEnv(false);
       }
-      setIsLoadingEnv(false);
     };
-    const debounce = setTimeout(fetchEnv, 600);
+
+    const debounce = setTimeout(fetchEnv, 800);
     return () => clearTimeout(debounce);
-  }, [time, sessionDate, isOpen]);
+  }, [time, sessionDate, locationId, isOpen, locations]);
 
   if (!isOpen) return null;
 
@@ -96,7 +188,7 @@ const MissDialog: React.FC<MissDialogProps> = ({
       return;
     }
 
-    const zoneObj = availableZones.find(z => z.id === selectedZoneId);
+    const zoneObj = filteredSpots.find(z => z.id === selectedZoneId);
     
     onSave({ 
       type, time, location, 
@@ -105,7 +197,7 @@ const MissDialog: React.FC<MissDialogProps> = ({
       lureColorId: selectedColorId,
       lureSizeId: selectedSizeId,
       lureWeightId: selectedWeightId,
-      envSnapshot // SAUVEGARDE DU SNAPSHOT
+      envSnapshot 
     });
     onClose();
   };
@@ -129,7 +221,12 @@ const MissDialog: React.FC<MissDialogProps> = ({
           </h3>
           <div className="flex items-center gap-3">
              {isLoadingEnv ? <Loader2 className="animate-spin text-rose-500" size={16}/> : 
-              envStatus === 'found' ? <CloudCheck className="text-emerald-500" size={16}/> : <CloudOff className="text-stone-300" size={16}/>}
+              envStatus !== 'idle' ? (
+                <div className="flex items-center gap-1">
+                    <Cloud className={envStatus === 'simulated' ? "text-blue-500" : "text-emerald-500"} size={16}/>
+                    <Check className={envStatus === 'simulated' ? "text-blue-500" : "text-emerald-500"} size={12}/>
+                </div>
+              ) : <CloudOff className="text-stone-300" size={16}/>}
              <button onClick={onClose} className="p-2 text-stone-400 hover:bg-stone-100 rounded-full"><X size={20}/></button>
           </div>
         </div>
@@ -155,13 +252,14 @@ const MissDialog: React.FC<MissDialogProps> = ({
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-black uppercase text-stone-400 ml-1">Zone / Spot</label>
-            <select value={selectedZoneId} onChange={(e) => setSelectedZoneId(e.target.value)} className="w-full p-3 bg-white border border-stone-200 rounded-xl text-sm font-medium text-stone-700 outline-none focus:ring-2 focus:ring-rose-200">
-              {availableZones.map(z => <option key={z.id} value={z.id}>{z.label}</option>)}
+            <label className="text-[10px] font-black uppercase text-stone-400 ml-1">Zone / Spot du secteur</label>
+            <select value={selectedZoneId} onChange={(e) => setSelectedZoneId(e.target.value)} className="w-full p-3 bg-white border border-stone-200 rounded-xl text-sm font-medium text-stone-700 outline-none focus:ring-2 focus:ring-rose-200" disabled={filteredSpots.length === 0}>
+              {filteredSpots.map(z => <option key={z.id} value={z.id}>{z.label}</option>)}
+              {filteredSpots.length === 0 && <option value="">Aucun spot pour ce secteur</option>}
             </select>
           </div>
 
-           <div className="bg-stone-100/50 p-3 rounded-2xl border border-stone-100 grid grid-cols-2 gap-3">
+          <div className="bg-stone-100/50 p-3 rounded-2xl border border-stone-100 grid grid-cols-2 gap-3">
               <SelectField label="Type de Leurre" value={selectedLureTypeId} onChange={setSelectedLureTypeId} options={lureTypes} placeholder="Type..." />
               <SelectField label="Couleur" value={selectedColorId} onChange={setSelectedColorId} options={colors} placeholder="Couleur..." />
               <SelectField label="Taille" value={selectedSizeId} onChange={setSelectedSizeId} options={sizes} placeholder="Taille..." />

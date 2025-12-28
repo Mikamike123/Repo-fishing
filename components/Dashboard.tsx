@@ -33,7 +33,7 @@ const SPECIES_CONFIG: Record<string, { label: string; key: string; hexColor: str
     'Brochet': { label: 'Brochet', key: 'brochet', hexColor: '#10b981' },
     'Perche': { label: 'Perche', key: 'perche', hexColor: '#f43f5e' },
     'Black-Bass': { label: 'Black-Bass', key: 'blackbass', hexColor: '#8b5cf6' },
-    'Silure': { label: 'Silure', key: 'silure', hexColor: '#4b5563' }, // Couleur Grise du thème chart [cite: 526]
+    'Silure': { label: 'Silure', key: 'silure', hexColor: '#4b5563' }, 
 };
 
 interface DashboardProps {
@@ -94,7 +94,6 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
             if (!targetLocation?.coordinates) return;
             setIsOracleLoading(true);
             try {
-                // Simulation historique ou live selon le secteur [cite: 73, 106]
                 const points = await fetchOracleChartData(targetLocation.coordinates.lat, targetLocation.coordinates.lng, targetLocation.morphology);
                 setOraclePoints(points);
             } catch (err) { console.error("Oracle Sync Error:", err); }
@@ -140,7 +139,12 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
                 setActiveLocationId={setActiveLocationId}
                 availableLocations={availableLocations}
                 isReferenceLocation={isReferenceLocation}
-                activeSpeciesList={isReferenceLocation ? ['Sandre', 'Brochet', 'Perche', 'Black-Bass'] : (targetLocation?.speciesIds || ['Sandre', 'Brochet', 'Perche', 'Black-Bass'])}
+                // LOGIQUE DE FILTRAGE NANTERRE (GOLD STANDARD) 
+                activeSpeciesList={
+                    activeLocationId === GOLD_STANDARD_ID 
+                        ? ['Sandre', 'Brochet', 'Perche'] 
+                        : (targetLocation?.speciesIds || ['Sandre', 'Brochet', 'Perche', 'Black-Bass'])
+                }
                 liveScores={liveOraclePoint || nanterreScores}
                 displayedWeather={displayedWeather}
                 displayWaterTemp={displayWaterTemp}
@@ -203,7 +207,7 @@ const LiveStatusSection: React.FC<any> = ({
         <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
         <div className="p-6 relative z-10">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-                <h3 className="text-lg font-bold text-stone-800 flex items-center gap-2"><ActivityIcon /> {isReferenceLocation ? 'Météo Nanterre (Ref)' : 'Météo Secteur'}</h3>
+                <h3 className="text-lg font-bold text-stone-800 flex items-center gap-2"><ActivityIcon /> {isReferenceLocation ? 'Météo' : 'Météo'}</h3>
                 <div className="relative w-full sm:w-auto min-w-[200px]">
                     <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-stone-400"><MapPin size={16} /></div>
                     <select value={activeLocationId} onChange={(e) => setActiveLocationId(e.target.value)} className="appearance-none w-full bg-stone-50 border border-stone-200 text-stone-700 font-bold text-sm rounded-2xl py-3 pl-10 pr-10 focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer shadow-sm hover:bg-stone-100">
@@ -213,11 +217,9 @@ const LiveStatusSection: React.FC<any> = ({
                 </div>
             </div>
 
-            {/* [CENTRE] Utilisation de SpeciesScoreGrid pour un alignement clean [cite: 522] */}
             <SpeciesScoreGrid>
                 {activeSpeciesList.map((speciesId: string) => {
                     const config = SPECIES_CONFIG[speciesId] || { label: speciesId, key: speciesId.toLowerCase(), hexColor: '#a8a29e' };
-                    // Extraction du score temps réel calculé par le moteur [cite: 142, 175]
                     const scoreValue = liveScores ? (liveScores as any)[config.key] : undefined;
                     return (
                         <SpeciesScore 

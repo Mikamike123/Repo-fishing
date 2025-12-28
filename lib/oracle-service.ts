@@ -49,6 +49,7 @@ export const fetchOracleChartData = async (
     lng: number, 
     morphology?: LocationMorphology
 ): Promise<OracleDataPoint[]> => {
+    if (!lat || !lng) return [];
     try {
         // --- A. INITIALISATION DES CONSTANTES ---
         const m = morphology?.typeId || 'Z_RIVER';
