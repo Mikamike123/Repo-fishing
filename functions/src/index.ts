@@ -320,5 +320,6 @@ async function fetchVigicruesHydro(grandeur: "Q" | "H"): Promise<number | null> 
 
 // BRANCHEMENT DE LA NOUVELLE FONCTION VISION (ISOLEE DANS VISION.TS)
 export * from "./vision";
+export * from "./cleanup";
 
 export { getHistoricalContext } from "./historical";

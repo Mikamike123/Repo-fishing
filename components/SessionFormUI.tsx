@@ -1,5 +1,5 @@
 // components/SessionFormUI.tsx
-import React from 'react';
+import React, { useState } from 'react';
 import { 
     Save, Loader2, Fish, AlertOctagon, X, Copy, 
     Cloud, Sun, CloudSun, CloudRain, Wind, Thermometer, Droplets
@@ -10,6 +10,8 @@ import {
 } from '../types';
 import CatchDialog from './CatchDialog';
 import MissDialog from './MissDialog';
+import DeleteConfirmDialog from './DeleteConfirmDialog';
+import { CATCH_DELETION_MESSAGES, MISS_DELETION_MESSAGES } from '../constants/deletionMessages';
 
 const getWindDir = (deg?: number) => {
     if (deg === undefined) return '';
@@ -25,7 +27,6 @@ const getWeatherIcon = (clouds: number) => {
 };
 
 interface SessionFormUIProps {
-    // Props d'origine
     initialData?: Session | null;
     zones: Zone[];
     setups: Setup[];
@@ -37,7 +38,6 @@ interface SessionFormUIProps {
     lastCatchDefaults?: Catch | null;
     locations: Location[];
     
-    // États et Handlers passés par le parent
     date: string; setDate: (v: string) => void;
     startTime: string; setStartTime: (v: string) => void;
     endTime: string; setEndTime: (v: string) => void;
@@ -64,14 +64,30 @@ interface SessionFormUIProps {
 
 const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
     const {
-        initialData, zones, setups, techniques, lureTypes, colors, sizes, weights, lastCatchDefaults, locations,
+        initialData, setups, techniques, lureTypes, colors, sizes, weights, lastCatchDefaults, locations,
         date, setDate, startTime, setStartTime, endTime, setEndTime,
         locationId, setLocationId, filteredSpots, spotId, setSpotId, setupId, setSetupId,
         feelingScore, setFeelingScore, notes, setNotes, catches, misses, envSnapshot,
         isLoadingEnv, envStatus, isCatchModalOpen, setIsCatchModalOpen, isMissModalOpen, setIsMissModalOpen,
         editingCatch, setEditingCatch, editingMiss, setEditingMiss,
-        handleDeleteCatch, handleDeleteMiss, handleSaveCatch, handleSaveMiss, handleSubmit
+        handleDeleteCatch, handleDeleteMiss, handleSaveCatch, handleSaveMiss, handleSubmit, zones
     } = props;
+
+    // Michael : État local pour piloter la modale personnalisée
+    const [pendingDelete, setPendingDelete] = useState<{ id: string; type: 'catch' | 'miss' | null }>({
+        id: '',
+        type: null
+    });
+
+    const triggerDelete = (id: string, type: 'catch' | 'miss') => {
+        setPendingDelete({ id, type });
+    };
+
+    const confirmDeletion = () => {
+        if (pendingDelete.type === 'catch') handleDeleteCatch(pendingDelete.id);
+        if (pendingDelete.type === 'miss') handleDeleteMiss(pendingDelete.id);
+        setPendingDelete({ id: '', type: null });
+    };
 
     return (
         <div className="bg-white rounded-3xl p-6 shadow-xl pb-24">
@@ -186,7 +202,7 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
                                 </span>
                                 <div className="flex gap-1">
                                     <button type="button" onClick={() => { setEditingCatch(c); setIsCatchModalOpen(true); }} className="p-2 bg-white rounded-full text-stone-400 shadow-sm border border-stone-100 hover:text-emerald-600"><Copy size={12}/></button>
-                                    <button type="button" onClick={() => handleDeleteCatch(c.id)} className="p-2 bg-white rounded-full text-rose-400 shadow-sm border border-stone-100 hover:text-rose-600"><X size={12}/></button>
+                                    <button type="button" onClick={() => triggerDelete(c.id, 'catch')} className="p-2 bg-white rounded-full text-rose-400 shadow-sm border border-stone-100 hover:text-rose-600"><X size={12}/></button>
                                 </div>
                             </div>
                         ))}
@@ -198,7 +214,7 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
                                 </span>
                                 <div className="flex gap-1">
                                     <button type="button" onClick={() => { setEditingMiss(m); setIsMissModalOpen(true); }} className="p-2 bg-white rounded-full text-stone-400 shadow-sm border border-stone-100 hover:text-rose-600"><Copy size={12}/></button>
-                                    <button type="button" onClick={() => handleDeleteMiss(m.id)} className="p-2 bg-white rounded-full text-rose-400 shadow-sm border border-stone-100 hover:text-rose-600"><X size={12}/></button>
+                                    <button type="button" onClick={() => triggerDelete(m.id, 'miss')} className="p-2 bg-white rounded-full text-rose-400 shadow-sm border border-stone-100 hover:text-rose-600"><X size={12}/></button>
                                 </div>
                             </div>
                         ))}
@@ -226,8 +242,8 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
                 onSave={handleSaveCatch} 
                 initialData={editingCatch}
                 availableZones={zones} 
-                locationId={locationId} // Michael : Ajout de la prop manquante
-                locations={locations}   // Michael : Ajout de la prop manquante
+                locationId={locationId} 
+                locations={locations}   
                 availableTechniques={techniques} 
                 sessionStartTime={startTime} 
                 sessionEndTime={endTime} 
@@ -245,8 +261,8 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
                 onSave={handleSaveMiss} 
                 initialData={editingMiss}
                 availableZones={zones} 
-                locationId={locationId} // Michael : Ajout de la prop manquante
-                locations={locations}   // Michael : Ajout de la prop manquante
+                locationId={locationId} 
+                locations={locations}   
                 sessionStartTime={startTime} 
                 sessionEndTime={endTime} 
                 sessionDate={date}
@@ -254,6 +270,14 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
                 colors={colors}
                 sizes={sizes}
                 weights={weights}
+            />
+
+            <DeleteConfirmDialog
+                isOpen={pendingDelete.type !== null}
+                onClose={() => setPendingDelete({ id: '', type: null })}
+                onConfirm={confirmDeletion}
+                title={pendingDelete.type === 'catch' ? "Supprimer cette prise ?" : "Supprimer ce raté ?"}
+                customMessages={pendingDelete.type === 'catch' ? CATCH_DELETION_MESSAGES : MISS_DELETION_MESSAGES}
             />
         </div>
     );

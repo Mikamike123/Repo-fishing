@@ -1,8 +1,10 @@
+// components/HistoryView.tsx
 import React, { useState, useMemo } from 'react';
 import { ScrollText, Anchor, Users, User, Search, Clock } from 'lucide-react';
 import { Session } from '../types';
 import SessionCard from './SessionCard';
 import SessionDetailModal from './SessionDetailModal';
+import DeleteConfirmDialog from './DeleteConfirmDialog'; // Import du nouveau composant
 
 interface HistoryViewProps {
   sessions: Session[];
@@ -15,11 +17,16 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   
+  // États pour la gestion de la suppression et de l'animation
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [sessionIdToDelete, setSessionIdToDelete] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null); // Pour le fade-out
+
   // 1. POSITIONNÉ PAR DÉFAUT SUR 'MES SESSIONS' (true)
   const [showOnlyMine, setShowOnlyMine] = useState(true); 
   const [searchTerm, setSearchTerm] = useState('');
 
-  // 2. LOGIQUE DE FILTRAGE COMBINÉE (Auteur + Recherche)
+  // 2. LOGIQUE DE FILTRAGE COMBINÉE (Auteur + Recherche) - TON CODE INTACT
   const displayedSessions = useMemo(() => {
     return sessions
       .filter(session => {
@@ -37,10 +44,31 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [sessions, showOnlyMine, currentUserId, searchTerm]);
 
+  // Handler pour ouvrir la confirmation
+  const handleDeleteRequest = (id: string) => {
+    setSessionIdToDelete(id);
+    setIsDeleteConfirmOpen(true);
+  };
+
+  // Handler pour valider la suppression avec animation
+  const handleConfirmDelete = () => {
+    if (sessionIdToDelete) {
+      setIsDeleteConfirmOpen(false);
+      setDeletingId(sessionIdToDelete); // On déclenche l'animation de sortie
+
+      // On attend 300ms (durée de l'animation) avant de supprimer réellement du state
+      setTimeout(() => {
+        onDeleteSession(sessionIdToDelete);
+        setDeletingId(null);
+        setSessionIdToDelete(null);
+      }, 300);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-24 animate-in fade-in duration-500">
       
-      {/* HEADER & FILTRES */}
+      {/* HEADER & FILTRES - TON CODE INTACT */}
       <div className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-stone-100 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -53,7 +81,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
             </p>
           </div>
 
-          {/* TOGGLE SWITCH (Default: Mes Sessions) */}
           <div className="flex bg-stone-100 p-1 rounded-xl border border-stone-200 shadow-inner self-start">
               <button 
                   onClick={() => setShowOnlyMine(false)}
@@ -70,7 +97,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
           </div>
         </div>
 
-        {/* BARRE DE RECHERCHE */}
         <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-300" size={18} />
           <input 
@@ -87,14 +113,20 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
       <div className="space-y-4">
         {displayedSessions.length > 0 ? (
           displayedSessions.map((session) => (
-            <SessionCard 
-                key={session.id} 
-                session={session} 
-                onDelete={onDeleteSession}
-                onEdit={onEditSession}
-                onClick={(s) => { setSelectedSession(s); setIsDetailOpen(true); }}
-                currentUserId={currentUserId}
-            />
+            <div 
+              key={session.id}
+              className={`transition-all duration-300 transform ${
+                deletingId === session.id ? 'opacity-0 scale-95 -translate-y-4 pointer-events-none' : 'opacity-100 scale-100'
+              }`}
+            >
+              <SessionCard 
+                  session={session} 
+                  onDelete={handleDeleteRequest} // On intercepte ici
+                  onEdit={onEditSession}
+                  onClick={(s) => { setSelectedSession(s); setIsDetailOpen(true); }}
+                  currentUserId={currentUserId}
+              />
+            </div>
           ))
         ) : (
           <div className="flex flex-col items-center justify-center py-20 px-4 text-center border border-dashed border-stone-200 rounded-[2.5rem] bg-white shadow-sm">
@@ -113,6 +145,13 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
         session={selectedSession} 
         isOpen={isDetailOpen} 
         onClose={() => setIsDetailOpen(false)} 
+      />
+
+      {/* POP-IN DE CONFIRMATION */}
+      <DeleteConfirmDialog 
+        isOpen={isDeleteConfirmOpen}
+        onClose={() => { setIsDeleteConfirmOpen(false); setSessionIdToDelete(null); }}
+        onConfirm={handleConfirmDelete}
       />
 
     </div>

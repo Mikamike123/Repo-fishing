@@ -253,10 +253,13 @@ const App: React.FC = () => {
         } catch (error) { console.error(error); }
     };
 
-    const handleDeleteSession = async (id: string) => { 
-        if (window.confirm("Supprimer définitivement cette session ?")) {
-            try { await deleteDoc(doc(db, 'sessions', id)); } catch (error) { console.error(error); }
-        }
+    const handleDeleteSession = async (id: string) => {
+    try {
+        await deleteDoc(doc(db, 'sessions', id));
+        // Optionnel : tu peux ajouter un petit console.log pour confirmer le succès dans tes logs
+    } catch (error) {
+        console.error("Erreur suppression session:", error);
+    }
     };
 
     const handleEditRequest = (session: Session) => {

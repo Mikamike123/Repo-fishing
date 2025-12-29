@@ -195,15 +195,11 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
 
     // --- HANDLERS ---
     const handleDeleteCatch = (id: string) => {
-        if (window.confirm("Supprimer cette prise ?")) {
             setCatches(prev => prev.filter(c => c.id !== id));
-        }
     };
 
     const handleDeleteMiss = (id: string) => {
-        if (window.confirm("Supprimer ce raté ?")) {
             setMisses(prev => prev.filter(m => m.id !== id));
-        }
     };
 
     const handleSaveCatch = (catchData: any) => {

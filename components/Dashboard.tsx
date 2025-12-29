@@ -7,6 +7,7 @@ import {
 import { Session, RefLureType, RefColor, Location, WeatherSnapshot, BioScoreSnapshot } from '../types';
 import SessionCard from './SessionCard';
 import SessionDetailModal from './SessionDetailModal';
+import DeleteConfirmDialog from './DeleteConfirmDialog'; // Michael : Importation du nouveau composant
 import { useCurrentConditions } from '../lib/hooks';
 import { RecordsGrid } from './RecordsGrid';
 import { buildUserHistory, getNextLevelCap } from '../lib/gamification';
@@ -53,17 +54,22 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
     // Michael : Extraction de TOUTES les props, y compris les nouvelles pour la synchro
     const { 
         sessions, currentUserId, locations, 
-        activeLocationId, setActiveLocationId, oraclePoints, isOracleLoading 
+        activeLocationId, setActiveLocationId, oraclePoints, isOracleLoading,
+        onDeleteSession, onEditSession
     } = props;
 
     const { weather: nanterreWeather, hydro, scores: nanterreScores, computed, isLoading: isBaseLoading } = useCurrentConditions();
     
-    // Michael : Les états locaux sont supprimés/commentés car ils viennent des PROPS désormais
-    // const [displayedWeather, setDisplayedWeather] = useState<WeatherSnapshot | null>(null);
+    // Michael : Les états locaux sont maintenus
     const [displayedWeather, setDisplayedWeather] = useState<WeatherSnapshot | null>(null);
     const [isWeatherLoading, setIsWeatherLoading] = useState(false);
     const [selectedSession, setSelectedSession] = useState<Session | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
+
+    // --- Michael : NOUVEAUX ÉTATS POUR LA SUPPRESSION ---
+    const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+    const [sessionIdToDelete, setSessionIdToDelete] = useState<string | null>(null);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
 
     const uniqueLocationsMap = useMemo(() => {
         const map = new Map<string, Location>();
@@ -122,6 +128,26 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
     const displayWaterTemp = liveOraclePoint?.waterTemp ?? (isReferenceLocation ? hydro?.waterTemp : null);
     const isLoading = isBaseLoading || isWeatherLoading || isOracleLoading;
 
+    // --- Michael : LOGIQUE DE SUPPRESSION ---
+    const handleDeleteRequest = (id: string) => {
+        setSessionIdToDelete(id);
+        setIsDeleteConfirmOpen(true);
+    };
+
+    const handleConfirmDelete = () => {
+        if (sessionIdToDelete) {
+            setIsDeleteConfirmOpen(false);
+            setDeletingId(sessionIdToDelete); // Déclenche l'animation de sortie
+
+            // Délai de 300ms pour laisser l'animation se terminer
+            setTimeout(() => {
+                onDeleteSession(sessionIdToDelete);
+                setDeletingId(null);
+                setSessionIdToDelete(null);
+            }, 300);
+        }
+    };
+
     return (
         <div className="space-y-8 animate-in fade-in duration-500 pb-20">
             <ProgressionHeader sessions={sessions} currentUserId={currentUserId} />
@@ -149,14 +175,29 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
 
             <TrophiesSection sessions={sessions} currentUserId={currentUserId} />
 
-            <ActivityFeed sessions={sessions} currentUserId={currentUserId} onDelete={props.onDeleteSession} onEdit={props.onEditSession} onSelect={(s: Session) => { setSelectedSession(s); setIsDetailOpen(true); }} />
+            {/* Michael : Mise à jour de ActivityFeed avec la nouvelle logique */}
+            <ActivityFeed 
+                sessions={sessions} 
+                currentUserId={currentUserId} 
+                onDelete={handleDeleteRequest} 
+                onEdit={onEditSession} 
+                onSelect={(s: Session) => { setSelectedSession(s); setIsDetailOpen(true); }} 
+                deletingId={deletingId}
+            />
 
             <SessionDetailModal session={selectedSession} isOpen={isDetailOpen} onClose={() => setIsDetailOpen(false)} />
+
+            {/* Michael : Pop-in de confirmation sardonique */}
+            <DeleteConfirmDialog 
+                isOpen={isDeleteConfirmOpen}
+                onClose={() => { setIsDeleteConfirmOpen(false); setSessionIdToDelete(null); }}
+                onConfirm={handleConfirmDelete}
+            />
         </div>
     );
 };
 
-// ... (Le reste des sous-composants ProgressionHeader, LiveStatusSection, etc. reste inchangé)
+// ... (Le reste des sous-composants ProgressionHeader, LiveStatusSection, etc.)
 
 const ProgressionHeader: React.FC<{ sessions: Session[], currentUserId: string }> = ({ sessions, currentUserId }) => {
     const currentYear = new Date().getFullYear();
@@ -246,7 +287,7 @@ const TrophiesSection: React.FC<{ sessions: Session[], currentUserId: string }> 
     </div>
 );
 
-const ActivityFeed: React.FC<any> = ({ sessions, currentUserId, onDelete, onEdit, onSelect }) => {
+const ActivityFeed: React.FC<any> = ({ sessions, currentUserId, onDelete, onEdit, onSelect, deletingId }) => {
     const [filter, setFilter] = useState<'all' | 'my'>('my');
     const filtered = useMemo(() => (filter === 'my' ? sessions.filter((s: Session) => s.userId === currentUserId) : sessions).slice(0, 5), [sessions, filter, currentUserId]);
 
@@ -260,7 +301,22 @@ const ActivityFeed: React.FC<any> = ({ sessions, currentUserId, onDelete, onEdit
                 </div>
             </div>
             <div className="space-y-4">
-                {filtered.map((s: Session) => <SessionCard key={s.id} session={s} onDelete={onDelete} onEdit={onEdit} onClick={onSelect} currentUserId={currentUserId} />)}
+                {filtered.map((s: Session) => (
+                    <div 
+                        key={s.id}
+                        className={`transition-all duration-300 transform ${
+                            deletingId === s.id ? 'opacity-0 scale-95 -translate-y-4 pointer-events-none' : 'opacity-100 scale-100'
+                        }`}
+                    >
+                        <SessionCard 
+                            session={s} 
+                            onDelete={onDelete} 
+                            onEdit={onEdit} 
+                            onClick={onSelect} 
+                            currentUserId={currentUserId} 
+                        />
+                    </div>
+                ))}
             </div>
         </div>
     );
