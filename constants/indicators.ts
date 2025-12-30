@@ -1,6 +1,6 @@
 // constants/indicators.ts
 import { 
-    Thermometer, Gauge, Wind, Droplets, Waves, Eye, Activity, ShieldCheck 
+    Thermometer, Gauge, Wind, Droplets, Waves, Eye, Activity, ShieldCheck, Cloud, CloudRain
 } from 'lucide-react';
 
 export interface IndicatorMeta {
@@ -10,7 +10,7 @@ export interface IndicatorMeta {
     unit: string;
     icon: any;
     theme: string;
-    dataKey: string; // La clé correspondante dans le snapshot (weather ou hydro)
+    dataKey: string;
 }
 
 export const WEATHER_METADATA: Record<string, IndicatorMeta> = {
@@ -37,6 +37,22 @@ export const WEATHER_METADATA: Record<string, IndicatorMeta> = {
         icon: Wind,
         theme: "amber",
         dataKey: "windSpeed"
+    },
+    clouds: {
+        label: "Nuages",
+        description: "Couverture nuageuse totale.",
+        unit: "%",
+        icon: Cloud,
+        theme: "blue",
+        dataKey: "clouds"
+    },
+    precip: {
+        label: "Pluie",
+        description: "Précipitations accumulées.",
+        unit: " mm",
+        icon: CloudRain,
+        theme: "indigo",
+        dataKey: "precip"
     }
 };
 

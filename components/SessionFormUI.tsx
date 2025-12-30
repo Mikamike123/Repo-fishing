@@ -98,13 +98,15 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
         const val = (envSnapshot as any)[type]?.[meta.dataKey];
         if (val === undefined || val === null) return '--';
         
-        // Formattage spécifique
-        if (meta.dataKey === 'windSpeed') return `${Math.round(val)} ${getWindDir(envSnapshot.weather.windDirection)}`;
-        if (meta.dataKey === 'flowLagged') return Math.round(val / 1000); // Conversion L/s -> m3/s si besoin ou laisser brut
+        // Formattage spécifique Michael
+        if (meta.dataKey === 'windSpeed') return `${Math.round(val)}km/h ${getWindDir(envSnapshot.weather.windDirection)}`;
+        if (meta.dataKey === 'flowLagged') return Math.round(val / 1000); 
         if (typeof val === 'number') return val % 1 === 0 ? val : val.toFixed(1);
         return val;
     };
+
     console.log("DEBUG ORACLE DATA:", envSnapshot);
+
     return (
         <div className="bg-white rounded-3xl p-6 shadow-xl pb-24">
             <div className="flex justify-between items-center mb-6">
@@ -173,27 +175,28 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
                     </div>
                     
                     <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide py-1">
-                        {/* Boucle Météo */}
+                        {/* Boucle Météo Michael (Nuages + Pluie inclus via WEATHER_METADATA) */}
                         {Object.entries(WEATHER_METADATA).map(([key, meta]) => {
                             const val = getVal(meta, 'weather');
                             const themes: any = {
-                                rose: "bg-blue-50 text-blue-900 border-blue-100",
+                                rose: "bg-rose-50 text-rose-900 border-rose-100",
                                 indigo: "bg-indigo-50 text-indigo-900 border-indigo-100",
-                                amber: "bg-stone-100 text-stone-600 border-stone-200"
+                                amber: "bg-amber-50 text-amber-900 border-amber-100",
+                                blue: "bg-blue-50 text-blue-900 border-blue-100"
                             };
                             return (
                                 <div key={key} className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border shrink-0 min-w-[70px] justify-center ${themes[meta.theme] || 'bg-stone-50'}`}>
                                     {key === 'tempAir' && envSnapshot ? getWeatherIcon(envSnapshot.weather.clouds) : <meta.icon size={14} className="opacity-60" />}
-                                    <span className="text-xs font-bold">{val}{val !== '--' && key !== 'wind' ? '°' : ''}</span>
+                                    <span className="text-xs font-bold">
+                                        {val}{val !== '--' ? (key === 'wind' ? '' : meta.unit) : ''}
+                                    </span>
                                 </div>
                             );
                         })}
 
-                        {/* Boucle Hydro */}
+                        {/* Boucle Hydro Michael */}
                         {Object.entries(HYDRO_METADATA).map(([key, meta]) => {
-                            // On masque Flow et Level si pas Golden Sector
                             if ((key === 'flow' || key === 'level') && !isGolden) return null;
-                            
                             const val = getVal(meta, 'hydro');
                             const themes: any = {
                                 orange: "bg-orange-50 text-orange-700 border-orange-100",
@@ -207,7 +210,7 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
                             return (
                                 <div key={key} className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border shrink-0 min-w-[70px] justify-center ${themes[meta.theme] || 'bg-stone-50'}`}>
                                     <meta.icon size={14} className="opacity-70" />
-                                    <span className="text-xs font-bold">{val}{val !== '--' && key === 'waterTemp' ? '°' : ''}</span>
+                                    <span className="text-xs font-bold">{val}{val !== '--' ? meta.unit : ''}</span>
                                 </div>
                             );
                         })}

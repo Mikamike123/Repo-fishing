@@ -1,4 +1,4 @@
-// components/Dashboard.tsx - Version 5.4 (Harmonisation Hex & Alignement Grid)
+// components/Dashboard.tsx - Version 5.5 (Full Dynamic Grid & Live Sync)
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
@@ -7,7 +7,7 @@ import {
 import { Session, RefLureType, RefColor, Location, WeatherSnapshot, BioScoreSnapshot } from '../types';
 import SessionCard from './SessionCard';
 import SessionDetailModal from './SessionDetailModal';
-import DeleteConfirmDialog from './DeleteConfirmDialog'; // Michael : Importation du nouveau composant
+import DeleteConfirmDialog from './DeleteConfirmDialog';
 import { useCurrentConditions } from '../lib/hooks';
 import { RecordsGrid } from './RecordsGrid';
 import { buildUserHistory, getNextLevelCap } from '../lib/gamification';
@@ -16,6 +16,7 @@ import { useWaterTemp } from '../lib/useWaterTemp';
 import { useArsenal } from '../lib/useArsenal';     
 import { fetchOracleChartData, OracleDataPoint } from '../lib/oracle-service'; 
 import OracleHero from './OracleHero';
+import { WEATHER_METADATA, HYDRO_METADATA } from '../constants/indicators';
 
 import { 
     getWindDir, getWeatherIcon, 
@@ -43,7 +44,6 @@ interface DashboardProps {
     lureTypes: RefLureType[];
     colors: RefColor[];
     locations: Location[]; 
-    // Michael : AJOUTS POUR SYNCHRONISATION
     activeLocationId: string;
     setActiveLocationId: (id: string) => void;
     oraclePoints: OracleDataPoint[];
@@ -51,7 +51,6 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = (props) => {
-    // Michael : Extraction de TOUTES les props, y compris les nouvelles pour la synchro
     const { 
         sessions, currentUserId, locations, 
         activeLocationId, setActiveLocationId, oraclePoints, isOracleLoading,
@@ -60,13 +59,11 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
 
     const { weather: nanterreWeather, hydro, scores: nanterreScores, computed, isLoading: isBaseLoading } = useCurrentConditions();
     
-    // Michael : Les états locaux sont maintenus
     const [displayedWeather, setDisplayedWeather] = useState<WeatherSnapshot | null>(null);
     const [isWeatherLoading, setIsWeatherLoading] = useState(false);
     const [selectedSession, setSelectedSession] = useState<Session | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
 
-    // --- Michael : NOUVEAUX ÉTATS POUR LA SUPPRESSION ---
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [sessionIdToDelete, setSessionIdToDelete] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -93,14 +90,10 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
         return final;
     }, [uniqueLocationsList, defaultLocation]);
 
-    // Michael : La synchronisation de l'ID se fait désormais au niveau de App.tsx, mais on garde une sécurité
     useEffect(() => { if (!activeLocationId && defaultLocation) setActiveLocationId(defaultLocation.id); }, [defaultLocation, activeLocationId]);
 
     const targetLocation = useMemo(() => uniqueLocationsMap.get(activeLocationId) || defaultLocation || null, [uniqueLocationsMap, activeLocationId, defaultLocation]);
     const isReferenceLocation = activeLocationId === defaultLocation?.id;
-
-    // Michael : La synchronisation Oracle (fetchOracleChartData) est maintenant gérée par App.tsx
-    // pour que l'AI Coach et le Dashboard partagent la même donnée.
 
     const liveOraclePoint = useMemo(() => {
         if (!oraclePoints || !oraclePoints.length) return null;
@@ -108,11 +101,12 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
         return oraclePoints.reduce((prev, curr) => Math.abs(curr.timestamp - nowTs) < Math.abs(prev.timestamp - nowTs) ? curr : prev);
     }, [oraclePoints]);
 
-    // --- MÉTÉO & HYDRO ---
     useEffect(() => {
         const updateWeather = async () => {
-            if (isReferenceLocation || !activeLocationId) { setDisplayedWeather(nanterreWeather); setIsWeatherLoading(false); } 
-            else {
+            if (isReferenceLocation || !activeLocationId) { 
+                setDisplayedWeather(nanterreWeather); 
+                setIsWeatherLoading(false); 
+            } else {
                 const targetLoc = uniqueLocationsMap.get(activeLocationId);
                 if (targetLoc?.coordinates) {
                     setIsWeatherLoading(true);
@@ -128,7 +122,6 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
     const displayWaterTemp = liveOraclePoint?.waterTemp ?? (isReferenceLocation ? hydro?.waterTemp : null);
     const isLoading = isBaseLoading || isWeatherLoading || isOracleLoading;
 
-    // --- Michael : LOGIQUE DE SUPPRESSION ---
     const handleDeleteRequest = (id: string) => {
         setSessionIdToDelete(id);
         setIsDeleteConfirmOpen(true);
@@ -137,9 +130,7 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
     const handleConfirmDelete = () => {
         if (sessionIdToDelete) {
             setIsDeleteConfirmOpen(false);
-            setDeletingId(sessionIdToDelete); // Déclenche l'animation de sortie
-
-            // Délai de 300ms pour laisser l'animation se terminer
+            setDeletingId(sessionIdToDelete);
             setTimeout(() => {
                 onDeleteSession(sessionIdToDelete);
                 setDeletingId(null);
@@ -159,7 +150,6 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
                 setActiveLocationId={setActiveLocationId}
                 availableLocations={availableLocations}
                 isReferenceLocation={isReferenceLocation}
-                // LOGIQUE DE FILTRAGE NANTERRE (GOLD STANDARD) 
                 activeSpeciesList={
                     activeLocationId === GOLD_STANDARD_ID 
                         ? ['Sandre', 'Brochet', 'Perche'] 
@@ -175,7 +165,6 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
 
             <TrophiesSection sessions={sessions} currentUserId={currentUserId} />
 
-            {/* Michael : Mise à jour de ActivityFeed avec la nouvelle logique */}
             <ActivityFeed 
                 sessions={sessions} 
                 currentUserId={currentUserId} 
@@ -187,7 +176,6 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
 
             <SessionDetailModal session={selectedSession} isOpen={isDetailOpen} onClose={() => setIsDetailOpen(false)} />
 
-            {/* Michael : Pop-in de confirmation sardonique */}
             <DeleteConfirmDialog 
                 isOpen={isDeleteConfirmOpen}
                 onClose={() => { setIsDeleteConfirmOpen(false); setSessionIdToDelete(null); }}
@@ -196,8 +184,6 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
         </div>
     );
 };
-
-// ... (Le reste des sous-composants ProgressionHeader, LiveStatusSection, etc.)
 
 const ProgressionHeader: React.FC<{ sessions: Session[], currentUserId: string }> = ({ sessions, currentUserId }) => {
     const currentYear = new Date().getFullYear();
@@ -237,47 +223,119 @@ const LiveStatusSection: React.FC<any> = ({
     activeLocationId, setActiveLocationId, availableLocations, isReferenceLocation, 
     activeSpeciesList, liveScores, displayedWeather, displayWaterTemp, 
     isLoading, isBaseLoading, hydro
-}) => (
-    <div className="bg-white rounded-[2rem] p-1 shadow-organic border border-stone-100 overflow-hidden relative">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
-        <div className="p-6 relative z-10">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-                <h3 className="text-lg font-bold text-stone-800 flex items-center gap-2"><ActivityIcon /> {isReferenceLocation ? 'Météo' : 'Météo'}</h3>
-                <div className="relative w-full sm:w-auto min-w-[200px]">
-                    <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-stone-400"><MapPin size={16} /></div>
-                    <select value={activeLocationId} onChange={(e) => setActiveLocationId(e.target.value)} className="appearance-none w-full bg-stone-50 border border-stone-200 text-stone-700 font-bold text-sm rounded-2xl py-3 pl-10 pr-10 focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer shadow-sm hover:bg-stone-100">
-                        {availableLocations.map((loc: Location) => (<option key={loc.id} value={loc.id}>{loc.label} {(loc as any).isDefault || loc.id === GOLD_STANDARD_ID ? '(Défaut)' : ''}</option>))}
-                    </select>
-                    <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-stone-400"><ChevronDown size={16} strokeWidth={3} /></div>
+}) => {
+    
+    // Michael : Extraction propre des données Live pour les indicateurs
+    const getVal = (key: string) => {
+        if (!displayedWeather && !liveScores) return '--';
+        switch(key) {
+            case 'tempAir': return displayedWeather ? Math.round(displayedWeather.temperature) : '--';
+            case 'pressure': return displayedWeather ? Math.round(displayedWeather.pressure) : '--';
+            case 'wind': return displayedWeather ? Math.round(displayedWeather.windSpeed) : '--';
+            case 'clouds': return displayedWeather ? Math.round(displayedWeather.clouds) : '--';
+            case 'precip': return displayedWeather ? displayedWeather.precip.toFixed(1) : '--';
+            case 'waterTemp': return displayWaterTemp ? Number(displayWaterTemp).toFixed(1) : '--';
+            case 'turbidity': 
+                const turb = liveScores?.turbidityNTU ?? (hydro?.turbidityIdx ? hydro.turbidityIdx * 50 : undefined);
+                return turb !== undefined ? turb.toFixed(1) : '--';
+            case 'oxygen': return liveScores?.dissolvedOxygen?.toFixed(1) ?? '--';
+            case 'waves': return liveScores?.waveHeight !== undefined ? Math.round(liveScores.waveHeight) : '--';
+            case 'flow': return isReferenceLocation && hydro?.flowLagged !== undefined ? Math.round(hydro.flowLagged) : null;
+            case 'level': return isReferenceLocation && hydro?.level !== undefined ? Math.round(hydro.level) : null;
+            default: return '--';
+        }
+    };
+
+    const getTileTheme = (theme: string) => {
+        const themes: any = {
+            rose: "bg-rose-50 text-rose-900",
+            indigo: "bg-indigo-50 text-indigo-900",
+            amber: "bg-stone-100 text-stone-600",
+            orange: "bg-orange-50 text-orange-900",
+            cyan: "bg-cyan-50 text-cyan-900",
+            emerald: "bg-emerald-50 text-emerald-900",
+            purple: "bg-purple-50 text-purple-900",
+            blue: "bg-blue-50 text-blue-900"
+        };
+        return themes[theme] || "bg-stone-50 text-stone-800";
+    };
+
+    return (
+        <div className="bg-white rounded-[2rem] p-1 shadow-organic border border-stone-100 overflow-hidden relative">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
+            <div className="p-6 relative z-10">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+                    <h3 className="text-lg font-bold text-stone-800 flex items-center gap-2"><ActivityIcon /> Météo & Hydro</h3>
+                    <div className="relative w-full sm:w-auto min-w-[200px]">
+                        <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-stone-400"><MapPin size={16} /></div>
+                        <select value={activeLocationId} onChange={(e) => setActiveLocationId(e.target.value)} className="appearance-none w-full bg-stone-50 border border-stone-200 text-stone-700 font-bold text-sm rounded-2xl py-3 pl-10 pr-10 focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer shadow-sm hover:bg-stone-100">
+                            {availableLocations.map((loc: Location) => (<option key={loc.id} value={loc.id}>{loc.label} {(loc as any).isDefault || loc.id === GOLD_STANDARD_ID ? '(Défaut)' : ''}</option>))}
+                        </select>
+                        <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-stone-400"><ChevronDown size={16} strokeWidth={3} /></div>
+                    </div>
+                </div>
+
+                <SpeciesScoreGrid>
+                    {activeSpeciesList.map((speciesId: string) => {
+                        const config = SPECIES_CONFIG[speciesId] || { label: speciesId, key: speciesId.toLowerCase(), hexColor: '#a8a29e' };
+                        const scoreValue = liveScores ? (liveScores as any)[config.key] : undefined;
+                        return (
+                            <SpeciesScore 
+                                key={speciesId} 
+                                label={config.label} 
+                                score={scoreValue} 
+                                hexColor={config.hexColor} 
+                                loading={isLoading} 
+                            />
+                        );
+                    })}
+                </SpeciesScoreGrid>
+
+                {/* Michael : La nouvelle grille sur 2 lignes (grid responsive) */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-8">
+                    {/* Indicateurs Météo */}
+                    {Object.entries(WEATHER_METADATA).map(([key, meta]) => {
+                        const val = getVal(key);
+                        let unit = meta.unit;
+                        if (key === 'wind' && displayedWeather) {
+                            unit = ` km/h ${getWindDir(displayedWeather.windDirection)}`;
+                        }
+                        
+                        return (
+                            <DataTile 
+                                key={key}
+                                label={meta.label} 
+                                value={val} 
+                                unit={unit} 
+                                icon={key === 'tempAir' && displayedWeather ? getWeatherIcon(displayedWeather.clouds) : <meta.icon size={16} />} 
+                                color={getTileTheme(meta.theme)} 
+                                loading={isLoading} 
+                            />
+                        );
+                    })}
+
+                    {/* Indicateurs Hydro */}
+                    {Object.entries(HYDRO_METADATA).map(([key, meta]) => {
+                        const val = getVal(key);
+                        if (val === null) return null; // Masquage flow/level hors secteur référence
+
+                        return (
+                            <DataTile 
+                                key={key}
+                                label={meta.label} 
+                                value={val} 
+                                unit={meta.unit} 
+                                icon={<meta.icon size={16} />} 
+                                color={getTileTheme(meta.theme)} 
+                                loading={isLoading} 
+                            />
+                        );
+                    })}
                 </div>
             </div>
-
-            <SpeciesScoreGrid>
-                {activeSpeciesList.map((speciesId: string) => {
-                    const config = SPECIES_CONFIG[speciesId] || { label: speciesId, key: speciesId.toLowerCase(), hexColor: '#a8a29e' };
-                    const scoreValue = liveScores ? (liveScores as any)[config.key] : undefined;
-                    return (
-                        <SpeciesScore 
-                            key={speciesId} 
-                            label={config.label} 
-                            score={scoreValue} 
-                            hexColor={config.hexColor} 
-                            loading={isLoading} 
-                        />
-                    );
-                })}
-            </SpeciesScoreGrid>
-
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-8">
-                <DataTile label="Air °C" value={displayedWeather?.temperature !== undefined ? Math.round(displayedWeather.temperature) : '--'} unit="" icon={displayedWeather ? getWeatherIcon(displayedWeather.clouds) : <CloudIcon />} color="bg-rose-50 text-rose-900" loading={isLoading} />
-                <DataTile label="Vent" value={displayedWeather?.windSpeed !== undefined ? Math.round(displayedWeather.windSpeed) : '--'} unit={displayedWeather?.windDirection !== undefined ? `km/h ${getWindDir(displayedWeather.windDirection)}` : 'km/h'} icon={<WindIcon />} color="bg-stone-100 text-stone-600" loading={isLoading} />
-                <DataTile label="Pression" value={displayedWeather?.pressure !== undefined ? Math.round(displayedWeather.pressure) : '--'} unit="hPa" icon={<GaugeIcon />} color="bg-indigo-50 text-indigo-900" loading={isLoading} />
-                {isReferenceLocation && <DataTile label="Débit (Seine)" value={hydro?.flowLagged !== undefined ? Math.round(hydro.flowLagged) : '--'} unit="m³/s" icon={<DropletsIcon />} color="bg-cyan-50 text-cyan-900" loading={isBaseLoading} />}
-                <DataTile label="Eau °C" value={displayWaterTemp !== null && displayWaterTemp !== undefined ? Number(displayWaterTemp).toFixed(1) : '--'} unit="" icon={<ThermometerIcon />} color="bg-orange-50 text-orange-900" loading={isLoading} />
-            </div>
         </div>
-    </div>
-);
+    );
+};
 
 const TrophiesSection: React.FC<{ sessions: Session[], currentUserId: string }> = ({ sessions, currentUserId }) => (
     <div className="bg-white rounded-[2.5rem] p-8 border border-stone-100 shadow-organic space-y-8">
