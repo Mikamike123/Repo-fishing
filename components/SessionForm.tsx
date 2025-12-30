@@ -86,10 +86,10 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
 
             try {
                 const hourStr = startTime.split(':')[0];
-                const NANTERRE_SECTOR_ID = "WYAjhoUeeikT3mS0hjip";
-                const isNanterre = locationId === NANTERRE_SECTOR_ID;
+                const GOLDEN_SECTOR_ID = import.meta.env.VITE_GOLDEN_SECTOR_ID;
+                const isGolden = locationId === GOLDEN_SECTOR_ID;
 
-                if (isNanterre) {
+                if (isGolden) {
                     const docId = `${date}_${hourStr}00`;
                     const docRef = doc(db, 'environmental_logs', docId);
                     const snap = await getDoc(docRef);
@@ -231,19 +231,25 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
 
         // --- FILTRAGE DES BIOSCORES MICHAEL ---
         // On ne garde que les scores correspondant aux espèces du secteur
-        let filteredSnapshot = envSnapshot ? { ...envSnapshot } : null;
-        
+        // [MODIF] Filtrage optimisé des BioScores selon les espèces du secteur
+        let filteredSnapshot = envSnapshot ? JSON.parse(JSON.stringify(envSnapshot)) : null;
+
         if (filteredSnapshot && speciesIds.length > 0) {
             const cleanedScores: Partial<BioScoreSnapshot> = {};
-            
+            const speciesMap: Record<string, keyof BioScoreSnapshot> = {
+                'Sandre': 'sandre',
+                'Brochet': 'brochet',
+                'Perche': 'perche',
+                'Black-Bass': 'blackbass'
+            };
+
             speciesIds.forEach(speciesName => {
-                // Mapping des noms (Brochet -> brochet, Black-Bass -> blackbass)
-                const key = speciesName.toLowerCase().replace('-', '') as keyof BioScoreSnapshot;
-                if (envSnapshot?.scores[key] !== undefined) {
+                const key = speciesMap[speciesName];
+                if (key && envSnapshot?.scores[key] !== undefined) {
                     (cleanedScores as any)[key] = envSnapshot.scores[key];
                 }
             });
-            
+    
             filteredSnapshot.scores = cleanedScores as BioScoreSnapshot;
         }
 

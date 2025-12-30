@@ -12,7 +12,7 @@ const MigrationButton = () => {
         
         setStatus('loading');
         try {
-            const TARGET_LOCATION_ID = "WYAjhoUeeikT3mS0hjip"; // ID de "Nanterre - Gold standard"
+            const GOLDEN_SECTOR_ID = import.meta.env.VITE_GOLDEN_SECTOR_ID; // ID de "Nanterre - Gold standard"
             const batch = writeBatch(db);
             
             // 1. Récupérer tous les spots (collection 'zones')
@@ -24,7 +24,7 @@ const MigrationButton = () => {
                 // Si le spot n'a pas de locationId ou s'il est vide
                 if (!data.locationId) {
                     const ref = doc(db, 'zones', document.id);
-                    batch.update(ref, { locationId: TARGET_LOCATION_ID });
+                    batch.update(ref, { locationId: GOLDEN_SECTOR_ID });
                     operations++;
                 }
             });

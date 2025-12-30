@@ -1,19 +1,18 @@
-// types.ts - Architecture Cible Complète (v4.7 - Stabilisation & Zero-Hydro)
+// types.ts - Architecture Cible Complète (v5.0 - Simulation Déterministe)
 
 // --- ENTITÉS DE BASE ---
 export interface BaseEntity {
   name: string;
   id: string;
-  userId: string;           // Clé de cloisonnement (Row Level Security)
-  createdAt?: any;          // Timestamp Firestore
-  updatedAt?: any;          // Timestamp Firestore
-  active: boolean;          // Le pivot du Soft Delete : false = archivé
-  displayOrder: number;     // Pour le tri personnalisé
+  userId: string;           
+  createdAt?: any;          
+  updatedAt?: any;          
+  active: boolean;          
+  displayOrder: number;     
   userPseudo?: string;
   userAvatar?: string;
-  // AJOUTE CES LIGNES :
-  isFavorite?: boolean;   // Pour le système de favoris Oracle
-  coordinates?: {         // Nécessaire pour l'appel Météo/Oracle
+  isFavorite?: boolean;   
+  coordinates?: {         
       lat: number;
       lng: number;
   };
@@ -25,32 +24,33 @@ export type SpeciesType = 'Brochet' | 'Sandre' | 'Perche' | 'Black-Bass' | 'Silu
 // --- STRUCTURES ENVIRONNEMENTALES ---
 
 export interface WeatherSnapshot {
-  temperature: number;      // °C
-  pressure: number;         // hPa
-  windSpeed: number;        // km/h
-  windDirection: number;    // ° (Restauré pour compatibilité)
-  precip: number;           // mm
-  clouds: number;           // % (Restauré pour compatibilité)
-  conditionCode: number;    // Code WMO
-  irradiance?: number;      // [Zero-Hydro] : Rayonnement solaire (W/m2)
+  temperature: number;      
+  pressure: number;         
+  windSpeed: number;        
+  windDirection: number;    
+  precip: number;           
+  clouds: number;           
+  conditionCode: number;    
+  irradiance?: number;      
 }
 
 export interface HydroSnapshot {
-  flowRaw: number;          // L/s (Donnée brute Vigicrues)
-  flowLagged: number;       // m3/s (Débit corrigé pour le spot)
-  level: number;            // mm
-  waterTemp: number | null; // °C (Modèle EWMA ou Zero-Hydro)
-  tFond?: number;            //Température de fond pour milieux profonds
-  turbidityIdx: number;     // 0-1 (Indice de clarté)
-  dissolvedOxygen?: number; // mg/L (Calculé par ZeroHydro)
-  waveHeight?: number;       // Hs en cm (SMB Equations)
+  flowRaw: number;          
+  flowLagged: number;       
+  level: number;            
+  waterTemp: number | null; 
+  tFond?: number;            
+  turbidityIdx?: number;     // Rendu optionnel
+  turbidityNTU?: number;     // Ajouté pour le moteur Universel     
+  dissolvedOxygen?: number; 
+  waveHeight?: number;       
 }
 
 export interface BioScoreSnapshot {
-  sandre: number;           // 0-100
-  brochet: number;          // 0-100
-  perche: number;           // 0-100
-  blackbass?: number;       // [Zero-Hydro]
+  sandre: number;           
+  brochet: number;          
+  perche: number;           
+  blackbass?: number;       
 }
 
 export interface FullEnvironmentalSnapshot {
@@ -74,8 +74,12 @@ export interface LocationMorphology {
   typeId: MorphologyID;      
   depthId: DepthCategoryID;  
   bassin: BassinType;  
-  surfaceArea?: number;      // En m2 pour calcul du Fetch
-  shapeFactor?: number;      // 1.0 (rond) à 2.0 (allongé) pour Fetch effectif      
+  /** Profondeur moyenne en mètres (v5.0) */
+  meanDepth?: number;
+  /** Surface en m2 (v5.0) */
+  surfaceArea?: number;      
+  /** Facteur de forme (v5.0) */
+  shapeFactor?: number;            
 }
 
 export interface Location extends BaseEntity {
@@ -85,9 +89,8 @@ export interface Location extends BaseEntity {
   coordinates?: { lat: number; lng: number };
   morphology?: LocationMorphology;
   speciesIds?: string[];
-  // --- AJOUTS ZÉRO-HYDRO (HYBRID SYNC) ---
-  lastCalculatedTemp?: number;   // Mémoire thermique (T_water à l'instant t-1)
-  lastSyncDate?: string;         // Horodatage du dernier calcul (ISO String)    
+  lastCalculatedTemp?: number;   
+  lastSyncDate?: string;             
 }
 
 export interface Spot extends BaseEntity {
@@ -97,7 +100,6 @@ export interface Spot extends BaseEntity {
   locationId: string;       
 }
 
-// ALIAS DE COMPATIBILITÉ (Pour corriger l'erreur Zone)
 export type Zone = Spot;
 
 export interface Setup extends BaseEntity {
@@ -147,8 +149,6 @@ export interface Catch {
   notes?: string;
   released?: boolean;
   userId?: string;
-  
-  // RESTAURATION DES CHAMPS MANQUANTS
   timestamp?: any; 
   weatherSnapshot?: WeatherSnapshot;
   envSnapshot?: FullEnvironmentalSnapshot; 
@@ -161,6 +161,11 @@ export interface Miss {
   time: string;
   spotId: string;
   userId?: string;
+  lureTypeId?: string;   
+  lureColorId?: string;  
+  lureSizeId?: string;   
+  lureWeightId?: string; 
+  envSnapshot?: FullEnvironmentalSnapshot;
 }
 
 export interface Session extends BaseEntity {
@@ -214,7 +219,7 @@ export interface BioConditions {
   flowTMinus24h: number;
 }
 
-// --- GAMIFICATION (ORACLE SEASON v1) ---
+// --- GAMIFICATION ---
 
 export interface YearlySnapshot {
   year: number;
@@ -223,11 +228,7 @@ export interface YearlySnapshot {
   sessionCount: number;
   fishCount: number;
   weeksWithStreak: number;
-  
-  // Le poisson record de l'année (Synchronisé avec gamification.ts)
   topCatch?: Catch; 
-  
-  // Champs pour compatibilité future (v4.5+)
   topLure?: string | null;
   topTechnique?: string | null;
 }

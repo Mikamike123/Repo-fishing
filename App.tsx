@@ -25,7 +25,7 @@ import { fetchOracleChartData, OracleDataPoint } from './lib/oracle-service'; //
 import { fetchUniversalWeather } from './lib/universal-weather-service'; // Michael : Import Météo universelle pour AI
 
 // ID du Gold Standard pour le calcul par défaut
-const GOLD_STANDARD_ID = "WYAjhoUeeikT3mS0hjip";
+const GOLD_STANDARD_ID = import.meta.env.VITE_GOLDEN_SECTOR_ID;
 
 type View = 'dashboard' | 'session' | 'history' | 'arsenal' | 'coach' | 'profile' | 'locations';
 
@@ -221,14 +221,20 @@ const App: React.FC = () => {
         ? lastSession.catches[lastSession.catches.length - 1] 
         : null;
 
+        // Petite fonction utilitaire à l'extérieur ou à l'intérieur du composant
+    const sanitizeForFirestore = (obj: any) => {
+        return JSON.parse(JSON.stringify(obj, (key, value) => 
+             value === undefined ? null : value
+        ));
+    };
     // --- GESTION DES SESSIONS ---
     const handleAddSession = async (newSession: Session) => { 
         try {
             const { id, date, ...dataToSave } = newSession; 
             const finalDate = date ? new Date(date) : new Date();
-
+            const cleanData = sanitizeForFirestore(dataToSave);
             await addDoc(collection(db, 'sessions'), { 
-                ...dataToSave,
+                ...cleanData,
                 date: Timestamp.fromDate(finalDate), 
                 userId: currentUserId, 
                 userPseudo: userProfile?.pseudo || 'Inconnu', 

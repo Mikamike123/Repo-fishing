@@ -1,12 +1,11 @@
 // components/SessionCard.tsx
 import React from 'react';
 import { 
-    MapPin, Fish, Trash2, Edit2, 
-    Droplets, Thermometer, Cloud, Sun, CloudSun, CloudRain, Activity, 
-    Image as ImageIcon, Wind, User, Calendar, AlertOctagon, Gauge, Waves, Eye,
-    Maximize2, ShieldCheck, Zap
+    MapPin, Fish, Trash2, Edit2, User, Calendar, AlertOctagon,
+    Maximize2, Zap, Activity
 } from 'lucide-react'; 
 import { Session, SpeciesType, FullEnvironmentalSnapshot } from '../types';
+import { INDICATOR_METADATA } from '../constants/indicators';
 
 interface SessionCardProps {
     session: Session;
@@ -19,15 +18,7 @@ interface SessionCardProps {
 const getWindDir = (deg?: number) => {
     if (deg === undefined) return '';
     const directions = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
-    // Correction ici : Utilisation de Math.round
     return directions[Math.round(deg / 45) % 8];
-};
-
-const getWeatherIcon = (clouds: number) => {
-    if (clouds < 20) return <Sun size={12} />;
-    if (clouds < 60) return <CloudSun size={12} />;
-    if (clouds < 90) return <Cloud size={12} />;
-    return <CloudRain size={12} />;
 };
 
 const getSpeciesColor = (species: SpeciesType) => {
@@ -50,17 +41,28 @@ const SPECIES_MAP: Record<string, string> = {
 const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, onClick, currentUserId }) => {
     const env = session.envSnapshot as FullEnvironmentalSnapshot;
     const isOwner = session.userId === currentUserId;
+    const isSimulated = env?.metadata?.calculationMode === 'ZERO_HYDRO';
     
-    // Identifiant Nanterre (Gold Standard) [cite: 645]
-    const NANTERRE_SECTOR_ID = "WYAjhoUeeikT3mS0hjip"; 
+    const GOLDEN_SECTOR_ID = import.meta.env.VITE_GOLDEN_SECTOR_ID; 
 
     const allowedSpecies = (session as any).speciesIds || ['Sandre', 'Brochet', 'Perche', 'Black-Bass'];
-
     const allSessionPhotos = session.catches
         .filter(c => c.photoUrls && c.photoUrls.length > 0)
         .map(c => c.photoUrls![0]);
 
-    const MiniEnvTile = ({ icon: Icon, value, unit, theme }: any) => {
+    /**
+     * Composant interne pour les badges d'indicateurs
+     * Inclut le label textuel et l'infobulle descriptive
+     */
+    const MiniEnvTile = ({ metaKey, value, customUnit, isEstimated }: { 
+        metaKey: string, 
+        value: string | number, 
+        customUnit?: string,
+        isEstimated?: boolean 
+    }) => {
+        const meta = INDICATOR_METADATA[metaKey];
+        if (!meta || value === undefined || value === null || value === '--') return null;
+
         const themes: any = {
             rose: "bg-rose-50/60 border-rose-100 text-rose-700",
             indigo: "bg-indigo-50/60 border-indigo-100 text-indigo-700",
@@ -71,10 +73,22 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
             emerald: "bg-emerald-50/60 border-emerald-100 text-emerald-700",
             purple: "bg-purple-50/60 border-purple-100 text-purple-700"
         };
+
+        const Icon = meta.icon;
+        const tooltip = `${meta.label}: ${meta.description}${meta.formula ? ` (${meta.formula})` : ''}`;
+
         return (
-            <div className={`${themes[theme] || 'bg-stone-50'} flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-black shrink-0`}>
-                <Icon size={12} className="opacity-60" />
-                <span>{value}{unit}</span>
+            <div 
+                title={tooltip}
+                className={`${themes[meta.theme] || 'bg-stone-50'} flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[10px] font-black shrink-0 transition-transform hover:scale-105 active:scale-95`}
+            >
+                <Icon size={12} className="opacity-60 shrink-0" />
+                <div className="flex flex-col leading-none">
+                    <span className="text-[7px] opacity-50 uppercase tracking-tighter">
+                        {meta.label} {isEstimated && <span className="italic text-[6px]">est.</span>}
+                    </span>
+                    <span>{value}{customUnit || meta.unit}</span>
+                </div>
             </div>
         );
     };
@@ -93,8 +107,7 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                         ) : (
                             session.userPseudo
                         )}
-                        {/* Badge de données simulées [cite: 647] */}
-                        {env?.metadata?.calculationMode === 'ZERO_HYDRO' && (
+                        {isSimulated && (
                             <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-600 text-[8px] rounded-md flex items-center gap-0.5">
                                 <Zap size={8} fill="currentColor" /> SIMULÉ
                             </span>
@@ -131,20 +144,47 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
             )}
 
             <div className="flex flex-wrap items-center gap-2 mb-5">
-                <MiniEnvTile theme="blue" icon={() => getWeatherIcon(env?.weather?.clouds || 0)} value={env?.weather?.clouds || 0} unit="%" />
-                <MiniEnvTile theme="rose" icon={Thermometer} value={env?.weather?.temperature ? Math.round(env.weather.temperature) : '--'} unit="°C" />
-                <MiniEnvTile theme="indigo" icon={Gauge} value={env?.weather?.pressure ? Math.round(env.weather.pressure) : '--'} unit=" hPa" />
-                <MiniEnvTile theme="amber" icon={Wind} value={env?.weather?.windSpeed ? Math.round(env.weather.windSpeed) : '--'} unit={` ${getWindDir(env?.weather?.windDirection)}`} />
-                <MiniEnvTile theme="orange" icon={Droplets} value={env?.hydro?.waterTemp?.toFixed(1) || '--'} unit="°C" />
+                {/* Météo API - Toujours affiché */}
+                <MiniEnvTile metaKey="tempAir" value={env?.weather?.temperature ? Math.round(env.weather.temperature) : '--'} />
+                <MiniEnvTile metaKey="pressure" value={env?.weather?.pressure ? Math.round(env.weather.pressure) : '--'} />
+                <MiniEnvTile 
+                    metaKey="wind" 
+                    value={env?.weather?.windSpeed ? Math.round(env.weather.windSpeed) : '--'} 
+                    customUnit={` km/h ${getWindDir(env?.weather?.windDirection)}`} 
+                />
+
+                {/* Données Simulées ou Mixtes */}
+                <MiniEnvTile 
+                    metaKey="waterTemp" 
+                    value={env?.hydro?.waterTemp?.toFixed(1) || '--'} 
+                    isEstimated={isSimulated}
+                />
+                <MiniEnvTile 
+                    metaKey="turbidity" 
+                    value={env?.hydro?.turbidityNTU ? env.hydro.turbidityNTU.toFixed(1) : '--'} 
+                    isEstimated={isSimulated}
+                />
+                <MiniEnvTile 
+                    metaKey="oxygen" 
+                    value={env?.hydro?.dissolvedOxygen ? env.hydro.dissolvedOxygen.toFixed(1) : '--'} 
+                    isEstimated={true} 
+                />
+                <MiniEnvTile 
+                    metaKey="waves" 
+                    value={env?.hydro?.waveHeight ? Math.round(env.hydro.waveHeight) : '--'} 
+                    isEstimated={true} 
+                />
                 
-                {/* Widgets masqués automatiquement hors Nanterre [cite: 81, 646] */}
-                {session.locationId === NANTERRE_SECTOR_ID && (
+                {/* Masquage strict via GOLDEN_SECTOR_ID [cite: 319, 742] */}
+                {session.locationId === GOLDEN_SECTOR_ID && (
                     <>
-                        <MiniEnvTile theme="cyan" icon={Waves} value={env?.hydro?.flowLagged?.toFixed(0) || '--'} unit="m³/s" />
-                        <MiniEnvTile theme="purple" icon={ShieldCheck} value={env?.hydro?.level ? Math.round(env.hydro.level) : '--'} unit="mm" />
+                        <MiniEnvTile 
+                            metaKey="flow" 
+                            value={env?.hydro?.flowLagged ? (env.hydro.flowLagged / 1000).toFixed(1) : '--'} 
+                        />
+                        <MiniEnvTile metaKey="level" value={env?.hydro?.level ? Math.round(env.hydro.level) : '--'} />
                     </>
                 )}
-                <MiniEnvTile theme="emerald" icon={Eye} value={env?.hydro?.turbidityIdx?.toFixed(2) || '--'} unit="" />
             </div>
 
             {session.notes && (
@@ -158,7 +198,6 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                 {session.catches.map(fish => (
                     <div key={fish.id} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[10px] font-black ${getSpeciesColor(fish.species as SpeciesType)} shadow-sm`}>
                         <Fish size={10} /> {fish.species} {fish.size}cm
-                        {fish.photoUrls && fish.photoUrls.length > 0 && <ImageIcon size={8} className="ml-1 opacity-50" />}
                     </div>
                 ))}
                 {session.misses.map(miss => (
@@ -174,13 +213,9 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
             <div className="flex justify-between items-center pt-4 border-t border-stone-50">
                 <div className="flex flex-wrap gap-4">
                     {allowedSpecies.map((label: string) => {
-                        // Veto sur le Black-Bass pour le Gold Standard de Nanterre [cite: 176]
-                        if (session.locationId === NANTERRE_SECTOR_ID && label === 'Black-Bass') return null;
-
+                        if (session.locationId === GOLDEN_SECTOR_ID && label === 'Black-Bass') return null;
                         const scoreKey = SPECIES_MAP[label];
                         const scoreValue = (env?.scores as any)?.[scoreKey];
-                        
-                        // Masquage si aucune donnée n'est disponible [cite: 19]
                         if (scoreValue === undefined || scoreValue === null) return null;
 
                         return (

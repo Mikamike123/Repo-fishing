@@ -95,10 +95,10 @@ const MissDialog: React.FC<MissDialogProps> = ({
 
     const fetchEnv = async () => {
       setIsLoadingEnv(true);
-      const NANTERRE_SECTOR_ID = "WYAjhoUeeikT3mS0hjip";
+      const GOLDEN_SECTOR_ID = import.meta.env.VITE_GOLDEN_SECTOR_ID;
       
       try {
-        if (locationId === NANTERRE_SECTOR_ID) {
+        if (locationId === GOLDEN_SECTOR_ID) {
           const hourStr = time.split(':')[0];
           const docId = `${sessionDate}_${hourStr}00`;
           const snap = await getDoc(doc(db, 'environmental_logs', docId));

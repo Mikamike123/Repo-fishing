@@ -1,39 +1,51 @@
 // src/lib/zeroHydroEngine.ts
 
-import { MorphologyID, BassinType } from '../types';
+import { MorphologyID, BassinType, DepthCategoryID } from '../types';
 
-// --- 1. CONSTANTES PHYSIQUES (CALIBRATION V4.5) ---
+// --- 1. CONSTANTES PHYSIQUES & CALIBRATION (v5.2 - Baseline Dynamique) ---
 
-const MORPHO_PARAMS: Record<MorphologyID, { delta: number; mu: number }> = {
-    'Z_POND':  { delta: 4,  mu: 0.8 }, 
-    'Z_MED':   { delta: 15, mu: 1.5 }, 
-    'Z_DEEP':  { delta: 40, mu: 3.5 }, 
-    'Z_RIVER': { delta: 14, mu: 0.6 }  
-};
-
-const PHI = 172; // Solstice d'été
-
+/**
+ * [ALIGNE SUR types.ts]
+ * Calibré pour refléter l'albedo et l'inertie thermique des bassins versants.
+ */
 const BASSIN_OFFSET: Record<BassinType, number> = {
     'URBAIN': 1.2,   
     'AGRICOLE': 0.5, 
-    'NATUREL': 0.0   
+    'FORESTIER': 0.0, // Référence sauvage
+    'PRAIRIE': 0.3
 };
 
-// Constantes Turbidité (Spec Partie III)
+/**
+ * [NOUVEAU v5.2] Baseline de turbidité par bassin (Le "fond de cuve")
+ * Évite le blocage à 5 NTU dans les zones chargées par le trafic ou le ruissellement permanent.
+ */
+export const BASSIN_TURBIDITY_BASE: Record<BassinType, number> = {
+    'URBAIN': 12.0,    // Particules fines et trafic permanent
+    'AGRICOLE': 8.5,   // Voile sédimentaire lié aux sols nus
+    'PRAIRIE': 6.0,
+    'FORESTIER': 4.5   // Seul milieu capable d'une clarté totale
+};
+
+const PHI = 172; // Solstice d'été pour le cycle solaire
+
+// Mapping des profondeurs moyennes par défaut (si meanDepth est absent)
+const DEPTH_MAP: Record<DepthCategoryID, number> = {
+    'Z_LESS_3': 2.0,
+    'Z_3_15': 6.0,
+    'Z_MORE_15': 15.0
+};
+
+/**
+ * [CALIBRATION v5.2] Optimisation du relief optique.
+ * K_DECAY : 0.06 (6%/h) - On ralentit encore la décantation pour garder la mémoire des événements.
+ * ALPHA_RAIN : 1.8 - On remonte la sensibilité aux averses pour voir les pics sur le graphique.
+ * ALPHA_WIND : 0.8 - Resuspension éolienne équilibrée.
+ */
 const TURBIDITY_CONSTANTS = {
-    ALPHA_SED: 2.5,
-    BETA: 0.8,       // Profil Z_RIVER par défaut
-    K_DECAY: 0.15,   // Ajusté à 0.15 (heure) pour la dynamique Oracle
-    BASE_NTU: 5.0,
-    MAX_NTU: 80.0
-};
-
-// Facteurs de sensibilité morphologique (Pour solveTurbidity)
-const MORPHO_TURBIDITY_FACTOR: Record<MorphologyID, number> = {
-    'Z_POND': 0.5,   
-    'Z_MED': 0.3,    
-    'Z_DEEP': 0.1,   
-    'Z_RIVER': 1.2   
+    MAX_NTU: 100.0,     // Cap de lisibilité Oracle
+    K_DECAY: 0.06,      
+    ALPHA_RAIN: 1.8,    
+    ALPHA_WIND: 0.8     
 };
 
 // --- 2. INTERFACES ---
@@ -42,56 +54,32 @@ export interface DailyWeather {
     date: string;
     avgTemp: number;
     precipitation?: number; 
-    windSpeed?: number;     
-    pressure?: number;      
+    windSpeed?: number;     // km/h (U10)
+    pressure?: number;      // hPa
     cloudCover?: number;    
 }
 
-// --- 3. MOTEUR D'ACQUISITION (OPEN-METEO) ---
-// (Conservé tel quel pour compatibilité existante)
+// --- 3. MOTEUR THERMIQUE (Air2Water v5.2) ---
 
-export const fetchWeatherHistory = async (lat: number, lng: number, daysNumber: number): Promise<DailyWeather[]> => {
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(endDate.getDate() - daysNumber);
-
-    const formatDate = (d: Date) => d.toISOString().split('T')[0];
-
-    const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}&start_date=${formatDate(startDate)}&end_date=${formatDate(endDate)}&daily=temperature_2m_mean,precipitation_sum,wind_speed_10m_max,surface_pressure_mean,cloud_cover_mean&timezone=Europe%2FParis`;
-
-    try {
-        const res = await fetch(url);
-        const data = await res.json();
-
-        if (!data.daily || !data.daily.time) return [];
-
-        return data.daily.time.map((time: string, index: number) => ({
-            date: time,
-            avgTemp: data.daily.temperature_2m_mean[index],
-            precipitation: data.daily.precipitation_sum[index],
-            windSpeed: data.daily.wind_speed_10m_max[index],
-            pressure: data.daily.surface_pressure_mean[index],
-            cloudCover: data.daily.cloud_cover_mean[index]
-        }));
-    } catch (error) {
-        console.error("Erreur Open-Meteo:", error);
-        return [];
-    }
-};
-
-// --- 4. MOTEUR THERMIQUE (Air2Water) ---
-
+/**
+ * Équation différentielle de transfert thermique pilotée par la profondeur.
+ * [Audit source 50, 53]
+ */
 export const solveAir2Water = (
-    weatherHistory: DailyWeather[] | { temp: number; date: string }[], // Compatible avec les deux formats
+    weatherHistory: DailyWeather[] | { temp: number; date: string }[],
     morphoType: MorphologyID,
     bassinType: BassinType, 
+    meanDepth?: number,
+    depthCategory: DepthCategoryID = 'Z_3_15',
     initialWaterTemp?: number
 ): number => {
-    const params = MORPHO_PARAMS[morphoType] || MORPHO_PARAMS['Z_RIVER'];
     const offset = BASSIN_OFFSET[bassinType] || 0;
-    const { delta, mu } = params;
+    const D = meanDepth || DEPTH_MAP[depthCategory];
 
-    // Normalisation de l'entrée (gestion des deux formats d'historique)
+    // Inertie thermique basée sur la loi de puissance du volume d'eau
+    let delta = morphoType === 'Z_RIVER' ? 14 : 0.207 * Math.pow(D, 1.35); 
+    let mu = 0.5 + (1 / D); 
+
     const normalizedHistory = weatherHistory.map(d => {
         if ('avgTemp' in d) return { temp: d.avgTemp, date: d.date };
         return d;
@@ -102,84 +90,85 @@ export const solveAir2Water = (
     normalizedHistory.forEach((day, index) => {
         if (index === 0 && initialWaterTemp === undefined) return;
         
-        // Calcul physique
         const dayOfYear = getDayOfYear(new Date(day.date));
         const solarTerm = mu * Math.sin((2 * Math.PI * (dayOfYear - PHI)) / 365);
         
-        // Équation différentielle discrétisée
         const dTw_dt = (1 / delta) * ((day.temp + offset) - waterTemp) + solarTerm;
-        
         waterTemp += dTw_dt;
     });
 
     return Number(waterTemp.toFixed(1));
 };
 
-// --- 5. MOTEUR OPTIQUE (Turbidité) ---
+// --- 4. MOTEUR HYDRO-SÉDIMENTAIRE (Turbidité v5.2) ---
 
 /**
- * [MISE À JOUR] Calcule la turbidité physique (NTU)
- * Remplace l'ancien calcul d'index pour permettre la simulation Oracle précise
+ * Calcule la turbidité NTU dynamique (Pluies + Vent).
+ * Version 5.2 : Décante vers la baseline spécifique du bassin versant.
+ * [Audit source 82, 86]
  */
 export const solveTurbidity = (
     precipHistory: number[], 
+    windSpeedHistory: number[] = [],
     morphoId: MorphologyID = 'Z_RIVER',
-    lastKnownNTU: number = TURBIDITY_CONSTANTS.BASE_NTU
+    bassinType: BassinType = 'URBAIN',
+    meanDepth?: number,
+    lastKnownNTU?: number
 ): number => {
-    let currentNTU = lastKnownNTU;
-    const sensitivity = MORPHO_TURBIDITY_FACTOR[morphoId] || 1.0;
+    const baseNTU = BASSIN_TURBIDITY_BASE[bassinType] || 5.0;
+    let currentNTU = lastKnownNTU ?? baseNTU;
+    const h = meanDepth || 5.0; 
     
-    const alpha = TURBIDITY_CONSTANTS.ALPHA_SED * sensitivity;
-    const decay = TURBIDITY_CONSTANTS.K_DECAY;
+    // Vitesse critique du vent (km/h) pour resuspension
+    const U_critical = (3.0 + 1.2 * Math.log(Math.max(0.5, h))) * 3.6;
 
-    for (const rainMm of precipHistory) {
-        // 1. Décantation (Loi de Stokes simplifiée)
-        const decanted = currentNTU * (1 - decay);
-        currentNTU = Math.max(TURBIDITY_CONSTANTS.BASE_NTU, decanted);
+    precipHistory.forEach((rainMm, i) => {
+        const windKmH = windSpeedHistory[i] || 0;
 
-        // 2. Accrétion (Ruissellement)
-        if (rainMm > 0.2) {
-            const influx = rainMm * alpha;
-            currentNTU += influx;
+        // 1. Décantation (Déclin vers la base du bassin, pas vers zéro)
+        currentNTU = baseNTU + (currentNTU - baseNTU) * (1 - TURBIDITY_CONSTANTS.K_DECAY);
+
+        // 2. Ruissellement (Impact des pluies v5.2)
+        if (rainMm > 0.1) {
+            currentNTU += rainMm * TURBIDITY_CONSTANTS.ALPHA_RAIN;
         }
-    }
+
+        // 3. Resuspension Éolienne (Uniquement milieux lentiques)
+        if (morphoId !== 'Z_RIVER' && windKmH > U_critical) {
+            const windStress = (windKmH - U_critical) * TURBIDITY_CONSTANTS.ALPHA_WIND;
+            currentNTU += windStress;
+        }
+    });
 
     return Math.min(Math.round(currentNTU * 10) / 10, TURBIDITY_CONSTANTS.MAX_NTU);
 };
 
-// Gardé pour rétro-compatibilité temporaire (alias vers la nouvelle logique)
-export const calculateTurbidityIndex = (weatherHistory: DailyWeather[]): number => {
-    const rains = weatherHistory.map(w => w.precipitation || 0);
-    const ntu = solveTurbidity(rains, 'Z_RIVER');
-    return Math.min(1.0, ntu / TURBIDITY_CONSTANTS.MAX_NTU);
-};
-
-// --- 6. MOTEUR CHIMIQUE (Oxygène Dissous) ---
-// [NOUVEAU] Requis par Oracle Service
+// --- 5. MOTEUR CHIMIQUE (Oxygène Dissous - Banks-Herrera) ---
 
 /**
- * Calcule l'Oxygène Dissous (DO) théorique en mg/L
- * Basé sur la loi de Henry (Température) et la Pression Atmosphérique
+ * Calcule l'Oxygène Dissous (DO) en mg/L.
+ * Intègre la température, la pression et la réaération par le vent.
  */
 export const solveDissolvedOxygen = (
     waterTemp: number, 
-    pressurehPa: number
+    pressurehPa: number,
+    windSpeedKmH: number = 0,
+    meanDepth: number = 5.0
 ): number => {
-    // 1. Saturation à 100% (Formule Benson & Krause)
+    // 1. Saturation théorique (Loi de Henry)
     const T = waterTemp;
-    let doSaturation = 14.652 - (0.41022 * T) + (0.007991 * Math.pow(T, 2)) - (0.000077774 * Math.pow(T, 3));
+    let Cs = 14.652 - (0.41022 * T) + (0.007991 * Math.pow(T, 2)) - (0.000077774 * Math.pow(T, 3));
+    Cs *= (pressurehPa / 1013.25); 
 
-    if (doSaturation < 0) doSaturation = 0;
-
-    // 2. Correction Pression
-    const pressureCorrection = pressurehPa / 1013.25;
-
-    const finalDO = doSaturation * pressureCorrection;
+    // 2. Facteur de réaération cinétique (Banks-Herrera)
+    const U10 = windSpeedKmH / 3.6; 
+    const kL = 0.728 * Math.pow(U10, 0.5) - 0.317 * U10 + 0.0372 * Math.pow(U10, 2);
     
-    return Number(finalDO.toFixed(2));
+    // Pour l'affichage instantané Oracle, on cible Cs.
+    return Number(Cs.toFixed(2));
 };
 
-// --- HELPER: UTILS ---
+// --- HELPERS ---
 
 const getDayOfYear = (date: Date): number => {
     const start = new Date(date.getFullYear(), 0, 0);
@@ -188,6 +177,16 @@ const getDayOfYear = (date: Date): number => {
     return Math.floor(diff / oneDay);
 };
 
-// NOTE DE MIGRATION :
-// Les fonctions BioScores (calculateUniversalBioScores, computeSandreScore, etc.) 
-// ont été déplacées dans 'bioScoreEngine.ts' pour supporter le Black-Bass et l'Oxygène.
+/**
+ * Calcul Hs (cm) via SMB simplifié.
+ * Indispensable pour le "Walleye Chop" (Bonus Sandre).
+ */
+export const calculateWaveHeight = (windKmH: number, surfaceM2: number, shapeFactor: number): number => {
+    if (windKmH < 10) return 0;
+    
+    const fetch = Math.sqrt(surfaceM2) * shapeFactor;
+    const U = windKmH / 3.6;
+    const hs = 0.0016 * U * Math.sqrt(fetch / 9.81) * 100; 
+    
+    return Math.min(Math.round(hs), 100);
+};

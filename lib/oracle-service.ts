@@ -1,7 +1,7 @@
-// lib/oracle-service.ts - Version 4.9 (Simulateur Physique Avancé)
+// lib/oracle-service.ts - Version 5.2 (Intégration Baselines Dynamiques & Calibration Finale)
 
 import { calculateUniversalBioScores, BioContext, BioScores } from './bioScoreEngine';
-import { solveDissolvedOxygen } from './zeroHydroEngine'; 
+import { solveDissolvedOxygen, calculateWaveHeight, BASSIN_TURBIDITY_BASE } from './zeroHydroEngine'; 
 import { LocationMorphology, MorphologyID, DepthCategoryID, BassinType } from '../types';
 
 export interface OracleDataPoint extends BioScores {
@@ -16,25 +16,23 @@ export interface OracleDataPoint extends BioScores {
     bestScore: number;
 }
 
-// --- 1. CONSTANTES PHYSIQUES (PARTIE I & II) ---
+// --- 1. CONSTANTES PHYSIQUES v5.2 (ALIGNÉES SUR AUDIT & ENGINE) ---
 
-const MORPHO_PARAMS: Record<MorphologyID, { delta: number; mu: number; k_decay: number; base_ntu: number }> = {
-    'Z_POND':  { delta: 4,  mu: 0.5, k_decay: 0.15, base_ntu: 15.0 }, // [cite: 78, 105, 110]
-    'Z_MED':   { delta: 15, mu: 1.5, k_decay: 0.05, base_ntu: 5.0  }, // [cite: 78, 106, 108]
-    'Z_DEEP':  { delta: 35, mu: 3.0, k_decay: 0.03, base_ntu: 2.0  }, // [cite: 78, 106, 109]
-    'Z_RIVER': { delta: 18,  mu: 1.2, k_decay: 0.70, base_ntu: 8.0  }  // [cite: 78, 103]
+const BASIN_PARAMS: Record<BassinType, { offset: number }> = {
+    'URBAIN':    { offset: 1.2 }, 
+    'AGRICOLE':  { offset: 0.5 }, 
+    'PRAIRIE':   { offset: 0.3 }, 
+    'FORESTIER': { offset: 0.0 }  
 };
 
-const BASIN_PARAMS: Record<BassinType, { beta: number; offset: number }> = {
-    'URBAIN':    { beta: 0.95, offset: 1.5 }, // [cite: 33]
-    'AGRICOLE':  { beta: 0.80, offset: 0.5 }, // [cite: 33]
-    'PRAIRIE':   { beta: 0.40, offset: 0.0 }, // [cite: 33]
-    'FORESTIER': { beta: 0.15, offset: -0.5 } // [cite: 33]
+const DEPTH_MAP: Record<DepthCategoryID, number> = {
+    'Z_LESS_3': 2.0,
+    'Z_3_15': 6.0,
+    'Z_MORE_15': 15.0
 };
 
-const PHI = 172; // Solstice d'été [cite: 79]
-const ALPHA_SED = 2.5; // [cite: 113]
-const EMA_ALPHA = 0.4; // Lissage physiologique [cite: 218]
+const PHI = 172; // Solstice d'été
+const EMA_ALPHA = 0.35; // Lissage v5.2 pour une réactivité équilibrée
 
 const MONTHLY_WATER_TEMP_BASELINE: { [key: number]: number } = {
     0: 5.5, 1: 6.0, 2: 8.5, 3: 11.5, 4: 15.0, 5: 18.5,
@@ -42,7 +40,8 @@ const MONTHLY_WATER_TEMP_BASELINE: { [key: number]: number } = {
 };
 
 /**
- * MOTEUR D'ESTIMATION PHYSIQUE & BIOLOGIQUE
+ * MOTEUR D'ESTIMATION PHYSIQUE & BIOLOGIQUE v5.2
+ * Calibration avec "Fond de Cuve" (Baseline) dynamique par Bassin Versant.
  */
 export const fetchOracleChartData = async (
     lat: number, 
@@ -51,18 +50,22 @@ export const fetchOracleChartData = async (
 ): Promise<OracleDataPoint[]> => {
     if (!lat || !lng) return [];
     try {
-        // --- A. INITIALISATION DES CONSTANTES ---
+        // --- A. INITIALISATION DES PARAMETRES GEOMORPHO (v5.2) ---
         const m = morphology?.typeId || 'Z_RIVER';
         const b = morphology?.bassin || 'URBAIN';
-        const params = MORPHO_PARAMS[m];
         const bParams = BASIN_PARAMS[b];
+        
+        // Récupération de la turbidité plancher spécifique au milieu (v5.2)
+        const baseNTU = BASSIN_TURBIDITY_BASE[b] || 5.0;
 
-        // Calcul du Fetch Effectif (Partie 1.3) [cite: 38]
-        const surface = morphology?.surfaceArea || 100000; // Défaut 10ha
+        // Profondeur Numérique (D) pour les équations différentielles
+        const D = morphology?.meanDepth || DEPTH_MAP[morphology?.depthId || 'Z_3_15'];
+        
+        // Paramètres de surface pour le Fetch (Vagues & Turbidité)
+        const surface = morphology?.surfaceArea || 100000; 
         const shape = morphology?.shapeFactor || 1.2;
-        const fetchEff = Math.sqrt(surface) * shape;
 
-        // 1. APPEL API (30 jours de passé) [cite: 77]
+        // 1. APPEL API (30 jours de passé + 4 jours de prévision)
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,surface_pressure,cloud_cover,wind_speed_10m,precipitation&timezone=Europe%2FParis&past_days=30&forecast_days=4`;
         const response = await fetch(url);
         if (!response.ok) throw new Error('Météo Oracle indisponible');
@@ -75,12 +78,13 @@ export const fetchOracleChartData = async (
         const startGraph = now - (12 * oneHour);
         const endGraph = now + (72 * oneHour);
 
-        // 2. ÉTATS INITIAUX DU MODÈLE
-        let currentNTU = params.base_ntu;
+        // 2. ÉTATS INITIAUX DU MODÈLE (v5.2)
+        // On initialise sur la baseline du bassin pour un démarrage cohérent
+        let currentNTU = baseNTU; 
         const firstDate = new Date(hourly.time[0]);
         let currentWaterTemp = MONTHLY_WATER_TEMP_BASELINE[firstDate.getMonth()] || 8.0;
 
-        // Trackers EMA pour le lissage des scores (Partie 6.2) [cite: 217]
+        // Trackers EMA pour le lissage des scores
         let emaScores = { sandre: 0, brochet: 0, perche: 0, blackbass: 0 };
 
         // 3. BOUCLE DE SIMULATION HORAIRE
@@ -95,35 +99,43 @@ export const fetchOracleChartData = async (
             const Patm = hourly.surface_pressure[i];
             const windKmH = hourly.wind_speed_10m[i];
 
-            // --- B. MÉCANIQUE THERMIQUE (Air2Water Complet) [cite: 82, 83] ---
-            const solarTerm = params.mu * Math.sin((2 * Math.PI * (dayOfYear - PHI)) / 365);
-            // On divise par params.delta * 24 pour appliquer l'inertie journalière sur un pas horaire
-            const dTw_dt = (1 / (params.delta * 24)) * ((Ta + bParams.offset) - currentWaterTemp) + (solarTerm / 24);
+            // --- B. MÉCANIQUE THERMIQUE (Lois de Puissance Air2Water) ---
+            const delta = m === 'Z_RIVER' ? 14 : 0.207 * Math.pow(D, 1.35);
+            const mu = 0.5 + (1 / D);
+            
+            const solarTerm = mu * Math.sin((2 * Math.PI * (dayOfYear - PHI)) / 365);
+            const dTw_dt = (1 / (delta * 24)) * ((Ta + bParams.offset) - currentWaterTemp) + (solarTerm / 24);
             currentWaterTemp += dTw_dt;
 
-            // Calcul T_fond (Stratification) [cite: 85]
+            // Calcul T_fond (Stratification v5.2)
             let tFond = currentWaterTemp;
-            if ((m === 'Z_DEEP' || m === 'Z_MED') && currentWaterTemp > 14) {
-                tFond = 14 + (currentWaterTemp - 14) * 0.10;
+            if (m !== 'Z_RIVER' && currentWaterTemp > 15) {
+                tFond = 15 + (currentWaterTemp - 15) * 0.15; 
             }
 
-            // --- C. MÉCANIQUE OPTIQUE (EMC / Stokes) [cite: 116] ---
-            const k_hourly = params.k_decay / 24;
-            currentNTU = params.base_ntu + (currentNTU - params.base_ntu) * Math.exp(-k_hourly);
-            if (precip > 0.1) {
-                currentNTU += ALPHA_SED * precip * bParams.beta;
+            // --- C. MÉCANIQUE HYDRO-SÉDIMENTAIRE (Calibration v5.2) ---
+            // Taux de décantation vers la base du bassin
+            const k_hourly = 0.06; // 6% de retour vers la base par heure
+            currentNTU = baseNTU + (currentNTU - baseNTU) * Math.exp(-k_hourly);
+            
+            // Influx Pluie (Remonté à 1.8 pour marquer les averses)
+            if (precip > 0.1) currentNTU += 1.8 * precip;
+            
+            // Resuspension Vent (Uniquement eaux closes si > U_critique)
+            const U_crit = (3.0 + 1.2 * Math.log(Math.max(0.5, D))) * 3.6;
+            if (m !== 'Z_RIVER' && windKmH > U_crit) {
+                currentNTU += (windKmH - U_crit) * 0.8; // Coefficient v5.2
             }
+            currentNTU = Math.min(currentNTU, 100); 
 
-            // --- D. MÉCANIQUE DES VAGUES (SMB Equations) [cite: 138, 139] ---
-            const windMS = windKmH / 3.6;
-            // Hs (cm) = 0.0016 * U^2 * sqrt(F/g) -> Version simplifiée calibrée
-            const hs = 0.0016 * Math.pow(windMS, 2) * Math.sqrt(fetchEff / 9.81) * 100;
+            // --- D. MÉCANIQUE DES VAGUES (Walleye Chop) ---
+            const hs = calculateWaveHeight(windKmH, surface, shape);
 
             // FILTRAGE FENÊTRE GRAPHIQUE
             if (ts < startGraph || ts > endGraph) continue;
 
             // --- E. CALCUL DES BIOSCORES ---
-            const dissolvedOxygen = solveDissolvedOxygen(currentWaterTemp, Patm);
+            const dissolvedOxygen = solveDissolvedOxygen(currentWaterTemp, Patm, windKmH, D);
             const prevPress = i >= 3 ? hourly.surface_pressure[i - 3] : Patm;
             
             const ctx: BioContext = {
@@ -139,7 +151,7 @@ export const fetchOracleChartData = async (
 
             const rawScores = calculateUniversalBioScores(ctx);
 
-            // Application du lissage EMA (Partie 6.2) [cite: 218]
+            // Lissage EMA v5.2
             if (points.length === 0) {
                 emaScores = { ...rawScores };
             } else {

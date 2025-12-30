@@ -3,7 +3,7 @@ import {
     MapPin, Star, Trash2, Plus, AlertCircle, ArrowLeft, 
     Info, Map as MapIcon, Edit2, X, Check, ChevronRight, 
     Anchor, Lock, ChevronUp, ChevronDown, 
-    Settings, Fish, Save, Maximize 
+    Settings, Fish, Save, Maximize, Waves, Droplets
 } from 'lucide-react';
 import { Location, Spot, MorphologyID, DepthCategoryID, BassinType, SpeciesType } from '../types';
 import LocationPicker from './LocationPicker'; 
@@ -22,7 +22,6 @@ const DEPTH_OPTIONS: { value: DepthCategoryID; label: string }[] = [
     { value: 'Z_MORE_15', label: 'Profonde (> 15m)' }
 ];
 
-// [MISE À JOUR] Alignement strict sur la Spec (Partie 1.2)
 const BASSIN_OPTIONS: { value: BassinType; label: string }[] = [
     { value: 'URBAIN', label: 'Zone Urbaine / Portuaire' },
     { value: 'AGRICOLE', label: 'Zone Agricole / Champs' },
@@ -51,7 +50,7 @@ interface LocationsManagerProps {
     onBack: () => void;
 }
 
-const PROTECTED_LOCATION_ID = "WYAjhoUeeikT3mS0hjip"; 
+const GOLDEN_SECTOR_ID = import.meta.env.VITE_GOLDEN_SECTOR_ID; 
 
 const LocationsManager: React.FC<LocationsManagerProps> = ({ 
     locations, spots,
@@ -63,18 +62,19 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'spots' | 'bio'>('spots');
 
-    // [MISE À JOUR] BioForm enrichi avec Surface et Forme
     const [bioForm, setBioForm] = useState<{
         typeId: MorphologyID;
         depthId: DepthCategoryID;
         bassin: BassinType;
+        meanDepth: number; 
         surfaceArea: number;
         shapeFactor: number;
         speciesIds: string[];
     }>({
         typeId: 'Z_RIVER',
-        depthId: 'Z_3_15',
+        depthId: 'Z_3_15', 
         bassin: 'URBAIN',
+        meanDepth: 5.0,
         surfaceArea: 100000,
         shapeFactor: 1.2,
         speciesIds: []
@@ -101,16 +101,17 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
 
     useEffect(() => {
         if (selectedLocation) {
-            // Mapping sécurisé pour l'ancien type 'NATUREL' vers 'FORESTIER'
-            const currentBassin = selectedLocation.morphology?.bassin as any;
+            const morph = selectedLocation.morphology;
+            const currentBassin = morph?.bassin as any;
             const safeBassin: BassinType = currentBassin === 'NATUREL' ? 'FORESTIER' : (currentBassin || 'URBAIN');
 
             setBioForm({
-                typeId: selectedLocation.morphology?.typeId || 'Z_RIVER',
-                depthId: selectedLocation.morphology?.depthId || 'Z_3_15',
+                typeId: morph?.typeId || 'Z_RIVER',
+                depthId: (morph?.depthId as DepthCategoryID) || 'Z_3_15',
                 bassin: safeBassin,
-                surfaceArea: selectedLocation.morphology?.surfaceArea || 100000,
-                shapeFactor: selectedLocation.morphology?.shapeFactor || 1.2,
+                meanDepth: morph?.meanDepth || 5.0,
+                surfaceArea: morph?.surfaceArea || 100000,
+                shapeFactor: morph?.shapeFactor || 1.2,
                 speciesIds: selectedLocation.speciesIds || []
             });
             const safeCoords = getSafeCoords(selectedLocation);
@@ -161,8 +162,9 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
         const extraData = {
             morphology: {
                 typeId: bioForm.typeId,
-                depthId: bioForm.depthId,
+                depthId: bioForm.depthId, 
                 bassin: bioForm.bassin,
+                meanDepth: Number(bioForm.meanDepth),
                 surfaceArea: Number(bioForm.surfaceArea),
                 shapeFactor: Number(bioForm.shapeFactor)
             },
@@ -188,6 +190,7 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
     };
 
     const currentSafeCoords = getSafeCoords(selectedLocation);
+    const isRiver = bioForm.typeId === 'Z_RIVER';
 
     if (selectedLocation) {
         return (
@@ -237,30 +240,95 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
                 {activeTab === 'bio' && (
                     <div className="animate-in fade-in zoom-in-95 duration-200 space-y-6">
                         <div className="bg-white rounded-[2rem] p-6 border border-stone-100 shadow-sm">
-                            <h3 className="font-bold text-stone-800 flex items-center gap-2 mb-4"><MapIcon size={18} className="text-emerald-500"/> Morphologie</h3>
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="font-bold text-stone-800 flex items-center gap-2"><MapIcon size={18} className="text-emerald-500"/> Morphologie</h3>
+                                <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter flex items-center gap-1.5 ${isRiver ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}>
+                                    {isRiver ? <><Waves size={12}/> Eau Vive</> : <><Droplets size={12}/> Eau Close</>}
+                                </div>
+                            </div>
+                            
                             <div className="space-y-4">
-                                <div><label className="text-[10px] font-bold text-stone-400 uppercase ml-1">Type de milieu</label>
-                                <select value={bioForm.typeId} onChange={(e) => setBioForm({...bioForm, typeId: e.target.value as MorphologyID})} className="w-full mt-1 bg-stone-50 border border-stone-200 text-stone-800 text-sm font-bold rounded-xl px-3 py-3">{MORPHOLOGY_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></div>
+                                <div>
+                                    <label className="text-[10px] font-bold text-stone-400 uppercase ml-1">Type de milieu</label>
+                                    <select value={bioForm.typeId} onChange={(e) => setBioForm({...bioForm, typeId: e.target.value as MorphologyID})} className="w-full mt-1 bg-stone-50 border border-stone-200 text-stone-800 text-sm font-bold rounded-xl px-3 py-3">{MORPHOLOGY_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select>
+                                </div>
                                 
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div><label className="text-[10px] font-bold text-stone-400 uppercase ml-1">Profondeur</label>
-                                    <select value={bioForm.depthId} onChange={(e) => setBioForm({...bioForm, depthId: e.target.value as DepthCategoryID})} className="w-full mt-1 bg-stone-50 border border-stone-200 text-stone-800 text-sm font-bold rounded-xl px-3 py-3">{DEPTH_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-stone-400 uppercase ml-1">Catégorie Profondeur</label>
+                                        <select value={bioForm.depthId} onChange={(e) => setBioForm({...bioForm, depthId: e.target.value as DepthCategoryID})} className="w-full mt-1 bg-stone-50 border border-stone-200 text-stone-800 text-sm font-bold rounded-xl px-3 py-3">{DEPTH_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select>
+                                    </div>
                                     
-                                    <div><label className="text-[10px] font-bold text-stone-400 uppercase ml-1">Bassin Versant</label>
-                                    <select value={bioForm.bassin} onChange={(e) => setBioForm({...bioForm, bassin: e.target.value as BassinType})} className="w-full mt-1 bg-stone-50 border border-stone-200 text-stone-800 text-sm font-bold rounded-xl px-3 py-3">{BASSIN_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-stone-400 uppercase ml-1">Bassin Versant</label>
+                                        <select value={bioForm.bassin} onChange={(e) => setBioForm({...bioForm, bassin: e.target.value as BassinType})} className="w-full mt-1 bg-stone-50 border border-stone-200 text-stone-800 text-sm font-bold rounded-xl px-3 py-3">{BASSIN_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select>
+                                    </div>
                                 </div>
 
-                                {/* [NOUVEAU] Paramètres SMB / Fetch */}
                                 <div className="p-4 bg-stone-50 rounded-2xl border border-stone-100 space-y-4">
-                                    <div className="flex items-center gap-2 text-stone-500 mb-2"><Maximize size={14}/> <span className="text-[10px] font-bold uppercase tracking-wider">Modélisation des vagues (SMB)</span></div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div><label className="text-[9px] font-bold text-stone-400 uppercase ml-1">Surface (m²)</label>
-                                        <input type="number" value={bioForm.surfaceArea} onChange={(e) => setBioForm({...bioForm, surfaceArea: parseInt(e.target.value)})} className="w-full mt-1 bg-white border border-stone-200 text-stone-800 text-xs font-bold rounded-lg px-3 py-2" /></div>
-                                        
-                                        <div><label className="text-[9px] font-bold text-stone-400 uppercase ml-1">Forme (1.0 à 2.0)</label>
-                                        <input type="number" step="0.1" value={bioForm.shapeFactor} onChange={(e) => setBioForm({...bioForm, shapeFactor: parseFloat(e.target.value)})} className="w-full mt-1 bg-white border border-stone-200 text-stone-800 text-xs font-bold rounded-lg px-3 py-2" /></div>
+                                    <div className="flex items-center gap-2 text-stone-500 mb-2"><Info size={14}/> <span className="text-[10px] font-bold uppercase tracking-wider">Paramètres Déterministes Oracle</span></div>
+                                    
+                                    <div>
+                                        <label className="text-[9px] font-bold text-stone-400 uppercase ml-1">Profondeur Moyenne (mètres)</label>
+                                        <input type="number" step="0.1" value={bioForm.meanDepth} onChange={(e) => setBioForm({...bioForm, meanDepth: parseFloat(e.target.value)})} className="w-full mt-1 bg-white border border-stone-200 text-stone-800 text-xs font-bold rounded-lg px-3 py-2" placeholder="Ex: 4.5" />
+                                        <p className="text-[9px] text-stone-400 mt-1 italic">Crucial pour l'inertie thermique (Air2Water) et l'oxygène.</p>
                                     </div>
-                                    <p className="text-[9px] text-stone-400 italic">Ces paramètres permettent de simuler le "Walleye Chop" favorable au Sandre.</p>
+
+                                    {!isRiver && (
+                                        <div className="space-y-6">
+                                            <div>
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase ml-1">Surface du secteur (ha)</label>
+                                                <div className="flex items-center gap-3">
+                                                    <input 
+                                                        type="number" 
+                                                        step="0.1" 
+                                                        value={bioForm.surfaceArea / 10000} 
+                                                        onChange={(e) => setBioForm({...bioForm, surfaceArea: Math.round(parseFloat(e.target.value) * 10000)})} 
+                                                        className="w-full mt-1 bg-white border border-stone-200 text-stone-800 text-sm font-black rounded-lg px-3 py-2 shadow-inner" 
+                                                    />
+                                                    <div className="shrink-0 bg-stone-100 px-3 py-2 rounded-lg border border-stone-200 text-[10px] font-mono text-stone-500">
+                                                        {bioForm.surfaceArea.toLocaleString()} m²
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="pt-2 border-t border-stone-200/50">
+                                                <div className="flex justify-between items-center mb-4">
+                                                    <label className="text-[9px] font-bold text-stone-400 uppercase ml-1">Facteur de forme (Exposition Vent)</label>
+                                                    <span className="text-xs font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">{bioForm.shapeFactor.toFixed(1)}</span>
+                                                </div>
+                                                <div className="flex items-center gap-6 px-2">
+                                                    {/* Visualiseur de forme agrandi et bleu */}
+                                                    <div className="relative w-20 h-20 flex items-center justify-center shrink-0 bg-white rounded-xl shadow-inner border border-stone-100 overflow-hidden">
+                                                        <div 
+                                                            className="bg-blue-500/20 border-2 border-blue-500 transition-all duration-300"
+                                                            style={{
+                                                                width: `${30 + (bioForm.shapeFactor - 1) * 30}px`,
+                                                                height: `${30 - (bioForm.shapeFactor - 1) * 10}px`,
+                                                                borderRadius: `${(2 - bioForm.shapeFactor) * 50}%`
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <input 
+                                                            type="range" 
+                                                            min="1.0" 
+                                                            max="2.0" 
+                                                            step="0.1" 
+                                                            value={bioForm.shapeFactor} 
+                                                            onChange={(e) => setBioForm({...bioForm, shapeFactor: parseFloat(e.target.value)})} 
+                                                            className="w-full h-1.5 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                                        />
+                                                        <div className="flex justify-between mt-2">
+                                                            <span className="text-[8px] font-bold text-stone-400 uppercase">Concentré (1.0)</span>
+                                                            <span className="text-[8px] font-bold text-stone-400 uppercase">Étiré (2.0)</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <p className="text-[9px] text-stone-400 mt-4 italic leading-tight">Définit le "Fetch" effectif. Un plan d'eau étiré génère plus de vagues par vent de travers.</p>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -314,7 +382,7 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
                             </div>
                             <div className="flex items-center gap-2"><div className="flex flex-col mr-2">{index > 0 && <button onClick={(e) => { e.stopPropagation(); onMoveLocation(loc.id, 'up'); }} className="p-1 hover:bg-stone-200 rounded text-stone-400"><ChevronUp size={12} /></button>}{index < sortedLocations.length - 1 && <button onClick={(e) => { e.stopPropagation(); onMoveLocation(loc.id, 'down'); }} className="p-1 hover:bg-stone-200 rounded text-stone-400"><ChevronDown size={12} /></button>}</div>
                             <button onClick={(e) => handleStartEditLocation(e, loc)} className="p-2 text-stone-300 hover:text-amber-600 transition-colors"><Edit2 size={18} /></button>
-                            <button onClick={(e) => { e.stopPropagation(); loc.id !== PROTECTED_LOCATION_ID && onDeleteLocation(loc.id); }} className={`p-2 transition-colors ${loc.id === PROTECTED_LOCATION_ID ? 'text-stone-200 cursor-not-allowed' : 'text-stone-300 hover:text-rose-500'}`} disabled={loc.id === PROTECTED_LOCATION_ID}>{loc.id === PROTECTED_LOCATION_ID ? <Lock size={18} /> : <Trash2 size={18} />}</button>
+                            <button onClick={(e) => { e.stopPropagation(); loc.id !== GOLDEN_SECTOR_ID && onDeleteLocation(loc.id); }} className={`p-2 transition-colors ${loc.id === GOLDEN_SECTOR_ID ? 'text-stone-200 cursor-not-allowed' : 'text-stone-300 hover:text-rose-500'}`} disabled={loc.id === GOLDEN_SECTOR_ID}>{loc.id === GOLDEN_SECTOR_ID ? <Lock size={18} /> : <Trash2 size={18} />}</button>
                             <ChevronRight className="text-stone-300 ml-2" size={20} /></div>
                         </div>
                     );

@@ -2,7 +2,8 @@
 import React, { useState } from 'react';
 import { 
     Save, Loader2, Fish, AlertOctagon, X, Copy, 
-    Cloud, Sun, CloudSun, CloudRain, Wind, Thermometer, Droplets
+    Cloud, Sun, CloudSun, CloudRain, Wind, Thermometer, 
+    Waves, Eye, Navigation, Gauge
 } from 'lucide-react';
 import { 
     Session, Zone, Setup, Technique, Catch, Miss, Lure, 
@@ -73,7 +74,10 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
         handleDeleteCatch, handleDeleteMiss, handleSaveCatch, handleSaveMiss, handleSubmit, zones
     } = props;
 
-    // Michael : État local pour piloter la modale personnalisée
+    // Michael : ID de Nanterre pour le masquage conditionnel des données hydro
+    const GOLDEN_SECTOR_ID = import.meta.env.VITE_GOLDEN_SECTOR_ID;
+    const isGolden = locationId === GOLDEN_SECTOR_ID;
+
     const [pendingDelete, setPendingDelete] = useState<{ id: string; type: 'catch' | 'miss' | null }>({
         id: '',
         type: null
@@ -150,18 +154,20 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
                         ) : envStatus === 'found' ? (
                              <span className="text-[9px] text-emerald-500 font-bold uppercase">Données Synchronisées</span>
                         ) : envStatus === 'simulated' ? (
-                            <span className="text-[9px] text-blue-500 font-bold uppercase">Simulé (Gold Standard)</span>
+                            <span className="text-[9px] text-blue-500 font-bold uppercase">Simulé (Universel)</span>
                         ) : (
                              <span className="text-[9px] text-stone-300 italic">Non disponible</span>
                         )}
                     </div>
                     
                     <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide py-1">
+                        {/* Météo & Air */}
                         <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-blue-50 text-blue-900 border border-blue-100 shrink-0 min-w-[70px] justify-center">
                             {envSnapshot ? getWeatherIcon(envSnapshot.weather.clouds) : <Cloud size={14} className="text-blue-300"/>}
                             <span className="text-xs font-bold">{envSnapshot ? `${Math.round(envSnapshot.weather.temperature)}°` : '--'}</span>
                         </div>
 
+                        {/* Vent */}
                         <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-stone-100 text-stone-600 border border-stone-200 shrink-0 min-w-[80px] justify-center">
                             <Wind size={14} className="text-stone-400" />
                             <span className="text-xs font-bold">
@@ -169,17 +175,29 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
                             </span>
                         </div>
 
+                        {/* Température Eau (Premium Orange) */}
                         <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-orange-50 text-orange-700 border border-orange-100 shrink-0 min-w-[70px] justify-center">
                             <Thermometer size={14} className="text-orange-500" />
                             <span className="text-xs font-bold">{envSnapshot?.hydro.waterTemp ? `${envSnapshot.hydro.waterTemp.toFixed(1)}°` : '--'}</span>
                         </div>
 
-                        <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-cyan-50 text-cyan-700 border border-cyan-100 shrink-0 min-w-[70px] justify-center">
-                            <Droplets size={14} className="text-cyan-500" />
+                        {/* Turbidité (Nouveau Widget Zéro-Hydro) */}
+                        <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-100 shrink-0 min-w-[70px] justify-center">
+                            <Eye size={14} className="text-amber-600" />
                             <span className="text-xs font-bold">
-                                {envSnapshot?.hydro.flowRaw && envSnapshot.hydro.flowRaw > 0 ? Math.round(envSnapshot.hydro.flowRaw) : '--'}
+                                {envSnapshot?.hydro.turbidityIdx ? `${(envSnapshot.hydro.turbidityIdx * 100).toFixed(0)}%` : '--'}
                             </span>
                         </div>
+
+                        {/* Débit (Visible uniquement si Nanterre) */}
+                        {isGolden && (
+                            <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-cyan-50 text-cyan-700 border border-cyan-100 shrink-0 min-w-[70px] justify-center">
+                                <Waves size={14} className="text-cyan-500" />
+                                <span className="text-xs font-bold">
+                                    {envSnapshot?.hydro.flowRaw && envSnapshot.hydro.flowRaw > 0 ? Math.round(envSnapshot.hydro.flowRaw) : '--'}
+                                </span>
+                            </div>
+                        )}
                     </div>
                 </div>
 
