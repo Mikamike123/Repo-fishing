@@ -130,12 +130,14 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
                         setEnvStatus('not-found');
                     }
                 } else {
+                    // --- MODÈLE UNIVERSEL (ZERO-HYDRO) ---
                     const currentLocation = locations.find(l => l.id === locationId);
                     if (!currentLocation?.coordinates?.lat || !currentLocation?.coordinates?.lng) {
                         setEnvStatus('not-found');
                         return;
                     }
 
+                    // On récupère la météo archive via le service
                     const weatherContext = await fetchHistoricalWeatherContext(
                         currentLocation.coordinates.lat,
                         currentLocation.coordinates.lng,
@@ -150,6 +152,7 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
                     const functions = getFunctions(getApp(), 'europe-west1');
                     const getHistoricalContext = httpsCallable(functions, 'getHistoricalContext');
 
+                    // On lance la simulation physique sur le backend
                     const result = await getHistoricalContext({
                         weather: weatherContext.snapshot,
                         weatherHistory: weatherContext.history,
@@ -160,19 +163,17 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
                     const cloudData = result.data as any;
 
                     if (cloudData) {
+                        // Michael : On réintègre ici TOUTES les données de la simulation sans rien sabrer
                         const newSnapshot: FullEnvironmentalSnapshot = {
                             weather: { ...weatherContext.snapshot },
                             hydro: {
-                                flowRaw: 0,
-                                flowLagged: 0,
-                                level: 0,
-                                waterTemp: cloudData.waterTemp,
-                                turbidityIdx: cloudData.turbidityNTU / 80 
+                                ...cloudData.hydro // Michael : C'est ici que la magie opère, on prend tout (tempEau, oxygène, turbidité, etc.)
                             },
                             scores: cloudData.scores,
                             metadata: {
                                 sourceLogId: 'gold_standard_simulated',
-                                calculationDate: new Date().toISOString()
+                                calculationDate: new Date().toISOString(),
+                                calculationMode: 'ZERO_HYDRO'
                             }
                         };
                         setEnvSnapshot(newSnapshot);
@@ -182,7 +183,7 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
                     }
                 }
             } catch (error) {
-                console.error("Erreur environnement :", error);
+                console.error("Erreur environnement Michael :", error);
                 setEnvStatus('not-found');
             } finally {
                 setIsLoadingEnv(false);
@@ -230,8 +231,6 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
         const speciesIds = location?.speciesIds || [];
 
         // --- FILTRAGE DES BIOSCORES MICHAEL ---
-        // On ne garde que les scores correspondant aux espèces du secteur
-        // [MODIF] Filtrage optimisé des BioScores selon les espèces du secteur
         let filteredSnapshot = envSnapshot ? JSON.parse(JSON.stringify(envSnapshot)) : null;
 
         if (filteredSnapshot && speciesIds.length > 0) {
@@ -257,14 +256,14 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
             date, startTime, endTime, 
             locationId,
             locationName: location?.label || 'Secteur Inconnu',
-            speciesIds: speciesIds, // Crucial pour le rendu de SessionCard
+            speciesIds: speciesIds,
             spotId,
             spotName: zone?.label || 'Inconnu', 
             setupId,
             setupName: setup?.label || 'Inconnu', 
             feelingScore,
             notes, catches, misses, 
-            envSnapshot: filteredSnapshot, // On enregistre la version filtrée
+            envSnapshot: filteredSnapshot,
             catchCount: catches.length
         };
 

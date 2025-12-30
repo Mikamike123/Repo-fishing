@@ -1,11 +1,12 @@
+// lib/useWaterTemp.ts
 import { useState, useEffect } from 'react';
 import { Location } from '../types';
-import { fetchWeatherHistory, solveAir2Water } from './zeroHydroEngine';
+import { solveAir2Water } from './zeroHydroEngine';
+import { fetchWeatherHistory } from './universal-weather-service';
 
-// CONFIGURATION
-const THROTTLE_HOURS = 6;           // Pas de rafraîchissement si sync < 6h
-const COLD_START_DAYS = 30;         // Jours d'historique pour "chauffer" le modèle
-const INCREMENTAL_THRESHOLD_DAYS = 15; // Au-delà de 15j, on refait un Cold Start
+const THROTTLE_HOURS = 6;
+const COLD_START_DAYS = 30;
+const INCREMENTAL_THRESHOLD_DAYS = 15;
 
 export const useWaterTemp = (
     location: Location | null,
@@ -15,8 +16,6 @@ export const useWaterTemp = (
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        // SÉCURITÉ STRICTE (Fix Error 400)
-        // On vérifie que location existe ET que les coordonnées sont bien des nombres
         if (!location || !location.coordinates || typeof location.coordinates.lat !== 'number' || typeof location.coordinates.lng !== 'number' || !location.morphology) {
             setWaterTemp(null);
             return;
@@ -25,13 +24,8 @@ export const useWaterTemp = (
         const syncWaterTemp = async () => {
             const now = new Date();
             const lastSync = location.lastSyncDate ? new Date(location.lastSyncDate) : null;
-            
-            // Calcul du Gap en heures depuis la dernière synchro
-            const hoursSinceSync = lastSync 
-                ? (now.getTime() - lastSync.getTime()) / (1000 * 60 * 60) 
-                : null;
+            const hoursSinceSync = lastSync ? (now.getTime() - lastSync.getTime()) / (1000 * 60 * 60) : null;
 
-            // --- STRATÉGIE 1 : THROTTLE (Économie API) ---
             if (hoursSinceSync !== null && hoursSinceSync < THROTTLE_HOURS && location.lastCalculatedTemp !== undefined) {
                 setWaterTemp(location.lastCalculatedTemp);
                 return;
@@ -41,72 +35,37 @@ export const useWaterTemp = (
             let computedTemp = location.lastCalculatedTemp;
 
             try {
-                // --- STRATÉGIE 2 : COLD START ---
                 if (hoursSinceSync === null || hoursSinceSync > (INCREMENTAL_THRESHOLD_DAYS * 24)) {
-                    // console.log("❄️ Zero-Hydro: Cold Start (Simulation 30 jours)...");
-                    
-                    const history = await fetchWeatherHistory(
-                        location.coordinates!.lat, 
-                        location.coordinates!.lng, 
-                        COLD_START_DAYS
-                    );
-                    
-                    if (history.length > 0) {
-                        computedTemp = solveAir2Water(
-                            history, 
-                            location.morphology!.typeId,
-                            location.morphology!.bassin
-                        );
+                    const history = await fetchWeatherHistory(location.coordinates!.lat, location.coordinates!.lng, COLD_START_DAYS);
+                    if (history && history.length > 0) {
+                        computedTemp = solveAir2Water(history, location.morphology!.typeId, location.morphology!.bassin);
                     }
-                } 
-                
-                // --- STRATÉGIE 3 : INCREMENTAL SYNC ---
-                else {
+                } else {
                     const daysMissing = Math.ceil(hoursSinceSync / 24);
-                    // console.log(`⚡ Zero-Hydro: Incremental Sync (${daysMissing} jours)...`);
-
-                    const history = await fetchWeatherHistory(
-                        location.coordinates!.lat, 
-                        location.coordinates!.lng, 
-                        daysMissing + 1 
-                    );
-
-                    if (history.length > 0 && location.lastCalculatedTemp !== undefined) {
-                        computedTemp = solveAir2Water(
-                            history, 
-                            location.morphology!.typeId,
-                            location.morphology!.bassin,
-                            location.lastCalculatedTemp
-                        );
+                    const history = await fetchWeatherHistory(location.coordinates!.lat, location.coordinates!.lng, daysMissing + 1);
+                    if (history && history.length > 0 && location.lastCalculatedTemp !== undefined) {
+                        computedTemp = solveAir2Water(history, location.morphology!.typeId, location.morphology!.bassin, location.lastCalculatedTemp);
                     }
                 }
 
-                // --- PERSISTANCE & MISE À JOUR ---
                 if (computedTemp !== undefined && !isNaN(computedTemp)) {
                     setWaterTemp(computedTemp);
-                    
-                    // On utilise 'label' ou 'name' pour le log
                     const locLabel = (location as any).label || location.name || "Secteur";
-                    
                     onUpdateLocation('locations', location.id, locLabel, {
                         lastCalculatedTemp: computedTemp,
                         lastSyncDate: now.toISOString()
                     });
                 }
-
             } catch (err) {
-                console.error("Erreur Zero-Hydro Sync:", err);
-                if (location.lastCalculatedTemp !== undefined) {
-                    setWaterTemp(location.lastCalculatedTemp);
-                }
+                console.error("Erreur Sync Michael :", err);
+                if (location.lastCalculatedTemp !== undefined) setWaterTemp(location.lastCalculatedTemp);
             } finally {
                 setLoading(false);
             }
         };
 
         syncWaterTemp();
-
-    }, [location?.id]); // On relance uniquement si l'ID du lieu change
+    }, [location?.id]);
 
     return { waterTemp, loading };
 };

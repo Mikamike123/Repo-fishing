@@ -2,8 +2,7 @@
 import React, { useState } from 'react';
 import { 
     Save, Loader2, Fish, AlertOctagon, X, Copy, 
-    Cloud, Sun, CloudSun, CloudRain, Wind, Thermometer, 
-    Waves, Eye, Navigation, Gauge
+    Cloud, Sun, CloudSun, CloudRain, Wind
 } from 'lucide-react';
 import { 
     Session, Zone, Setup, Technique, Catch, Miss, Lure, 
@@ -13,6 +12,7 @@ import CatchDialog from './CatchDialog';
 import MissDialog from './MissDialog';
 import DeleteConfirmDialog from './DeleteConfirmDialog';
 import { CATCH_DELETION_MESSAGES, MISS_DELETION_MESSAGES } from '../constants/deletionMessages';
+import { WEATHER_METADATA, HYDRO_METADATA } from '../constants/indicators';
 
 const getWindDir = (deg?: number) => {
     if (deg === undefined) return '';
@@ -74,7 +74,6 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
         handleDeleteCatch, handleDeleteMiss, handleSaveCatch, handleSaveMiss, handleSubmit, zones
     } = props;
 
-    // Michael : ID de Nanterre pour le masquage conditionnel des données hydro
     const GOLDEN_SECTOR_ID = import.meta.env.VITE_GOLDEN_SECTOR_ID;
     const isGolden = locationId === GOLDEN_SECTOR_ID;
 
@@ -93,6 +92,19 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
         setPendingDelete({ id: '', type: null });
     };
 
+    // Helper pour extraire les valeurs du snapshot proprement
+    const getVal = (meta: any, type: 'weather' | 'hydro') => {
+        if (!envSnapshot) return '--';
+        const val = (envSnapshot as any)[type]?.[meta.dataKey];
+        if (val === undefined || val === null) return '--';
+        
+        // Formattage spécifique
+        if (meta.dataKey === 'windSpeed') return `${Math.round(val)} ${getWindDir(envSnapshot.weather.windDirection)}`;
+        if (meta.dataKey === 'flowLagged') return Math.round(val / 1000); // Conversion L/s -> m3/s si besoin ou laisser brut
+        if (typeof val === 'number') return val % 1 === 0 ? val : val.toFixed(1);
+        return val;
+    };
+    console.log("DEBUG ORACLE DATA:", envSnapshot);
     return (
         <div className="bg-white rounded-3xl p-6 shadow-xl pb-24">
             <div className="flex justify-between items-center mb-6">
@@ -161,43 +173,44 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
                     </div>
                     
                     <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide py-1">
-                        {/* Météo & Air */}
-                        <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-blue-50 text-blue-900 border border-blue-100 shrink-0 min-w-[70px] justify-center">
-                            {envSnapshot ? getWeatherIcon(envSnapshot.weather.clouds) : <Cloud size={14} className="text-blue-300"/>}
-                            <span className="text-xs font-bold">{envSnapshot ? `${Math.round(envSnapshot.weather.temperature)}°` : '--'}</span>
-                        </div>
+                        {/* Boucle Météo */}
+                        {Object.entries(WEATHER_METADATA).map(([key, meta]) => {
+                            const val = getVal(meta, 'weather');
+                            const themes: any = {
+                                rose: "bg-blue-50 text-blue-900 border-blue-100",
+                                indigo: "bg-indigo-50 text-indigo-900 border-indigo-100",
+                                amber: "bg-stone-100 text-stone-600 border-stone-200"
+                            };
+                            return (
+                                <div key={key} className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border shrink-0 min-w-[70px] justify-center ${themes[meta.theme] || 'bg-stone-50'}`}>
+                                    {key === 'tempAir' && envSnapshot ? getWeatherIcon(envSnapshot.weather.clouds) : <meta.icon size={14} className="opacity-60" />}
+                                    <span className="text-xs font-bold">{val}{val !== '--' && key !== 'wind' ? '°' : ''}</span>
+                                </div>
+                            );
+                        })}
 
-                        {/* Vent */}
-                        <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-stone-100 text-stone-600 border border-stone-200 shrink-0 min-w-[80px] justify-center">
-                            <Wind size={14} className="text-stone-400" />
-                            <span className="text-xs font-bold">
-                                {envSnapshot ? `${Math.round(envSnapshot.weather.windSpeed)} ${getWindDir(envSnapshot.weather.windDirection)}` : '--'}
-                            </span>
-                        </div>
+                        {/* Boucle Hydro */}
+                        {Object.entries(HYDRO_METADATA).map(([key, meta]) => {
+                            // On masque Flow et Level si pas Golden Sector
+                            if ((key === 'flow' || key === 'level') && !isGolden) return null;
+                            
+                            const val = getVal(meta, 'hydro');
+                            const themes: any = {
+                                orange: "bg-orange-50 text-orange-700 border-orange-100",
+                                emerald: "bg-emerald-50 text-emerald-800 border-emerald-100",
+                                purple: "bg-purple-50 text-purple-700 border-purple-100",
+                                indigo: "bg-indigo-50 text-indigo-700 border-indigo-100",
+                                blue: "bg-blue-50 text-blue-700 border-blue-100",
+                                cyan: "bg-cyan-50 text-cyan-700 border-cyan-100"
+                            };
 
-                        {/* Température Eau (Premium Orange) */}
-                        <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-orange-50 text-orange-700 border border-orange-100 shrink-0 min-w-[70px] justify-center">
-                            <Thermometer size={14} className="text-orange-500" />
-                            <span className="text-xs font-bold">{envSnapshot?.hydro.waterTemp ? `${envSnapshot.hydro.waterTemp.toFixed(1)}°` : '--'}</span>
-                        </div>
-
-                        {/* Turbidité (Nouveau Widget Zéro-Hydro) */}
-                        <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-100 shrink-0 min-w-[70px] justify-center">
-                            <Eye size={14} className="text-amber-600" />
-                            <span className="text-xs font-bold">
-                                {envSnapshot?.hydro.turbidityIdx ? `${(envSnapshot.hydro.turbidityIdx * 100).toFixed(0)}%` : '--'}
-                            </span>
-                        </div>
-
-                        {/* Débit (Visible uniquement si Nanterre) */}
-                        {isGolden && (
-                            <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-cyan-50 text-cyan-700 border border-cyan-100 shrink-0 min-w-[70px] justify-center">
-                                <Waves size={14} className="text-cyan-500" />
-                                <span className="text-xs font-bold">
-                                    {envSnapshot?.hydro.flowRaw && envSnapshot.hydro.flowRaw > 0 ? Math.round(envSnapshot.hydro.flowRaw) : '--'}
-                                </span>
-                            </div>
-                        )}
+                            return (
+                                <div key={key} className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border shrink-0 min-w-[70px] justify-center ${themes[meta.theme] || 'bg-stone-50'}`}>
+                                    <meta.icon size={14} className="opacity-70" />
+                                    <span className="text-xs font-bold">{val}{val !== '--' && key === 'waterTemp' ? '°' : ''}</span>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
 

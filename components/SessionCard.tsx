@@ -5,7 +5,7 @@ import {
     Maximize2, Zap, Activity
 } from 'lucide-react'; 
 import { Session, SpeciesType, FullEnvironmentalSnapshot } from '../types';
-import { INDICATOR_METADATA } from '../constants/indicators';
+import { WEATHER_METADATA, HYDRO_METADATA, IndicatorMeta } from '../constants/indicators';
 
 interface SessionCardProps {
     session: Session;
@@ -50,18 +50,13 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
         .filter(c => c.photoUrls && c.photoUrls.length > 0)
         .map(c => c.photoUrls![0]);
 
-    /**
-     * Composant interne pour les badges d'indicateurs
-     * Inclut le label textuel et l'infobulle descriptive
-     */
-    const MiniEnvTile = ({ metaKey, value, customUnit, isEstimated }: { 
-        metaKey: string, 
+    const MiniEnvTile = ({ meta, value, customUnit, isEstimated }: { 
+        meta: IndicatorMeta, 
         value: string | number, 
         customUnit?: string,
         isEstimated?: boolean 
     }) => {
-        const meta = INDICATOR_METADATA[metaKey];
-        if (!meta || value === undefined || value === null || value === '--') return null;
+        if (value === undefined || value === null || value === '--') return null;
 
         const themes: any = {
             rose: "bg-rose-50/60 border-rose-100 text-rose-700",
@@ -144,47 +139,51 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
             )}
 
             <div className="flex flex-wrap items-center gap-2 mb-5">
-                {/* Météo API - Toujours affiché */}
-                <MiniEnvTile metaKey="tempAir" value={env?.weather?.temperature ? Math.round(env.weather.temperature) : '--'} />
-                <MiniEnvTile metaKey="pressure" value={env?.weather?.pressure ? Math.round(env.weather.pressure) : '--'} />
-                <MiniEnvTile 
-                    metaKey="wind" 
-                    value={env?.weather?.windSpeed ? Math.round(env.weather.windSpeed) : '--'} 
-                    customUnit={` km/h ${getWindDir(env?.weather?.windDirection)}`} 
-                />
+                {/* Rendu des indicateurs Météo */}
+                {Object.entries(WEATHER_METADATA).map(([key, meta]) => {
+                    let val = env?.weather?.[meta.dataKey as keyof typeof env.weather];
+                    let customUnit = undefined;
+                    
+                    if (key === 'wind') {
+                        customUnit = ` km/h ${getWindDir(env?.weather?.windDirection)}`;
+                    }
 
-                {/* Données Simulées ou Mixtes */}
-                <MiniEnvTile 
-                    metaKey="waterTemp" 
-                    value={env?.hydro?.waterTemp?.toFixed(1) || '--'} 
-                    isEstimated={isSimulated}
-                />
-                <MiniEnvTile 
-                    metaKey="turbidity" 
-                    value={env?.hydro?.turbidityNTU ? env.hydro.turbidityNTU.toFixed(1) : '--'} 
-                    isEstimated={isSimulated}
-                />
-                <MiniEnvTile 
-                    metaKey="oxygen" 
-                    value={env?.hydro?.dissolvedOxygen ? env.hydro.dissolvedOxygen.toFixed(1) : '--'} 
-                    isEstimated={true} 
-                />
-                <MiniEnvTile 
-                    metaKey="waves" 
-                    value={env?.hydro?.waveHeight ? Math.round(env.hydro.waveHeight) : '--'} 
-                    isEstimated={true} 
-                />
-                
-                {/* Masquage strict via GOLDEN_SECTOR_ID [cite: 319, 742] */}
-                {session.locationId === GOLDEN_SECTOR_ID && (
-                    <>
+                    return (
                         <MiniEnvTile 
-                            metaKey="flow" 
-                            value={env?.hydro?.flowLagged ? (env.hydro.flowLagged / 1000).toFixed(1) : '--'} 
+                            key={key}
+                            meta={meta} 
+                            value={val !== undefined ? Math.round(val as number) : '--'} 
+                            customUnit={customUnit}
                         />
-                        <MiniEnvTile metaKey="level" value={env?.hydro?.level ? Math.round(env.hydro.level) : '--'} />
-                    </>
-                )}
+                    );
+                })}
+
+                {/* Rendu des indicateurs Hydro */}
+                {Object.entries(HYDRO_METADATA).map(([key, meta]) => {
+                    // Masquage strict flow/level si hors Golden Sector
+                    if ((key === 'flow' || key === 'level') && session.locationId !== GOLDEN_SECTOR_ID) return null;
+
+                    let val = env?.hydro?.[meta.dataKey as keyof typeof env.hydro];
+                    if (val === undefined || val === null) return null;
+
+                    let displayVal: string | number = val as number;
+                    if (key === 'waterTemp' || key === 'turbidity' || key === 'oxygen') {
+                        displayVal = (val as number).toFixed(1);
+                    } else if (key === 'flow') {
+                        displayVal = ( (val as number) / 1000 ).toFixed(1);
+                    } else {
+                        displayVal = Math.round(val as number);
+                    }
+
+                    return (
+                        <MiniEnvTile 
+                            key={key}
+                            meta={meta} 
+                            value={displayVal} 
+                            isEstimated={isSimulated || key === 'oxygen' || key === 'waves'}
+                        />
+                    );
+                })}
             </div>
 
             {session.notes && (
