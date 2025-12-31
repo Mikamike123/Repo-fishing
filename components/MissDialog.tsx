@@ -56,12 +56,11 @@ const MissDialog: React.FC<MissDialogProps> = ({
   useEffect(() => {
     if (isOpen) {
       setError(null);
-      const data = initialData as any; // Cast pour éviter les erreurs TS sur les champs manquants dans l'interface
+      const data = initialData as any; 
 
       if (data) {
         setType(data.type);
         setLocation(data.location || '');
-        // Priorité au spot déjà enregistré, sinon premier spot du secteur filtré
         setSelectedZoneId(data.spotId || (filteredSpots[0]?.id || ''));
         setSelectedLureTypeId(data.lureTypeId || '');
         setSelectedColorId(data.lureColorId || '');
@@ -119,7 +118,7 @@ const MissDialog: React.FC<MissDialogProps> = ({
                 flowRaw: d.hydro?.flow || 0,
                 flowLagged: d.computed?.flow_lagged || 0,
                 level: d.hydro?.level || 0,
-                waterTemp: d.hydro?.waterTemp || null,
+                waterTemp: d.hydro?.waterTemp ?? null,
                 turbidityIdx: d.computed?.turbidity_idx || 0
               },
               scores: {
@@ -135,7 +134,6 @@ const MissDialog: React.FC<MissDialogProps> = ({
             setEnvStatus('not-found');
           }
         } else {
-          // Simulation Gold Standard pour les autres secteurs
           const currentLocation = locations.find(l => l.id === locationId);
           if (currentLocation?.coordinates) {
             const weatherContext = await fetchHistoricalWeatherContext(
@@ -145,8 +143,8 @@ const MissDialog: React.FC<MissDialogProps> = ({
             );
 
             if (weatherContext) {
-                const functions = getFunctions(getApp(), 'europe-west1');
-                const getHistoricalContext = httpsCallable(functions, 'getHistoricalContext');
+                const functionsInstance = getFunctions(getApp(), 'europe-west1');
+                const getHistoricalContext = httpsCallable(functionsInstance, 'getHistoricalContext');
                 const result = await getHistoricalContext({
                     weather: weatherContext.snapshot,
                     weatherHistory: weatherContext.history,
@@ -158,8 +156,12 @@ const MissDialog: React.FC<MissDialogProps> = ({
                 if (cloudData) {
                     setEnvSnapshot({
                         weather: { ...weatherContext.snapshot },
-                        hydro: { flowRaw: 0, flowLagged: 0, level: 0, waterTemp: cloudData.waterTemp, turbidityIdx: cloudData.turbidityNTU / 80 },
-                        scores: cloudData.scores,
+                        hydro: { 
+                                flowRaw: 0, flowLagged: 0, level: 0, 
+                                waterTemp: cloudData.waterTemp ?? null, 
+                                turbidityIdx: Math.min(1, (cloudData.turbidityNTU || 5) / 50) 
+                              },
+                        scores: cloudData.scores ?? { sandre: 0, brochet: 0, perche: 0, blackbass: 0 },
                         metadata: { sourceLogId: 'gold_standard_simulated', calculationDate: new Date().toISOString() }
                     });
                     setEnvStatus('simulated');

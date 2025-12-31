@@ -105,8 +105,6 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
         return val;
     };
 
-    console.log("DEBUG ORACLE DATA:", envSnapshot);
-
     return (
         <div className="bg-white rounded-3xl p-6 shadow-xl pb-24">
             <div className="flex justify-between items-center mb-6">
@@ -151,7 +149,7 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
                     </div>
                 </div>
 
-                <div>
+                <div className="grid grid-cols-1 gap-2">
                     <label className="text-[9px] font-bold text-stone-400 uppercase tracking-widest mb-1 block">Setup Principal</label>
                     <select required value={setupId} onChange={e => setSetupId(e.target.value)} className="w-full p-3 bg-stone-50 rounded-xl font-bold text-stone-700 text-sm outline-none focus:ring-2 focus:ring-emerald-100 transition-all">
                         {setups.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
@@ -175,7 +173,7 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
                     </div>
                     
                     <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide py-1">
-                        {/* Boucle Météo Michael (Nuages + Pluie inclus via WEATHER_METADATA) */}
+                        {/* Boucle Météo Michael */}
                         {Object.entries(WEATHER_METADATA).map(([key, meta]) => {
                             const val = getVal(meta, 'weather');
                             const themes: any = {

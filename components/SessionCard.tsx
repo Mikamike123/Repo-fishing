@@ -41,7 +41,7 @@ const SPECIES_MAP: Record<string, string> = {
 const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, onClick, currentUserId }) => {
     const env = session.envSnapshot as FullEnvironmentalSnapshot;
     const isOwner = session.userId === currentUserId;
-    const isSimulated = env?.metadata?.calculationMode === 'ZERO_HYDRO';
+    const isSimulated = env?.metadata?.calculationMode === 'ZERO_HYDRO' || (env?.metadata?.calculationMode as any) === 'ULTREIA_CALIBRATED';
     
     const GOLDEN_SECTOR_ID = import.meta.env.VITE_GOLDEN_SECTOR_ID; 
 
@@ -79,9 +79,12 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
             >
                 <Icon size={12} className="opacity-60 shrink-0" />
                 <div className="flex flex-col leading-none">
-                    <span className="text-[7px] opacity-50 uppercase tracking-tighter">
-                        {meta.label} {isEstimated && <span className="italic text-[6px]">est.</span>}
-                    </span>
+                    <div className="flex items-center gap-1">
+                        <span className="text-[7px] opacity-50 uppercase tracking-tighter">
+                            {meta.label} 
+                        </span>
+                        {isEstimated && <span className="italic text-[6px] opacity-40 font-normal">est.</span>}
+                    </div>
                     <span>{value}{customUnit || meta.unit}</span>
                 </div>
             </div>
@@ -160,13 +163,20 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
 
                 {/* Rendu des indicateurs Hydro */}
                 {Object.entries(HYDRO_METADATA).map(([key, meta]) => {
-                    // Masquage strict flow/level si hors Golden Sector
-                    if ((key === 'flow' || key === 'level') && session.locationId !== GOLDEN_SECTOR_ID) return null;
+                    
+                    // Michael : Filtre Morphologique avec Fallback Nanterre
+                    const morphoTag = (env?.metadata as any)?.morphologyType;
+                    const isRiver = morphoTag === 'Z_RIVER' || (!morphoTag && session.locationId === GOLDEN_SECTOR_ID);
+                    const isRiverIndicator = key === 'flowIndex' || key === 'flow' || key === 'level';
+                    
+                    if (isRiverIndicator && !isRiver) return null;
 
                     let val = env?.hydro?.[meta.dataKey as keyof typeof env.hydro];
                     if (val === undefined || val === null) return null;
 
                     let displayVal: string | number = val as number;
+                    let customUnit = undefined; 
+
                     if (key === 'waterTemp' || key === 'turbidity' || key === 'oxygen') {
                         displayVal = (val as number).toFixed(1);
                     } else if (key === 'flow') {
@@ -175,17 +185,23 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                         displayVal = Math.round(val as number);
                     }
 
+                    if (key === 'flowIndex' && (env?.metadata as any)?.flowStatus) {
+                        customUnit = `% (${(env.metadata as any).flowStatus})`;
+                    }
+
                     return (
                         <MiniEnvTile 
                             key={key}
                             meta={meta} 
                             value={displayVal} 
-                            isEstimated={isSimulated || key === 'oxygen' || key === 'waves'}
+                            customUnit={customUnit}
+                            isEstimated={isSimulated || key === 'oxygen' || key === 'waves' || key === 'flowIndex'}
                         />
                     );
                 })}
             </div>
 
+            {/* Le reste du code reste identique... */}
             {session.notes && (
                 <div className="mb-5 px-4 py-3 bg-amber-50/30 rounded-2xl border border-amber-100/50 relative italic text-sm text-stone-600 leading-snug">
                     <div className="absolute -top-2 left-4 px-2 bg-white text-[8px] font-black text-amber-500 uppercase tracking-widest border border-amber-100 rounded-full">Observation</div>

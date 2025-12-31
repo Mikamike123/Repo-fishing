@@ -62,6 +62,7 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
         return filteredSpots.length > 0 ? filteredSpots[0].id : '';
     });
 
+    // Michael : Synchronisation du spot quand le secteur change
     useEffect(() => {
         const isValid = zones.find(z => z.id === spotId && z.locationId === locationId);
         if (!isValid) {
@@ -69,24 +70,25 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
         }
     }, [locationId, filteredSpots, zones, spotId]);
 
-    // --- LOGIQUE D'ACQUISITION ENVIRONNEMENTALE ---
+    // --- LOGIQUE D'ACQUISITION ENVIRONNEMENTALE (CORRIGÉE) ---
     useEffect(() => {
         if (!locationId || locations.length === 0) return;
 
-        if (initialData && envStatus === 'idle' && initialData.envSnapshot && 
+        // Michael : Si on a déjà les données dans initialData pour ces paramètres précis, on ne refetch pas
+        if (initialData && initialData.envSnapshot && 
             date === initialData.date && startTime === initialData.startTime && locationId === initialData.locationId) {
+            setEnvSnapshot(initialData.envSnapshot);
             setEnvStatus('found');
             return;
         }
 
         const fetchEnv = async () => {
             setIsLoadingEnv(true);
-            setEnvStatus('idle');
-            setEnvSnapshot(null);
-
+            // On ne touche plus à envStatus ici pour éviter la boucle
+            
             try {
                 const hourStr = startTime.split(':')[0];
-                const GOLDEN_SECTOR_ID = import.meta.env.VITE_GOLDEN_SECTOR_ID;
+                const GOLDEN_SECTOR_ID = import.meta.env.VITE_GOLDEN_SECTOR_ID || "WYAjhoUeeikT3mS0hjip";
                 const isGolden = locationId === GOLDEN_SECTOR_ID;
 
                 if (isGolden) {
@@ -127,17 +129,17 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
                         setEnvSnapshot(newSnapshot);
                         setEnvStatus('found');
                     } else {
+                        setEnvSnapshot(null);
                         setEnvStatus('not-found');
                     }
                 } else {
-                    // --- MODÈLE UNIVERSEL (ZERO-HYDRO) ---
+                    // --- MODÈLE UNIVERSEL (ZERO-HYDRO) --- [cite: 849, 850, 851]
                     const currentLocation = locations.find(l => l.id === locationId);
                     if (!currentLocation?.coordinates?.lat || !currentLocation?.coordinates?.lng) {
                         setEnvStatus('not-found');
                         return;
                     }
 
-                    // On récupère la météo archive via le service
                     const weatherContext = await fetchHistoricalWeatherContext(
                         currentLocation.coordinates.lat,
                         currentLocation.coordinates.lng,
@@ -149,10 +151,9 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
                         return;
                     }
 
-                    const functions = getFunctions(getApp(), 'europe-west1');
-                    const getHistoricalContext = httpsCallable(functions, 'getHistoricalContext');
+                    const functionsInstance = getFunctions(getApp(), 'europe-west1');
+                    const getHistoricalContext = httpsCallable(functionsInstance, 'getHistoricalContext');
 
-                    // On lance la simulation physique sur le backend
                     const result = await getHistoricalContext({
                         weather: weatherContext.snapshot,
                         weatherHistory: weatherContext.history,
@@ -163,17 +164,15 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
                     const cloudData = result.data as any;
 
                     if (cloudData) {
-                        // Michael : On réintègre ici TOUTES les données de la simulation sans rien sabrer
                         const newSnapshot: FullEnvironmentalSnapshot = {
                             weather: { ...weatherContext.snapshot },
                             hydro: {
-                                ...cloudData.hydro // Michael : C'est ici que la magie opère, on prend tout (tempEau, oxygène, turbidité, etc.)
+                                ...cloudData.hydro 
                             },
                             scores: cloudData.scores,
                             metadata: {
-                                sourceLogId: 'gold_standard_simulated',
-                                calculationDate: new Date().toISOString(),
-                                calculationMode: 'ZERO_HYDRO'
+                                ...cloudData.metadata,
+                                sourceLogId: cloudData.metadata?.sourceLogId || 'ultreia_live_simulation'
                             }
                         };
                         setEnvSnapshot(newSnapshot);
@@ -192,6 +191,7 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
 
         const timeoutId = setTimeout(fetchEnv, 800);
         return () => clearTimeout(timeoutId);
+        // Michael : On retire envStatus des dépendances pour casser la boucle infinie
     }, [date, startTime, locationId, locations, initialData]);
 
     // --- HANDLERS ---
@@ -230,7 +230,6 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
         const location = locations.find(l => l.id === locationId);
         const speciesIds = location?.speciesIds || [];
 
-        // --- FILTRAGE DES BIOSCORES MICHAEL ---
         let filteredSnapshot = envSnapshot ? JSON.parse(JSON.stringify(envSnapshot)) : null;
 
         if (filteredSnapshot && speciesIds.length > 0) {

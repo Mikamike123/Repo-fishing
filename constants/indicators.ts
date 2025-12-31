@@ -1,6 +1,6 @@
 // constants/indicators.ts
 import { 
-    Thermometer, Gauge, Wind, Droplets, Waves, Eye, Activity, ShieldCheck, Cloud, CloudRain
+    Thermometer, Gauge, Wind, Droplets, Waves, Eye, Activity, ShieldCheck, Cloud, CloudRain, Zap
 } from 'lucide-react';
 
 export interface IndicatorMeta {
@@ -66,6 +66,15 @@ export const HYDRO_METADATA: Record<string, IndicatorMeta> = {
         theme: "orange",
         dataKey: "waterTemp"
     },
+    flowIndex: {
+        label: "Courant",
+        description: "Indice de débit proxy (Modèle Ultreia).",
+        formula: "Convolution Pluie-Débit",
+        unit: "%",
+        icon: Zap,
+        theme: "emerald",
+        dataKey: "flowRaw"
+    },
     waves: {
         label: "Vagues",
         description: "Hauteur du clapot (Walleye Chop).",
@@ -94,16 +103,16 @@ export const HYDRO_METADATA: Record<string, IndicatorMeta> = {
         dataKey: "dissolvedOxygen"
     },
     flow: {
-        label: "Débit",
-        description: "Volume d'eau par seconde (Vigicrues).",
+        label: "Débit (S)",
+        description: "Débit réel mesuré (Seine uniquement).",
         unit: " m³/s",
         icon: Waves,
         theme: "purple",
         dataKey: "flowLagged"
     },
     level: {
-        label: "Niveau",
-        description: "Hauteur d'eau par rapport au zéro échelle.",
+        label: "Niveau (S)",
+        description: "Hauteur d'eau (Seine uniquement).",
         unit: " mm",
         icon: ShieldCheck,
         theme: "indigo",

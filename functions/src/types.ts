@@ -40,7 +40,7 @@ export interface HydroSnapshot {
   level: number;            
   waterTemp: number | null; 
   tFond?: number;            
-  turbidityIdx?: number;     // Rendu optionnel
+  turbidityIdx?: number;
   turbidityNTU?: number;     // Ajouté pour le moteur Universel     
   dissolvedOxygen?: number; 
   waveHeight?: number;       
@@ -60,7 +60,9 @@ export interface FullEnvironmentalSnapshot {
   metadata: {
     sourceLogId?: string;
     calculationDate: any;   
-    calculationMode?: 'OBSERVATORY' | 'ZERO_HYDRO';
+    calculationMode?: 'OBSERVATORY' | 'ZERO_HYDRO' | 'ULTREIA_CALIBRATED';
+    flowStatus?: 'Montée' | 'Décrue' | 'Stable';
+    morphologyType?: MorphologyID;
   };
 }
 

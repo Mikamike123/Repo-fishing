@@ -60,7 +60,9 @@ export interface FullEnvironmentalSnapshot {
   metadata: {
     sourceLogId?: string;
     calculationDate: any;   
-    calculationMode?: 'OBSERVATORY' | 'ZERO_HYDRO';
+    calculationMode?: 'OBSERVATORY' | 'ZERO_HYDRO' | 'ULTREIA_CALIBRATED';
+    flowStatus?: 'Montée' | 'Décrue' | 'Stable';
+    morphologyType?: MorphologyID;
   };
 }
 

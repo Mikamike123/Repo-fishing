@@ -22,8 +22,8 @@ interface CatchDialogProps {
     onSave: (data: any) => void;
     initialData?: Catch | null;
     availableZones: Zone[];
-    locationId: string;     // AJOUTÉ pour le filtrage
-    locations: Location[];   // AJOUTÉ pour le Gold Standard
+    locationId: string;
+    locations: Location[];
     availableTechniques: Technique[];
     sessionStartTime: string;
     sessionEndTime: string;
@@ -101,12 +101,10 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [error, setError] = useState<string | null>(null);
 
-    // --- 1. FILTRAGE DES SPOTS PAR SECTEUR ---
     const filteredSpots = useMemo(() => {
         return availableZones.filter(z => z.locationId === locationId);
     }, [availableZones, locationId]);
 
-    // --- 2. INITIALISATION ---
     useEffect(() => {
         if (isOpen) {
             setError(null);
@@ -165,7 +163,6 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
         }
     }, [isOpen, initialData, lastCatchDefaults, sessionStartTime, filteredSpots, availableTechniques]);
 
-    // --- 3. RÉCUPÉRATION ENVIRONNEMENTALE (UNIFIÉE GOLD STANDARD) ---
     useEffect(() => {
         if (!isOpen || !time || !locationId) return;
 
@@ -195,7 +192,7 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
                                 flowRaw: d.hydro?.flow || 0,
                                 flowLagged: d.computed?.flow_lagged || 0,
                                 level: d.hydro?.level || 0,
-                                waterTemp: d.hydro?.waterTemp || null,
+                                waterTemp: d.hydro?.waterTemp ?? null,
                                 turbidityIdx: d.computed?.turbidity_idx || 0
                             },
                             scores: {
@@ -231,8 +228,14 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
                             if (cloudData) {
                                 setEnvSnapshot({
                                     weather: { ...weatherContext.snapshot },
-                                    hydro: { flowRaw: 0, flowLagged: 0, level: 0, waterTemp: cloudData.waterTemp, turbidityIdx: cloudData.turbidityNTU / 80 },
-                                    scores: cloudData.scores,
+                                    hydro: { 
+                                            flowRaw: 0, 
+                                            flowLagged: 0, 
+                                            level: 0, 
+                                            waterTemp: cloudData.waterTemp ?? null, 
+                                            turbidityIdx: Math.min(1, (cloudData.turbidityNTU || 5) / 50) 
+                                          },
+                                    scores: cloudData.scores ?? { sandre: 0, brochet: 0, perche: 0, blackbass: 0 },
                                     metadata: { sourceLogId: 'gold_standard_simulated', calculationDate: new Date().toISOString() }
                                 });
                                 setEnvStatus('simulated');
