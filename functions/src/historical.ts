@@ -17,6 +17,23 @@ const DEPTH_MAP: Record<DepthCategoryID, number> = {
     'Z_LESS_3': 2.0, 'Z_3_15': 6.0, 'Z_MORE_15': 15.0
 };
 
+// Michael : Dictionnaire Smart Baseline (v5.0) pour l'initialisation thermique
+// Valeurs calibrées pour la Seine (Moyennes mensuelles historiques)
+const SMART_BASELINE: Record<number, number> = {
+    0: 5.5,  // Janvier (Source SFD v5.0) [cite: 432]
+    1: 6.0,  // Février
+    2: 9.0,  // Mars
+    3: 12.0, // Avril
+    4: 16.0, // Mai
+    5: 19.5, // Juin
+    6: 21.0, // Juillet (Source SFD v5.0) [cite: 432]
+    7: 21.5, // Août
+    8: 19.0, // Septembre
+    9: 14.5, // Octobre
+    10: 10.5,// Novembre
+    11: 7.5  // Décembre
+};
+
 const PHI = 172; 
 const ALPHA_RAIN = 1.8; 
 const DAILY_DECAY = 0.77; 
@@ -55,13 +72,18 @@ function solveAir2Water(history: any[], morphoId: MorphologyID, bassin: BassinTy
     const D = meanDepth || DEPTH_MAP[depthId] || 5.0;
     const delta = morphoId === 'Z_RIVER' ? 12 : 0.207 * Math.pow(D, 1.35); 
     const mu = 0.15 + (1 / (D * 5));
-    let waterTemp = (history && history.length > 0) ? (history[0].temperature || 12) : 12;
+
+    // Michael : Application de la Smart Baseline au lieu de l'air J-45 pour tuer le biais de Cold Start 
+    const firstDate = (history && history.length > 0) ? new Date(history[0].date) : new Date();
+    const month = firstDate.getMonth();
+    let waterTemp = SMART_BASELINE[month] || 12;
 
     history.forEach((day: any) => {
         const date = new Date(day.date);
         const dayOfYear = Math.floor((date.getTime() - new Date(date.getFullYear(), 0, 0).getTime()) / 86400000);
         const solarCorrection = mu * Math.sin((2 * Math.PI * (dayOfYear - PHI)) / 365);
         const equilibriumTemp = (day.temperature || 10) + offset + (solarCorrection * 10);
+        // Équation différentielle Air2Water [cite: 19, 25]
         waterTemp += (equilibriumTemp - waterTemp) / delta;
     });
     return Math.max(3, Math.min(26.5, waterTemp));
@@ -230,7 +252,6 @@ export const getHistoricalContext = onCall({ region: "europe-west1" }, async (re
             calculationDate: new Date().toISOString(),
             calculationMode: 'ULTREIA_CALIBRATED' as any,
             flowStatus: trend,
-            // Michael : C'est ici que l'étiquette est injectée
             morphologyType: morphoId 
         }
     };

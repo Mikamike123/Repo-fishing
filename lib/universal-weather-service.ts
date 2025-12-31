@@ -72,7 +72,7 @@ export const fetchWeatherHistory = async (lat: number, lng: number, days: number
 export const fetchHistoricalWeatherContext = async (lat: number, lng: number, dateStr: string) => {
     const targetDate = new Date(dateStr);
     const startDate = new Date(targetDate);
-    startDate.setDate(startDate.getDate() - 30);
+    startDate.setDate(startDate.getDate() - 45);
     const startStr = startDate.toISOString().split('T')[0];
     const endStr = targetDate.toISOString().split('T')[0];
 
@@ -84,7 +84,7 @@ export const fetchHistoricalWeatherContext = async (lat: number, lng: number, da
         const data = await response.json();
         if (!data.hourly) return null;
 
-        const dayIndex = (30 * 24) + 12; 
+        const dayIndex = (45 * 24) + 12; 
         const snapshot: WeatherSnapshot = {
             temperature: data.hourly.temperature_2m[dayIndex] ?? data.hourly.temperature_2m[data.hourly.temperature_2m.length - 1],
             pressure: data.hourly.surface_pressure[dayIndex] ?? 1013,
@@ -96,7 +96,7 @@ export const fetchHistoricalWeatherContext = async (lat: number, lng: number, da
         };
 
         const history = [];
-        for (let i = 0; i < 31; i++) {
+        for (let i = 0; i < 46; i++) {
             const start = i * 24;
             const end = start + 24;
             const dayTemps = data.hourly.temperature_2m.slice(start, end);

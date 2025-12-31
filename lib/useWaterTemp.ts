@@ -4,8 +4,10 @@ import { Location } from '../types';
 import { solveAir2Water } from './zeroHydroEngine';
 import { fetchWeatherHistory } from './universal-weather-service';
 
+// Michael : THROTTLE_HOURS à 6 pour éviter de saturer Firestore lors des tests répétitifs
 const THROTTLE_HOURS = 6;
-const COLD_START_DAYS = 30;
+// Michael : Augmentation de 30 à 45 jours pour une meilleure convergence du modèle Air2Water sur la Seine
+const COLD_START_DAYS = 45; 
 const INCREMENTAL_THRESHOLD_DAYS = 15;
 
 export const useWaterTemp = (
@@ -26,6 +28,7 @@ export const useWaterTemp = (
             const lastSync = location.lastSyncDate ? new Date(location.lastSyncDate) : null;
             const hoursSinceSync = lastSync ? (now.getTime() - lastSync.getTime()) / (1000 * 60 * 60) : null;
 
+            // Michael : Si on a synchronisé récemment, on utilise la valeur persistée pour garantir la continuité thermique
             if (hoursSinceSync !== null && hoursSinceSync < THROTTLE_HOURS && location.lastCalculatedTemp !== undefined) {
                 setWaterTemp(location.lastCalculatedTemp);
                 return;
@@ -36,11 +39,13 @@ export const useWaterTemp = (
 
             try {
                 if (hoursSinceSync === null || hoursSinceSync > (INCREMENTAL_THRESHOLD_DAYS * 24)) {
+                    // Mode COLD START : Reconstruction profonde de la mémoire thermique
                     const history = await fetchWeatherHistory(location.coordinates!.lat, location.coordinates!.lng, COLD_START_DAYS);
                     if (history && history.length > 0) {
                         computedTemp = solveAir2Water(history, location.morphology!.typeId, location.morphology!.bassin);
                     }
                 } else {
+                    // Mode INCREMENTAL : On ajoute les derniers jours à la mémoire existante (Warm Start)
                     const daysMissing = Math.ceil(hoursSinceSync / 24);
                     const history = await fetchWeatherHistory(location.coordinates!.lat, location.coordinates!.lng, daysMissing + 1);
                     if (history && history.length > 0 && location.lastCalculatedTemp !== undefined) {
@@ -51,6 +56,7 @@ export const useWaterTemp = (
                 if (computedTemp !== undefined && !isNaN(computedTemp)) {
                     setWaterTemp(computedTemp);
                     const locLabel = (location as any).label || location.name || "Secteur";
+                    // Michael : On persiste la donnée pour que le prochain calcul reparte de cette base (Continuité de l'équation différentielle)
                     onUpdateLocation('locations', location.id, locLabel, {
                         lastCalculatedTemp: computedTemp,
                         lastSyncDate: now.toISOString()
