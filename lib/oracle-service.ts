@@ -1,4 +1,4 @@
-// lib/oracle-service.ts - Version 5.2 (Intégration Baselines Dynamiques & Calibration Finale)
+// lib/oracle-service.ts - Version 6.0 (Alignement Intégral Ultreia & Fix Signature)
 
 import { calculateUniversalBioScores, BioContext, BioScores } from './bioScoreEngine';
 import { solveDissolvedOxygen, calculateWaveHeight, BASSIN_TURBIDITY_BASE } from './zeroHydroEngine'; 
@@ -16,7 +16,7 @@ export interface OracleDataPoint extends BioScores {
     bestScore: number;
 }
 
-// --- 1. CONSTANTES PHYSIQUES v5.2 (ALIGNÉES SUR AUDIT & ENGINE) ---
+// --- 1. CONSTANTES PHYSIQUES v6.0 (ALIGNÉES SUR BACKEND v6.2) ---
 
 const BASIN_PARAMS: Record<BassinType, { offset: number }> = {
     'URBAIN':    { offset: 1.2 }, 
@@ -31,17 +31,22 @@ const DEPTH_MAP: Record<DepthCategoryID, number> = {
     'Z_MORE_15': 15.0
 };
 
-const PHI = 172; // Solstice d'été
-const EMA_ALPHA = 0.35; // Lissage v5.2 pour une réactivité équilibrée
+const PHI = 172; 
+const EMA_ALPHA = 0.35; 
 
+// [ALIGNE SUR historical.ts]
 const MONTHLY_WATER_TEMP_BASELINE: { [key: number]: number } = {
-    0: 5.5, 1: 6.0, 2: 8.5, 3: 11.5, 4: 15.0, 5: 18.5,
-    6: 21.0, 7: 22.5, 8: 20.0, 9: 16.5, 10: 11.0, 11: 7.0
+    0: 5.5,  1: 6.0,  2: 9.0,  3: 12.0, 4: 16.0, 5: 19.5,
+    6: 21.0, 7: 21.5, 8: 19.0, 9: 14.5, 10: 10.5, 11: 7.5
 };
 
+// Paramètres Ultreia pour le flux (v6.2)
+const K_BASE = 0.98;
+const FLOW_NORM_VAL = 150;
+
 /**
- * MOTEUR D'ESTIMATION PHYSIQUE & BIOLOGIQUE v5.2
- * Calibration avec "Fond de Cuve" (Baseline) dynamique par Bassin Versant.
+ * MOTEUR D'ESTIMATION PHYSIQUE & BIOLOGIQUE v6.0
+ * Aligné intégralement sur le moteur de Cloud Function "Ultreia Balanced".
  */
 export const fetchOracleChartData = async (
     lat: number, 
@@ -50,22 +55,14 @@ export const fetchOracleChartData = async (
 ): Promise<OracleDataPoint[]> => {
     if (!lat || !lng) return [];
     try {
-        // --- A. INITIALISATION DES PARAMETRES GEOMORPHO (v5.2) ---
         const m = morphology?.typeId || 'Z_RIVER';
         const b = morphology?.bassin || 'URBAIN';
         const bParams = BASIN_PARAMS[b];
-        
-        // Récupération de la turbidité plancher spécifique au milieu (v5.2)
-        const baseNTU = BASSIN_TURBIDITY_BASE[b] || 5.0;
-
-        // Profondeur Numérique (D) pour les équations différentielles
+        const baseNTU = BASSIN_TURBIDITY_BASE[b] || 6.0;
         const D = morphology?.meanDepth || DEPTH_MAP[morphology?.depthId || 'Z_3_15'];
-        
-        // Paramètres de surface pour le Fetch (Vagues & Turbidité)
         const surface = morphology?.surfaceArea || 100000; 
         const shape = morphology?.shapeFactor || 1.2;
 
-        // 1. APPEL API (30 jours de passé + 4 jours de prévision)
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,surface_pressure,cloud_cover,wind_speed_10m,precipitation&timezone=Europe%2FParis&past_days=30&forecast_days=4`;
         const response = await fetch(url);
         if (!response.ok) throw new Error('Météo Oracle indisponible');
@@ -78,16 +75,16 @@ export const fetchOracleChartData = async (
         const startGraph = now - (12 * oneHour);
         const endGraph = now + (72 * oneHour);
 
-        // 2. ÉTATS INITIAUX DU MODÈLE (v5.2)
-        // On initialise sur la baseline du bassin pour un démarrage cohérent
+        // --- 2. ÉTATS INITIAUX ---
         let currentNTU = baseNTU; 
         const firstDate = new Date(hourly.time[0]);
-        let currentWaterTemp = MONTHLY_WATER_TEMP_BASELINE[firstDate.getMonth()] || 8.0;
+        let currentWaterTemp = MONTHLY_WATER_TEMP_BASELINE[firstDate.getMonth()] || 12.0;
+        let api = 15; // Antecedent Precipitation Index initial
+        let prevIntensity = 0;
 
-        // Trackers EMA pour le lissage des scores
         let emaScores = { sandre: 0, brochet: 0, perche: 0, blackbass: 0 };
 
-        // 3. BOUCLE DE SIMULATION HORAIRE
+        // --- 3. BOUCLE DE SIMULATION HORAIRE ---
         for (let i = 0; i < hourly.time.length; i++) {
             const timeStr = hourly.time[i];
             const date = new Date(timeStr);
@@ -99,43 +96,40 @@ export const fetchOracleChartData = async (
             const Patm = hourly.surface_pressure[i];
             const windKmH = hourly.wind_speed_10m[i];
 
-            // --- B. MÉCANIQUE THERMIQUE (Lois de Puissance Air2Water) ---
-            const delta = m === 'Z_RIVER' ? 14 : 0.207 * Math.pow(D, 1.35);
-            const mu = 0.5 + (1 / D);
-            
+            // A. Thermique (Aligné v6.2)
+            const delta = m === 'Z_RIVER' ? 12 : 0.207 * Math.pow(D, 1.35);
+            const mu = 0.15 + (1 / (D * 5));
             const solarTerm = mu * Math.sin((2 * Math.PI * (dayOfYear - PHI)) / 365);
-            const dTw_dt = (1 / (delta * 24)) * ((Ta + bParams.offset) - currentWaterTemp) + (solarTerm / 24);
-            currentWaterTemp += dTw_dt;
+            const equilibriumTemp = Ta + bParams.offset + (solarTerm * 10);
+            
+            currentWaterTemp += (equilibriumTemp - currentWaterTemp) / (delta * 24);
 
-            // Calcul T_fond (Stratification v5.2)
             let tFond = currentWaterTemp;
             if (m !== 'Z_RIVER' && currentWaterTemp > 15) {
                 tFond = 15 + (currentWaterTemp - 15) * 0.15; 
             }
 
-            // --- C. MÉCANIQUE HYDRO-SÉDIMENTAIRE (Calibration v5.2) ---
-            // Taux de décantation vers la base du bassin
-            const k_hourly = 0.06; // 6% de retour vers la base par heure
+            // B. Hydro-Sédimentaire (Aligné v6.2)
+            const k_hourly = 0.054; // Dérivé du DAILY_DECAY de 0.77
             currentNTU = baseNTU + (currentNTU - baseNTU) * Math.exp(-k_hourly);
-            
-            // Influx Pluie (Remonté à 1.8 pour marquer les averses)
             if (precip > 0.1) currentNTU += 1.8 * precip;
-            
-            // Resuspension Vent (Uniquement eaux closes si > U_critique)
-            const U_crit = (3.0 + 1.2 * Math.log(Math.max(0.5, D))) * 3.6;
-            if (m !== 'Z_RIVER' && windKmH > U_crit) {
-                currentNTU += (windKmH - U_crit) * 0.8; // Coefficient v5.2
-            }
-            currentNTU = Math.min(currentNTU, 100); 
 
-            // --- D. MÉCANIQUE DES VAGUES (Walleye Chop) ---
+            // C. Flux Ultreia Lite
+            const currentK = Math.max(0.70, K_BASE - (currentWaterTemp * 0.004));
+            api = (api * Math.pow(currentK, 1/24)) + precip; // Distribution horaire du déclin
+            const intensity = Math.min(100, (api / FLOW_NORM_VAL) * 100);
+            const derivative = intensity - prevIntensity;
+            const trend: 'Montée' | 'Décrue' | 'Stable' = derivative > 0.02 ? 'Montée' : (derivative < -0.02 ? 'Décrue' : 'Stable');
+            prevIntensity = intensity;
+
+            // D. Vagues
             const hs = calculateWaveHeight(windKmH, surface, shape);
 
-            // FILTRAGE FENÊTRE GRAPHIQUE
             if (ts < startGraph || ts > endGraph) continue;
 
-            // --- E. CALCUL DES BIOSCORES ---
-            const dissolvedOxygen = solveDissolvedOxygen(currentWaterTemp, Patm, windKmH, D);
+            // E. BioScores (Aligné v6.2)
+            // Correction de l'erreur TS2554 : Uniquement 2 arguments passés
+            const dissolvedOxygen = solveDissolvedOxygen(currentWaterTemp, Patm);
             const prevPress = i >= 3 ? hourly.surface_pressure[i - 3] : Patm;
             
             const ctx: BioContext = {
@@ -146,19 +140,22 @@ export const fetchOracleChartData = async (
                 turbidityNTU: currentNTU,
                 dissolvedOxygen: dissolvedOxygen,
                 waveHeight: hs,
+                flowIndex: intensity,
+                flowDerivative: derivative * 24, // Normalisé à la journée pour le moteur
+                flowTrend: trend,
                 date: date
             };
 
             const rawScores = calculateUniversalBioScores(ctx);
 
-            // Lissage EMA v5.2
+            // Lissage EMA
             if (points.length === 0) {
                 emaScores = { ...rawScores };
             } else {
-                emaScores.sandre = emaScores.sandre + EMA_ALPHA * (rawScores.sandre - emaScores.sandre);
-                emaScores.brochet = emaScores.brochet + EMA_ALPHA * (rawScores.brochet - emaScores.brochet);
-                emaScores.perche = emaScores.perche + EMA_ALPHA * (rawScores.perche - emaScores.perche);
-                emaScores.blackbass = emaScores.blackbass + EMA_ALPHA * (rawScores.blackbass - emaScores.blackbass);
+                emaScores.sandre += EMA_ALPHA * (rawScores.sandre - emaScores.sandre);
+                emaScores.brochet += EMA_ALPHA * (rawScores.brochet - emaScores.brochet);
+                emaScores.perche += EMA_ALPHA * (rawScores.perche - emaScores.perche);
+                emaScores.blackbass += EMA_ALPHA * (rawScores.blackbass - emaScores.blackbass);
             }
 
             const maxScore = Math.max(emaScores.sandre, emaScores.brochet, emaScores.perche, emaScores.blackbass);
