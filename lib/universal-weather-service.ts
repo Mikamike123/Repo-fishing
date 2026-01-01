@@ -87,10 +87,13 @@ export const fetchHistoricalWeatherContext = async (lat: number, lng: number, da
 
     let url = "";
 
+    // Pour l'API URL, on a besoin du format YYYY-MM-DD en Local (Paris)
+    // .toLocaleDateString avec 'sv-SE' donne format ISO YYYY-MM-DD
+    const dateOptions: Intl.DateTimeFormatOptions = { timeZone: 'Europe/Paris' };
+    const targetDateParisStr = targetDate.toLocaleDateString('sv-SE', dateOptions);
+
     if (IS_RECENT) {
         // --- MODE FORECAST (Pour le récent/live) ---
-        // On demande "past_days" pour avoir l'historique récent + "forecast_days" pour couvrir aujourd'hui
-        // Max past_days autorisé par l'API Forecast : 92 jours. On est large avec 45.
         console.log(`📡 [Hybrid Router] Mode FORECAST activé pour ${dateStr} (Diff: ${diffDays}j)`);
         url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&past_days=${DAYS_HISTORY_NEEDED + 2}&forecast_days=2&hourly=temperature_2m,surface_pressure,precipitation,cloud_cover,wind_speed_10m,wind_direction_10m,weathercode&timezone=Europe%2FParis`;
     } else {
@@ -98,8 +101,9 @@ export const fetchHistoricalWeatherContext = async (lat: number, lng: number, da
         console.log(`📜 [Hybrid Router] Mode ARCHIVE activé pour ${dateStr}`);
         const startDate = new Date(targetDate);
         startDate.setDate(startDate.getDate() - DAYS_HISTORY_NEEDED);
-        const startStr = startDate.toISOString().split('T')[0];
-        const endStr = targetDate.toISOString().split('T')[0];
+        
+        const startStr = startDate.toLocaleDateString('sv-SE', dateOptions);
+        const endStr = targetDateParisStr;
         
         url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}&start_date=${startStr}&end_date=${endStr}&hourly=temperature_2m,surface_pressure,precipitation,cloud_cover,wind_speed_10m,wind_direction_10m,weathercode&timezone=Europe%2FParis`;
     }
@@ -111,18 +115,25 @@ export const fetchHistoricalWeatherContext = async (lat: number, lng: number, da
         const data = await response.json();
         if (!data.hourly) return null;
 
-        // --- Logique de parsing commune ---
+        // --- Logique de parsing robuste (UTC vs Paris) ---
         
-        // 1. Trouver l'index de l'heure cible (Snapshot)
-        // Format ISO de l'heure cible (ex: "2023-09-15T14")
-        // Attention : Si on est en mode Forecast, targetDate peut être dans le futur proche ou aujourd'hui
-        const targetTimeStr = targetDate.toISOString().slice(0, 13);
+        // Open-Meteo renvoie des strings type "2025-12-01T08:00" (Heure Locale Paris)
+        // targetDate est un objet Date (souvent UTC dans le runtime)
+        // On doit formater targetDate pour qu'il matche exactement la string de l'API
+        const targetHourStr = targetDate.toLocaleString('sv-SE', {
+             timeZone: 'Europe/Paris',
+             year: 'numeric', month: '2-digit', day: '2-digit',
+             hour: '2-digit', minute: '2-digit'
+        }).replace(' ', 'T').slice(0, 13); // "2025-12-01T08"
+
+        // Recherche stricte de l'index
+        let targetIndex = data.hourly.time.findIndex((t: string) => t.startsWith(targetHourStr));
         
-        let targetIndex = data.hourly.time.findIndex((t: string) => t.startsWith(targetTimeStr));
-        
-        // Sécurité : Si l'heure exacte n'est pas trouvée (ex: changement d'heure ou bord de tableau)
+        // Sécurité : Si l'heure exacte n'est pas trouvée, on cherche l'heure d'avant (ex: :30 vs :00)
         if (targetIndex === -1) {
-            // Si c'est aujourd'hui, on prend l'heure courante ou la dernière dispo
+            console.warn(`⚠️ [UniversalWeather] Match exact non trouvé pour ${targetHourStr}. Fallback...`);
+            // En dernier recours, si c'est aujourd'hui, on prend la dernière dispo
+            // Si c'est Archive, on prend la fin du tableau (qui est censé être end_date)
             targetIndex = data.hourly.time.length - 1;
         }
 
@@ -138,16 +149,12 @@ export const fetchHistoricalWeatherContext = async (lat: number, lng: number, da
         };
 
         // 3. Construire l'Historique (45 jours avant -> Instant T)
-        // On filtre pour ne garder que ce qui est antérieur ou égal à targetIndex
-        // Pour éviter d'envoyer du futur au moteur historique
         const history = [];
         
         // Optimisation : On ne prend que les index <= targetIndex
-        // Et on s'assure d'avoir au moins les 45 jours (45 * 24 = 1080 heures)
         const startIndex = Math.max(0, targetIndex - (DAYS_HISTORY_NEEDED * 24));
 
         for (let i = startIndex; i <= targetIndex; i++) {
-             // Protection contre les données nulles (surtout si Archive a des trous)
              const temp = data.hourly.temperature_2m[i];
              if (temp !== null && temp !== undefined) {
                  history.push({

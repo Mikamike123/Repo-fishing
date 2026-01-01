@@ -1,10 +1,9 @@
-// lib/oracle-service.ts - Version 7.5 (Physics Alignment: Air Temp for Flow Decay)
+// lib/oracle-service.ts - Version 7.6 (Full Integration)
 
 import { calculateUniversalBioScores, BioContext, BioScores } from './bioScoreEngine';
 import { solveDissolvedOxygen, calculateWaveHeight, BASSIN_TURBIDITY_BASE } from './zeroHydroEngine'; 
 import { LocationMorphology, DepthCategoryID, BassinType } from '../types';
 
-// --- INTERFACE ---
 export interface OracleDataPoint extends BioScores {
     timestamp: number;
     hourLabel: string;
@@ -18,7 +17,6 @@ export interface OracleDataPoint extends BioScores {
     flowRaw: number;
 }
 
-// --- CONSTANTES ALIGNÉES BACKEND v6.2 ---
 const BASIN_PARAMS: Record<BassinType, { offset: number }> = {
     'URBAIN':    { offset: 1.2 }, 
     'AGRICOLE':  { offset: 0.5 }, 
@@ -43,10 +41,6 @@ const K_TEMP_SENSITIVITY = 0.004;
 const ALPHA_RAIN = 1.8;
 const DAILY_DECAY = 0.77;
 
-/**
- * MOTEUR D'ESTIMATION PHYSIQUE & BIOLOGIQUE v7.5
- * Synchronisation Hydro : Utilisation de T_Air pour l'évapotranspiration (Flow Decay)
- */
 export const fetchOracleChartData = async (
     lat: number, 
     lng: number, 
@@ -54,15 +48,15 @@ export const fetchOracleChartData = async (
 ): Promise<OracleDataPoint[]> => {
     if (!lat || !lng) return [];
     try {
+        // [CONFIG] Récupération Morpho
         const m = morphology?.typeId || 'Z_RIVER';
         const b = morphology?.bassin || 'URBAIN';
         const bParams = BASIN_PARAMS[b] || BASIN_PARAMS['URBAIN'];
         const baseNTU = BASSIN_TURBIDITY_BASE[b] || 8.0; 
-        const D = morphology?.meanDepth || DEPTH_MAP[morphology?.depthId || 'Z_3_15'];
+        const D = morphology?.meanDepth || DEPTH_MAP[morphology?.depthId || 'Z_3_15']; // Profondeur précise
         const surface = morphology?.surfaceArea || 100000; 
         const shape = morphology?.shapeFactor || 1.2;
 
-        // [ALIGNEMENT] Historique 45 jours
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,surface_pressure,cloud_cover,wind_speed_10m,precipitation&timezone=Europe%2FParis&past_days=45&forecast_days=4`;
         const response = await fetch(url);
         if (!response.ok) throw new Error('Météo Oracle indisponible');
@@ -75,7 +69,6 @@ export const fetchOracleChartData = async (
         const startGraph = now - (12 * oneHour);
         const endGraph = now + (72 * oneHour);
 
-        // --- ÉTATS INITIAUX (SMART BASELINE J-45) ---
         let api = 15; 
         let currentNTU = baseNTU; 
         const firstDate = new Date(hourly.time[0]);
@@ -83,7 +76,6 @@ export const fetchOracleChartData = async (
         let prevIntensity = 0;
         let emaScores = { sandre: 0, brochet: 0, perche: 0, blackbass: 0 };
 
-        // --- BOUCLE DE SIMULATION HORAIRE ---
         for (let i = 0; i < hourly.time.length; i++) {
             const timeStr = hourly.time[i];
             const date = new Date(timeStr);
@@ -91,25 +83,23 @@ export const fetchOracleChartData = async (
             const dayOfYear = Math.floor((ts - new Date(date.getFullYear(), 0, 0).getTime()) / (oneHour * 24));
             
             const precip = hourly.precipitation[i] || 0;
-            const Ta = hourly.temperature_2m[i]; // Température AIR
+            const Ta = hourly.temperature_2m[i]; 
             const Patm = hourly.surface_pressure[i];
             const windKmH = hourly.wind_speed_10m[i];
 
-            // 1. Thermique (Inertie Air2Water)
-            const delta = m === 'Z_RIVER' ? 12 : 0.207 * Math.pow(D, 1.35);
+            // 1. Thermique (Inertie adaptée morpho)
+            const delta = m === 'Z_RIVER' ? 12 : 0.207 * Math.pow(D, 1.35); // [NOUVEAU]
             const mu = 0.15 + (1 / (D * 5));
             const solarTerm = mu * Math.sin((2 * Math.PI * (dayOfYear - PHI)) / 365);
             const equilibriumTemp = Ta + bParams.offset + (solarTerm * 10);
             currentWaterTemp += (equilibriumTemp - currentWaterTemp) / (delta * 24);
 
-            // 2. Hydro-Sédimentaire (EMC + Loi de Stokes)
+            // 2. Hydro-Sédimentaire
             const hourlyDecayFactor = Math.pow(1 - DAILY_DECAY, 1/24);
             currentNTU = baseNTU + (currentNTU - baseNTU) * hourlyDecayFactor;
             if (precip > 0.1) currentNTU += precip * ALPHA_RAIN;
 
-            // 3. Flux API & Tendance [CORRECTION ICI]
-            // On utilise Ta (Air) et non currentWaterTemp pour le séchage des sols (Evapotranspiration)
-            // Cela aligne le Frontend (15%) sur le Backend (21%) qui est plus juste physiquement.
+            // 3. Flux API
             const currentK = Math.max(0.70, K_BASE - (Ta * K_TEMP_SENSITIVITY));
             const hourlyK = Math.pow(currentK, 1/24);
             api = (api * hourlyK) + precip; 
@@ -121,11 +111,11 @@ export const fetchOracleChartData = async (
 
             const hs = calculateWaveHeight(windKmH, surface, shape);
 
-            // Filtrage : On ne commence à traiter les scores que pour la fenêtre d'affichage (T-12h à T+72h)
             if (ts < startGraph || ts > endGraph) continue;
 
             // 4. BioScores
-            const dissolvedOxygen = solveDissolvedOxygen(currentWaterTemp, Patm);
+            // [NOUVEAU] Passage du vent pour Banks-Herrera
+            const dissolvedOxygen = solveDissolvedOxygen(currentWaterTemp, Patm, windKmH);
             const prevPress24h = i >= 24 ? hourly.surface_pressure[i - 24] : hourly.surface_pressure[0];
             const deltaP24h = Patm - prevPress24h;
 
@@ -140,12 +130,12 @@ export const fetchOracleChartData = async (
                 flowIndex: intensity,
                 flowDerivative: derivative * 24, 
                 flowTrend: trend,
-                date: date
+                date: date,
+                morphoId: m // [NOUVEAU]
             };
 
             const rawScores = calculateUniversalBioScores(ctx);
 
-            // 5. Lissage EMA
             if (points.length === 0) {
                 emaScores = { ...rawScores };
             } else {
