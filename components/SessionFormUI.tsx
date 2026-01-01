@@ -74,8 +74,9 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
         handleDeleteCatch, handleDeleteMiss, handleSaveCatch, handleSaveMiss, handleSubmit, zones
     } = props;
 
-    const GOLDEN_SECTOR_ID = import.meta.env.VITE_GOLDEN_SECTOR_ID;
-    const isGolden = locationId === GOLDEN_SECTOR_ID;
+    // NETTOYAGE : Suppression des références au Golden Standard
+    // const GOLDEN_SECTOR_ID = import.meta.env.VITE_GOLDEN_SECTOR_ID;
+    // const isGolden = locationId === GOLDEN_SECTOR_ID;
 
     const [pendingDelete, setPendingDelete] = useState<{ id: string; type: 'catch' | 'miss' | null }>({
         id: '',
@@ -192,9 +193,10 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
                             );
                         })}
 
-                        {/* Boucle Hydro Michael */}
+                        {/* Boucle Hydro Michael - CORRIGÉE (Plus de filtre isGolden) */}
                         {Object.entries(HYDRO_METADATA).map(([key, meta]) => {
-                            if ((key === 'flow' || key === 'level') && !isGolden) return null;
+                            // NETTOYAGE : Suppression de la condition restrictive
+                            // if ((key === 'flow' || key === 'level') && !isGolden) return null;
                             const val = getVal(meta, 'hydro');
                             const themes: any = {
                                 orange: "bg-orange-50 text-orange-700 border-orange-100",

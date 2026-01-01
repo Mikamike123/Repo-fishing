@@ -1,3 +1,4 @@
+// components/OracleHero.tsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { ChevronDown, Zap, Calendar, MapPin, BarChart2, Target, Plus } from 'lucide-react';
 import OracleChart, { ChartMode, TargetSpecies } from './OracleChart';
@@ -6,18 +7,30 @@ import { Location } from '../types';
 
 interface OracleHeroProps {
     locations: Location[];
+    // Données Live injectées depuis le Dashboard (Source de vérité)
+    dataPoints?: OracleDataPoint[];
+    isLoading?: boolean;
+    // Pilotage du secteur global
+    activeLocationId?: string;
+    onLocationChange?: (id: string) => void;
 }
 
-const OracleHero: React.FC<OracleHeroProps> = ({ locations }) => {
+const OracleHero: React.FC<OracleHeroProps> = ({ 
+    locations, 
+    dataPoints, 
+    isLoading,
+    activeLocationId,
+    onLocationChange
+}) => {
     const [isExpanded, setIsExpanded] = useState(false);
-    const [loading, setLoading] = useState(false);
+    const [internalLoading, setInternalLoading] = useState(false);
     
     // États de sélection
     const [mode, setMode] = useState<ChartMode>('single');
-    const [selectedLocId, setSelectedLocId] = useState<string>('');
+    // Note: selectedLocId est supprimé, on utilise activeLocationId
     const [targetSpecies, setTargetSpecies] = useState<TargetSpecies>('sandre'); 
     
-    // Cache
+    // Cache interne pour le mode comparatif uniquement
     const [cache, setCache] = useState<Record<string, OracleDataPoint[]>>({});
 
     // --- HELPER : NORMALISATION COORDONNÉES ---
@@ -46,16 +59,12 @@ const OracleHero: React.FC<OracleHeroProps> = ({ locations }) => {
         return favs.length > 0 ? favs.slice(0, 3) : validLocations.slice(0, 3);
     }, [validLocations]);
 
-    // Initialisation
-    useEffect(() => {
-        if (!selectedLocId && favorites.length > 0) {
-            setSelectedLocId(favorites[0].id);
-        }
-    }, [favorites, selectedLocId]);
+    // Détermination de l'ID effectif (Prop ou fallback premier favori)
+    const effectiveLocId = activeLocationId || (favorites.length > 0 ? favorites[0].id : '');
 
-    // --- 2. CHARGEMENT DES DONNÉES ---
+    // --- 2. CHARGEMENT DES DONNÉES (INTERNE POUR COMPARATIF) ---
     const loadData = async (locsToLoad: Location[]) => {
-        setLoading(true);
+        setInternalLoading(true);
         const newCache = { ...cache };
         
         await Promise.all(locsToLoad.map(async (loc) => {
@@ -64,7 +73,6 @@ const OracleHero: React.FC<OracleHeroProps> = ({ locations }) => {
             const coords = getSafeCoordinates(loc);
             if (coords) {
                 try {
-                    // --- CORRECTION CRITIQUE ICI ---
                     // On transmet la morphologie au moteur de calcul
                     const points = await fetchOracleChartData(
                         coords.lat, 
@@ -79,15 +87,11 @@ const OracleHero: React.FC<OracleHeroProps> = ({ locations }) => {
         }));
 
         setCache(newCache);
-        setLoading(false);
+        setInternalLoading(false);
     };
 
-    // Déclencheurs
-    useEffect(() => {
-        const currentLoc = validLocations.find(l => l.id === selectedLocId);
-        if (currentLoc && isExpanded) loadData([currentLoc]);
-    }, [selectedLocId, isExpanded]);
-
+    // Déclencheurs : On ne charge en interne que pour le mode Comparatif.
+    // Le mode Single est géré par les props dataPoints injectées par le parent.
     useEffect(() => {
         if (mode === 'compare' && isExpanded) loadData(favorites);
     }, [mode, favorites, isExpanded]);
@@ -95,21 +99,23 @@ const OracleHero: React.FC<OracleHeroProps> = ({ locations }) => {
     // --- 3. PRÉPARATION DONNÉES GRAPHIQUE ---
     const formattedChartData = useMemo(() => {
         if (mode === 'single') {
-            const data = cache[selectedLocId];
-            if (!data) return [];
-            
-            return data.map(pt => ({
-                time: pt.timestamp,
-                sandre: pt.sandre,
-                brochet: pt.brochet,
-                perche: pt.perche,
-                blackbass: pt.blackbass,
-                dissolvedOxygen: pt.dissolvedOxygen,
-                turbidityNTU: pt.turbidityNTU,
-                waterTemp: pt.waterTemp
-            }));
-
+            // [PRIORITÉ ABSOLUE] Utilisation des données injectées par le parent (App -> Dashboard -> Hero)
+            // Cela garantit que le graphique correspond toujours aux jauges du bas.
+            if (dataPoints && dataPoints.length > 0) {
+                return dataPoints.map(pt => ({
+                    time: pt.timestamp,
+                    sandre: pt.sandre,
+                    brochet: pt.brochet,
+                    perche: pt.perche,
+                    blackbass: pt.blackbass,
+                    dissolvedOxygen: pt.dissolvedOxygen,
+                    turbidityNTU: pt.turbidityNTU,
+                    waterTemp: pt.waterTemp
+                }));
+            }
+            return [];
         } else {
+            // Mode Comparatif (Reste basé sur le cache interne du composant)
             const baseData = cache[favorites[0]?.id];
             if (!baseData) return [];
 
@@ -119,7 +125,6 @@ const OracleHero: React.FC<OracleHeroProps> = ({ locations }) => {
                     const locData = cache[loc.id];
                     if (locData && locData[index]) {
                         const baseLabel = (loc as any).label || loc.name || 'Secteur';
-                        // Clé unique pour éviter les doublons graphiques
                         const uniqueKey = `${baseLabel} (${loc.id.substring(0, 3)})`;
                         mergedPoint[uniqueKey] = (locData[index] as any)[targetSpecies];
                     }
@@ -127,10 +132,10 @@ const OracleHero: React.FC<OracleHeroProps> = ({ locations }) => {
                 return mergedPoint;
             });
         }
-    }, [mode, selectedLocId, cache, favorites, targetSpecies]);
+    }, [mode, effectiveLocId, cache, favorites, targetSpecies, dataPoints]);
 
     // --- 4. TEXTES DYNAMIQUES ---
-    const selectedLocation = validLocations.find(l => l.id === selectedLocId);
+    const selectedLocation = validLocations.find(l => l.id === effectiveLocId);
     const selectedCoords = selectedLocation ? getSafeCoordinates(selectedLocation) : null;
     const selectedLocName = selectedLocation 
         ? ((selectedLocation as any).label || selectedLocation.name) 
@@ -145,7 +150,9 @@ const OracleHero: React.FC<OracleHeroProps> = ({ locations }) => {
         : `Comparaison de l'activité sur ${favorites.length} secteurs`;
 
     const summaryInfo = useMemo(() => {
-        const currentData = cache[selectedLocId];
+        // En mode single, on utilise les dataPoints injectés pour la synthèse
+        const currentData = (mode === 'single' && dataPoints && dataPoints.length > 0) ? dataPoints : cache[effectiveLocId];
+        
         if (!currentData || currentData.length === 0) return null;
         
         const now = Date.now();
@@ -159,9 +166,12 @@ const OracleHero: React.FC<OracleHeroProps> = ({ locations }) => {
             { name: 'Black-Bass', score: current.blackbass || 0 }
         ];
         return scores.sort((a, b) => b.score - a.score)[0];
-    }, [cache, selectedLocId]);
+    }, [cache, effectiveLocId, dataPoints, mode]);
 
     if (validLocations.length === 0) return null;
+
+    // Loading global combiné
+    const effectiveLoading = isLoading || internalLoading;
 
     return (
         <div className="mb-6 bg-white rounded-3xl p-1 shadow-sm border border-stone-100 overflow-hidden transition-all duration-300">
@@ -192,7 +202,7 @@ const OracleHero: React.FC<OracleHeroProps> = ({ locations }) => {
                             )}
                         </div>
                         
-                        {loading && !summaryInfo ? (
+                        {effectiveLoading && !summaryInfo ? (
                              <div className="h-3 w-24 bg-stone-100 rounded animate-pulse mt-2"></div>
                         ) : (
                             <div className="flex items-center gap-1 mt-1 text-sm text-stone-500 font-medium">
@@ -232,12 +242,13 @@ const OracleHero: React.FC<OracleHeroProps> = ({ locations }) => {
                         <div className="flex overflow-x-auto gap-2 mb-4 pb-1 scrollbar-hide">
                             {favorites.map(loc => {
                                 const pillLabel = (loc as any).label || loc.name || 'Secteur';
+                                const isActive = effectiveLocId === loc.id;
                                 return (
                                     <button
                                         key={loc.id}
-                                        onClick={() => setSelectedLocId(loc.id)}
+                                        onClick={() => onLocationChange && onLocationChange(loc.id)}
                                         className={`whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
-                                            selectedLocId === loc.id 
+                                            isActive
                                             ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-200' 
                                             : 'bg-white text-stone-500 border-stone-100 hover:bg-stone-50'
                                         }`}

@@ -43,7 +43,7 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
     const isOwner = session.userId === currentUserId;
     const isSimulated = env?.metadata?.calculationMode === 'ZERO_HYDRO' || (env?.metadata?.calculationMode as any) === 'ULTREIA_CALIBRATED';
     
-    const GOLDEN_SECTOR_ID = import.meta.env.VITE_GOLDEN_SECTOR_ID; 
+    // NETTOYAGE: Suppression de la constante GOLDEN_SECTOR_ID
 
     const allowedSpecies = (session as any).speciesIds || ['Sandre', 'Brochet', 'Perche', 'Black-Bass'];
     const allSessionPhotos = session.catches
@@ -161,15 +161,12 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                     );
                 })}
 
-                {/* Rendu des indicateurs Hydro */}
+                {/* Rendu des indicateurs Hydro - NETTOYAGE: Suppression du filtre isRiver et des données Legacy */}
                 {Object.entries(HYDRO_METADATA).map(([key, meta]) => {
                     
-                    // Michael : Filtre Morphologique avec Fallback Nanterre
-                    const morphoTag = (env?.metadata as any)?.morphologyType;
-                    const isRiver = morphoTag === 'Z_RIVER' || (!morphoTag && session.locationId === GOLDEN_SECTOR_ID);
-                    const isRiverIndicator = key === 'flowIndex' || key === 'flow' || key === 'level';
-                    
-                    if (isRiverIndicator && !isRiver) return null;
+                    // Exclure spécifiquement 'level' pour ne pas afficher les données Vigicrues obsolètes
+                    // On garde 'flow' qui mappe sur flowRaw (l'indice universel)
+                    if (key === 'level') return null;
 
                     let val = env?.hydro?.[meta.dataKey as keyof typeof env.hydro];
                     if (val === undefined || val === null) return null;
@@ -180,7 +177,9 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                     if (key === 'waterTemp' || key === 'turbidity' || key === 'oxygen') {
                         displayVal = (val as number).toFixed(1);
                     } else if (key === 'flow') {
-                        displayVal = ( (val as number) / 1000 ).toFixed(1);
+                        // Pour l'indice universel (0-100), on affiche la valeur brute arrondie
+                        // On ne divise plus par 1000 car ce n'est plus des L/s mais un indice
+                        displayVal = Math.round(val as number);
                     } else {
                         displayVal = Math.round(val as number);
                     }
@@ -201,7 +200,6 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                 })}
             </div>
 
-            {/* Le reste du code reste identique... */}
             {session.notes && (
                 <div className="mb-5 px-4 py-3 bg-amber-50/30 rounded-2xl border border-amber-100/50 relative italic text-sm text-stone-600 leading-snug">
                     <div className="absolute -top-2 left-4 px-2 bg-white text-[8px] font-black text-amber-500 uppercase tracking-widest border border-amber-100 rounded-full">Observation</div>
@@ -228,7 +226,7 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
             <div className="flex justify-between items-center pt-4 border-t border-stone-50">
                 <div className="flex flex-wrap gap-4">
                     {allowedSpecies.map((label: string) => {
-                        if (session.locationId === GOLDEN_SECTOR_ID && label === 'Black-Bass') return null;
+                        // NETTOYAGE: Suppression du filtre Black-Bass pour GOLDEN
                         const scoreKey = SPECIES_MAP[label];
                         const scoreValue = (env?.scores as any)?.[scoreKey];
                         if (scoreValue === undefined || scoreValue === null) return null;

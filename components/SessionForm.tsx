@@ -4,10 +4,10 @@ import {
     Session, Zone, Setup, Technique, Catch, Miss, Lure, 
     RefLureType, RefColor, RefSize, RefWeight, FullEnvironmentalSnapshot, Location, BioScoreSnapshot 
 } from '../types';
-import { doc, getDoc } from 'firebase/firestore';
+// NETTOYAGE : Suppression de doc, getDoc car on n'accède plus directement à environmental_logs
 import { getFunctions, httpsCallable } from 'firebase/functions'; 
 import { getApp } from 'firebase/app';
-import { db } from '../lib/firebase';
+// NETTOYAGE : Suppression de db car plus utilisé ici
 import { fetchHistoricalWeatherContext } from '../lib/universal-weather-service';
 
 import SessionFormUI from './SessionFormUI';
@@ -95,7 +95,7 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
         }
     };
 
-    // --- LOGIQUE D'ACQUISITION ENVIRONNEMENTALE (CORRIGÉE AVEC HEURE PRÉCISE) ---
+    // --- LOGIQUE D'ACQUISITION ENVIRONNEMENTALE (UNIVERSELLE) ---
     useEffect(() => {
         if (!locationId || locations.length === 0) return;
 
@@ -111,105 +111,60 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
             setIsLoadingEnv(true);
             
             try {
-                const hourStr = startTime.split(':')[0];
-                const GOLDEN_SECTOR_ID = import.meta.env.VITE_GOLDEN_SECTOR_ID || "WYAjhoUeeikT3mS0hjip";
-                const isGolden = locationId === GOLDEN_SECTOR_ID;
+                // NETTOYAGE : Suppression complète de la logique GOLDEN_SECTOR / environmental_logs
+                // On passe tout le monde au régime "Zero-Hydro / Universel"
 
-                if (isGolden) {
-                    // Pour le Golden (Nanterre), on reste sur la logique d'ID horaire simple
-                    const docId = `${date}_${hourStr}00`;
-                    const docRef = doc(db, 'environmental_logs', docId);
-                    const snap = await getDoc(docRef);
-
-                    if (snap.exists()) {
-                        const d = snap.data() as any;
-                        const newSnapshot: FullEnvironmentalSnapshot = {
-                            weather: {
-                                temperature: d.weather?.temp || 0,
-                                pressure: d.weather?.pressure || 0,
-                                windSpeed: d.weather?.windSpeed || 0,
-                                windDirection: d.weather?.windDir || 0, 
-                                precip: d.weather?.precip || 0,
-                                clouds: d.weather?.cloudCover || 0, 
-                                conditionCode: d.weather?.condition_code || 0
-                            },
-                            hydro: {
-                                flowRaw: d.hydro?.flow || 0,
-                                flowLagged: d.computed?.flow_lagged || 0,
-                                level: d.hydro?.level || 0,
-                                waterTemp: d.hydro?.waterTemp || null,
-                                turbidityIdx: d.computed?.turbidity_idx || 0
-                            },
-                            scores: {
-                                sandre: d.computed?.score_sandre || 0,
-                                brochet: d.computed?.score_brochet || 0,
-                                perche: d.computed?.score_perche || 0,
-                                blackbass: d.computed?.score_blackbass || 0
-                            },
-                            metadata: {
-                                sourceLogId: snap.id,
-                                calculationDate: d.updatedAt || d.timestamp
-                            }
-                        };
-                        setEnvSnapshot(newSnapshot);
-                        setEnvStatus('found');
-                    } else {
-                        setEnvSnapshot(null);
-                        setEnvStatus('not-found');
-                    }
-                } else {
-                    // --- MODÈLE UNIVERSEL (ZERO-HYDRO) --- [cite: 849, 850, 851]
-                    const currentLocation = locations.find(l => l.id === locationId);
-                    if (!currentLocation?.coordinates?.lat || !currentLocation?.coordinates?.lng) {
-                        setEnvStatus('not-found');
-                        return;
-                    }
-
-                    // Calcul de l'heure précise (Moyenne de session) pour éviter le bug "Minuit"
-                    const preciseIsoDate = calculateSessionMidpoint(date, startTime, endTime);
-
-                    const weatherContext = await fetchHistoricalWeatherContext(
-                        currentLocation.coordinates.lat,
-                        currentLocation.coordinates.lng,
-                        preciseIsoDate // On passe l'ISO précis
-                    );
-
-                    if (!weatherContext) {
-                        setEnvStatus('not-found');
-                        return;
-                    }
-
-                    const functionsInstance = getFunctions(getApp(), 'europe-west1');
-                    const getHistoricalContext = httpsCallable(functionsInstance, 'getHistoricalContext');
-
-                    // Appel Cloud Function avec la date précise
-                    const result = await getHistoricalContext({
-                        weather: weatherContext.snapshot,
-                        weatherHistory: weatherContext.history,
-                        location: currentLocation,
-                        dateStr: preciseIsoDate // Indispensable pour que le backend trouve le bon index horaire
-                    });
-
-                    const cloudData = result.data as any;
-
-                    if (cloudData) {
-                        const newSnapshot: FullEnvironmentalSnapshot = {
-                            weather: { ...weatherContext.snapshot },
-                            hydro: {
-                                ...cloudData.hydro 
-                            },
-                            scores: cloudData.scores,
-                            metadata: {
-                                ...cloudData.metadata,
-                                sourceLogId: cloudData.metadata?.sourceLogId || 'ultreia_live_simulation'
-                            }
-                        };
-                        setEnvSnapshot(newSnapshot);
-                        setEnvStatus('simulated');
-                    } else {
-                        setEnvStatus('not-found');
-                    }
+                const currentLocation = locations.find(l => l.id === locationId);
+                if (!currentLocation?.coordinates?.lat || !currentLocation?.coordinates?.lng) {
+                    setEnvStatus('not-found');
+                    return;
                 }
+
+                // Calcul de l'heure précise (Moyenne de session) pour éviter le bug "Minuit"
+                const preciseIsoDate = calculateSessionMidpoint(date, startTime, endTime);
+
+                const weatherContext = await fetchHistoricalWeatherContext(
+                    currentLocation.coordinates.lat,
+                    currentLocation.coordinates.lng,
+                    preciseIsoDate // On passe l'ISO précis
+                );
+
+                if (!weatherContext) {
+                    setEnvStatus('not-found');
+                    return;
+                }
+
+                const functionsInstance = getFunctions(getApp(), 'europe-west1');
+                const getHistoricalContext = httpsCallable(functionsInstance, 'getHistoricalContext');
+
+                // Appel Cloud Function avec la date précise
+                const result = await getHistoricalContext({
+                    weather: weatherContext.snapshot,
+                    weatherHistory: weatherContext.history,
+                    location: currentLocation,
+                    dateStr: preciseIsoDate // Indispensable pour que le backend trouve le bon index horaire
+                });
+
+                const cloudData = result.data as any;
+
+                if (cloudData) {
+                    const newSnapshot: FullEnvironmentalSnapshot = {
+                        weather: { ...weatherContext.snapshot },
+                        hydro: {
+                            ...cloudData.hydro 
+                        },
+                        scores: cloudData.scores,
+                        metadata: {
+                            ...cloudData.metadata,
+                            sourceLogId: cloudData.metadata?.sourceLogId || 'ultreia_live_simulation'
+                        }
+                    };
+                    setEnvSnapshot(newSnapshot);
+                    setEnvStatus('simulated');
+                } else {
+                    setEnvStatus('not-found');
+                }
+                
             } catch (error) {
                 console.error("Erreur environnement Michael :", error);
                 setEnvStatus('not-found');
@@ -220,7 +175,7 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
 
         const timeoutId = setTimeout(fetchEnv, 800);
         return () => clearTimeout(timeoutId);
-    }, [date, startTime, endTime, locationId, locations, initialData]); // Ajout de endTime aux dépendances
+    }, [date, startTime, endTime, locationId, locations, initialData]);
 
     // --- HANDLERS ---
     const handleDeleteCatch = (id: string) => {

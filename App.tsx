@@ -1,7 +1,6 @@
 // App.tsx
-import React, { useState, useEffect, useMemo } from 'react'; // AJOUT useMemo
+import React, { useState, useEffect, useMemo } from 'react'; 
 import { Home, PlusCircle, ScrollText, Settings, Fish, Bot, User, Menu, X, ChevronRight, Users, MapPin } from 'lucide-react';
-import { useCurrentConditions } from './lib/hooks';
 import { 
   onSnapshot, query, orderBy, 
   QuerySnapshot, DocumentData, 
@@ -17,15 +16,12 @@ import ProfileView from './components/ProfileView';
 import MagicScanButton from './components/MagicScanButton';
 import LocationsManager from './components/LocationsManager'; 
 
-import { Session, UserProfile, Catch, WeatherSnapshot, Location } from './types'; // Ajout WeatherSnapshot
+import { Session, UserProfile, Catch, WeatherSnapshot, Location } from './types'; 
 import { db, sessionsCollection } from './lib/firebase'; 
 import { getUserProfile, createUserProfile } from './lib/user-service';
 import { useArsenal } from './lib/useArsenal'; 
-import { fetchOracleChartData, OracleDataPoint } from './lib/oracle-service'; // Michael : Import Oracle pour AI
-import { fetchUniversalWeather } from './lib/universal-weather-service'; // Michael : Import Météo universelle pour AI
-
-// ID du Gold Standard pour le calcul par défaut
-const GOLD_STANDARD_ID = import.meta.env.VITE_GOLDEN_SECTOR_ID;
+import { fetchOracleChartData, OracleDataPoint } from './lib/oracle-service'; 
+import { fetchUniversalWeather } from './lib/universal-weather-service'; 
 
 type View = 'dashboard' | 'session' | 'history' | 'arsenal' | 'coach' | 'profile' | 'locations';
 
@@ -38,6 +34,9 @@ const App: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true); 
     const [editingSession, setEditingSession] = useState<Session | null>(null);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    
+    // État pour le Manager de lieux
+    const [showLocationsManager, setShowLocationsManager] = useState(false);
 
     // --- NOUVEL ÉTAT : BROUILLON MAGIC SCAN ---
     const [magicDraft, setMagicDraft] = useState<any>(null);
@@ -45,11 +44,8 @@ const App: React.FC = () => {
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [isProfileLoading, setIsProfileLoading] = useState(true);
     const [tempPseudo, setTempPseudo] = useState("");
-    // Appel du hook pour récupérer les donnée live pour l'AI
-    const liveData = useCurrentConditions();
-    console.log("💎 STRUCTURE LIVE DATA:", liveData); // Ajoute ça
-
-    // --- MICHAEL : ÉTATS LIFTÉS DU DASHBOARD POUR SYNCHRONISATION COACH ---
+    
+    // --- MICHAEL : ÉTATS LIFTÉS DU DASHBOARD ---
     const [activeLocationId, setActiveLocationId] = useState<string>("");
     const [oraclePoints, setOraclePoints] = useState<OracleDataPoint[]>([]);
     const [isOracleLoading, setIsOracleLoading] = useState(false);
@@ -66,37 +62,45 @@ const App: React.FC = () => {
         handleToggleLocationFavorite 
     } = useArsenal(currentUserId);
 
-    // --- CALCUL DU SECTEUR PAR DÉFAUT ---
-    // Michael : Inversion de priorité pour respecter le choix utilisateur (isDefault) avant Nanterre (Gold)
+    // --- CALCUL DU SECTEUR PAR DÉFAUT (Logic Universelle) ---
     const defaultLocationId = useMemo(() => {
         if (!arsenalData.locations || arsenalData.locations.length === 0) return "";
         
-        const def = arsenalData.locations.find(l => (l as any).isDefault);
-        if (def) return def.id;
+        // 1. Priorité au favori
+        const fav = arsenalData.locations.find(l => l.isFavorite);
+        if (fav) return fav.id;
 
-        const gold = arsenalData.locations.find(l => l.id === GOLD_STANDARD_ID);
-        if (gold) return gold.id;
-
+        // 2. Sinon le premier de la liste
         return arsenalData.locations[0].id;
     }, [arsenalData.locations]);
 
-    // Michael : Initialisation de la sélection
+    // Initialisation de la sélection
     useEffect(() => { 
-        if (!activeLocationId && defaultLocationId) setActiveLocationId(defaultLocationId); 
-    }, [defaultLocationId, activeLocationId]);
+        if (!activeLocationId && defaultLocationId) {
+            setActiveLocationId(defaultLocationId);
+        }
+        // Sécurité : Si la location active a été supprimée, on rebascule sur le défaut
+        if (activeLocationId && arsenalData.locations.length > 0) {
+            const exists = arsenalData.locations.find(l => l.id === activeLocationId);
+            if (!exists) setActiveLocationId(defaultLocationId);
+        }
+    }, [defaultLocationId, activeLocationId, arsenalData.locations]);
 
-    // Michael : Identification de l'objet location actif
     const activeLocation = useMemo(() => {
-        return arsenalData.locations.find(l => l.id === activeLocationId) || arsenalData.locations.find(l => l.id === defaultLocationId);
-    }, [arsenalData.locations, activeLocationId, defaultLocationId]);
+        return arsenalData.locations.find(l => l.id === activeLocationId);
+    }, [arsenalData.locations, activeLocationId]);
 
-    // Michael : Sync Oracle pour l'AI (Permet d'avoir les scores de Gennevilliers, Vitrolles, etc.)
+    // --- SYNC ORACLE ---
     useEffect(() => {
         const syncOracle = async () => {
             if (!activeLocation?.coordinates) return;
             setIsOracleLoading(true);
             try {
-                const points = await fetchOracleChartData(activeLocation.coordinates.lat, activeLocation.coordinates.lng, activeLocation.morphology);
+                const points = await fetchOracleChartData(
+                    activeLocation.coordinates.lat, 
+                    activeLocation.coordinates.lng, 
+                    activeLocation.morphology
+                );
                 setOraclePoints(points);
             } catch (err) { console.error("Oracle Sync Error:", err); }
             finally { setIsOracleLoading(false); }
@@ -110,49 +114,53 @@ const App: React.FC = () => {
         return oraclePoints.reduce((prev, curr) => Math.abs(curr.timestamp - nowTs) < Math.abs(prev.timestamp - nowTs) ? curr : prev);
     }, [oraclePoints]);
 
-    // Michael : Sync Météo pour l'AI
+    // --- SYNC MÉTÉO ---
     useEffect(() => {
         const updateWeather = async () => {
-            const isReferenceLocation = activeLocationId === GOLD_STANDARD_ID;
-            if (isReferenceLocation || !activeLocationId) { 
-                setDisplayedWeather(liveData.weather); 
-                setIsWeatherLoading(false); 
-            } else {
-                if (activeLocation?.coordinates) {
-                    setIsWeatherLoading(true);
+            if (activeLocation?.coordinates) {
+                setIsWeatherLoading(true);
+                try {
                     const customData = await fetchUniversalWeather(activeLocation.coordinates.lat, activeLocation.coordinates.lng);
                     setDisplayedWeather(customData);
-                    setIsWeatherLoading(false);
-                }
+                } catch (e) { console.error("Weather Sync Error", e); }
+                finally { setIsWeatherLoading(false); }
             }
         };
         updateWeather();
-    }, [activeLocationId, liveData.weather, activeLocation]);
+        const interval = setInterval(updateWeather, 15 * 60 * 1000);
+        return () => clearInterval(interval);
+    }, [activeLocation]);
 
-    // Michael : Construction du snapshot final pour le Coach
+    // --- SNAPSHOT LIVE ---
     const currentLiveSnapshot = useMemo(() => {
-    if (isOracleLoading || liveData.isLoading) return null;
-    const isReference = activeLocationId === GOLD_STANDARD_ID;
+        if (!activeLocation || !liveOraclePoint || !displayedWeather) return null;
 
-    // Michael : Si on n'est pas à Nanterre, on prend la température locale de l'Oracle point
-    // Tes logs ont montré que liveOraclePoint possède une clé waterTemp !
-    const localWaterTemp = isReference ? liveData.hydro?.waterTemp : liveOraclePoint?.waterTemp;
-
-    return {
-        locationName: activeLocation?.label || "Secteur inconnu",
-        // Michael : On récupère le pseudo dynamique ici
-        userName: userProfile?.pseudo || "Pêcheur",
-        env: {
-            hydro: { 
-                ...liveData.hydro, 
-                waterTemp: localWaterTemp // On injecte la vraie température locale ici
+        return {
+            locationName: activeLocation.label,
+            userName: userProfile?.pseudo || "Pêcheur",
+            env: {
+                hydro: { 
+                    waterTemp: liveOraclePoint.waterTemp,
+                    turbidityNTU: liveOraclePoint.turbidityNTU,
+                    dissolvedOxygen: liveOraclePoint.dissolvedOxygen,
+                    waveHeight: liveOraclePoint.waveHeight,
+                    flowRaw: liveOraclePoint.flowRaw, 
+                    level: 0, 
+                    flowLagged: 0,
+                    turbidityIdx: 0
+                },
+                weather: displayedWeather 
             },
-            weather: displayedWeather || liveData.weather
-        },
-        scores: isReference ? liveData.scores : liveOraclePoint
-     };
-    }, [liveData, activeLocation, activeLocationId, liveOraclePoint, isOracleLoading, displayedWeather, userProfile]);
-    // --- RECHARGER LE PROFIL AU SWITCH USER ---
+            scores: {
+                sandre: liveOraclePoint.sandre,
+                brochet: liveOraclePoint.brochet,
+                perche: liveOraclePoint.perche,
+                blackbass: liveOraclePoint.blackbass
+            }
+        };
+    }, [activeLocation, liveOraclePoint, displayedWeather, userProfile]);
+
+    // --- USER PROFILE ---
     useEffect(() => {
         setIsProfileLoading(true);
         const loadProfile = async () => {
@@ -163,14 +171,12 @@ const App: React.FC = () => {
         loadProfile();
     }, [currentUserId]); 
 
-    // --- CHARGEMENT DES SESSIONS ---
+    // --- SESSIONS ---
     useEffect(() => {
         const q = query(sessionsCollection, orderBy('date', 'desc')); 
-        
         const unsubscribeSessions = onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
             const fetchedSessions: Session[] = snapshot.docs.map(doc => {
                 const data = doc.data();
-                
                 let dateString = '';
                 if (data.date instanceof Timestamp) dateString = data.date.toDate().toISOString().split('T')[0];
                 else if (typeof data.date === 'string') dateString = data.date;
@@ -181,11 +187,8 @@ const App: React.FC = () => {
                     startTime: data.startTime || '08:00',
                     endTime: data.endTime || '11:00',
                     durationMinutes: data.durationMinutes || 0,
-                    
-                    // Récupération sécurisée Location
                     locationId: data.locationId || '',
                     locationName: data.locationName || 'Secteur Inconnu',
-
                     spotId: data.spotId || '', 
                     spotName: data.spotName || 'Spot Inconnu',
                     setupId: data.setupId || '', 
@@ -194,12 +197,9 @@ const App: React.FC = () => {
                     catchCount: data.catchCount || 0,
                     notes: data.notes || '',
                     techniquesUsed: data.techniquesUsed || [], 
-                    
                     envSnapshot: data.envSnapshot || null,
-                    
                     catches: (data.catches || []).map((c: any) => ({...c, userId: c.userId || data.userId})),
                     misses: (data.misses || []).map((m: any) => ({...m, userId: m.userId || data.userId})),
-                    
                     userId: data.userId || 'inconnu',
                     userPseudo: data.userPseudo || 'Inconnu',
                     userAvatar: data.userAvatar || null,
@@ -210,24 +210,22 @@ const App: React.FC = () => {
             setSessions(fetchedSessions);
             setIsLoading(false); 
         });
-
         return () => unsubscribeSessions();
     }, []); 
 
-    // --- LOGIQUE lastCatchDefaults ---
     const mySessions = sessions.filter(s => s.userId === currentUserId);
     const lastSession = mySessions.length > 0 ? mySessions[0] : null;
     const lastCatchDefaults: Catch | null = lastSession && lastSession.catches && lastSession.catches.length > 0 
         ? lastSession.catches[lastSession.catches.length - 1] 
         : null;
 
-        // Petite fonction utilitaire à l'extérieur ou à l'intérieur du composant
     const sanitizeForFirestore = (obj: any) => {
         return JSON.parse(JSON.stringify(obj, (key, value) => 
              value === undefined ? null : value
         ));
     };
-    // --- GESTION DES SESSIONS ---
+
+    // --- HANDLERS ---
     const handleAddSession = async (newSession: Session) => { 
         try {
             const { id, date, ...dataToSave } = newSession; 
@@ -259,13 +257,20 @@ const App: React.FC = () => {
         } catch (error) { console.error(error); }
     };
 
+    const handleSaveSession = async (session: Session) => {
+        if (session.id) {
+            await handleUpdateSession(session.id, session);
+        } else {
+            await handleAddSession(session);
+        }
+    };
+
     const handleDeleteSession = async (id: string) => {
-    try {
-        await deleteDoc(doc(db, 'sessions', id));
-        // Optionnel : tu peux ajouter un petit console.log pour confirmer le succès dans tes logs
-    } catch (error) {
-        console.error("Erreur suppression session:", error);
-    }
+        try {
+            await deleteDoc(doc(db, 'sessions', id));
+        } catch (error) {
+            console.error("Erreur suppression session:", error);
+        }
     };
 
     const handleEditRequest = (session: Session) => {
@@ -299,138 +304,128 @@ const App: React.FC = () => {
     };
 
     const renderContent = () => { 
-        if (!userProfile) return null;
-
-        switch (currentView) {
-            case 'dashboard': 
-                return (
-                    <Dashboard 
-                        sessions={sessions} 
-                        onDeleteSession={handleDeleteSession} 
-                        onEditSession={handleEditRequest} 
-                        onMagicDiscovery={handleMagicDiscovery} 
-                        userName={userProfile.pseudo} 
-                        currentUserId={currentUserId}
-                        lureTypes={arsenalData.lureTypes} 
-                        colors={arsenalData.colors} 
-                        locations={arsenalData.locations}
-                        // Michael : Passage des états liftés pour le contrôle Dashboard
-                        activeLocationId={activeLocationId}
-                        setActiveLocationId={setActiveLocationId}
-                        oraclePoints={oraclePoints}
-                        isOracleLoading={isOracleLoading}
-                    />
-                ); 
-            case 'session': 
-                return (
-                    <SessionForm 
-                        onAddSession={handleAddSession} 
-                        onUpdateSession={handleUpdateSession} 
-                        initialData={editingSession}
-                        initialDiscovery={magicDraft} 
-                        zones={arsenalData.spots} 
-                        setups={arsenalData.setups} 
-                        techniques={arsenalData.techniques} 
-                        lures={arsenalData.lures}
-                        lureTypes={arsenalData.lureTypes} 
-                        colors={arsenalData.colors} 
-                        sizes={arsenalData.sizes} 
-                        weights={arsenalData.weights} 
-                        lastCatchDefaults={lastCatchDefaults}
-                        // AJOUTS POUR LA GESTION LOCATION
-                        locations={arsenalData.locations}
-                        defaultLocationId={defaultLocationId}
-                    />  
-                );
-            case 'history': return <HistoryView sessions={sessions} onDeleteSession={handleDeleteSession} onEditSession={handleEditRequest} currentUserId={currentUserId} />;
-            case 'locations': return (
+        if (showLocationsManager) {
+            return (
                 <LocationsManager 
                     locations={arsenalData.locations}
-                    spots={arsenalData.spots} 
-                    
-                    // Actions Secteurs
+                    spots={arsenalData.spots}
                     onAddLocation={(l: string, coords: any) => handleAddItem('locations', l, coords ? { coordinates: coords } : undefined)}
                     onEditLocation={(id, l, extra) => handleEditItem('locations', id, l, extra)}
                     onDeleteLocation={(id: string) => handleDeleteItem('locations', id)}
                     onToggleFavorite={handleToggleLocationFavorite}
                     onMoveLocation={(id: string, dir: 'up' | 'down') => handleMoveItem('locations', id, dir)} 
                     
-                    // Actions Spots
                     onAddSpot={(l: string, locId: string) => handleAddItem('zones', l, { locationId: locId })}
                     onDeleteSpot={(id: string) => handleDeleteItem('zones', id)}
                     onEditSpot={(id: string, l: string) => handleEditItem('zones', id, l)}
 
-                    onBack={() => { setCurrentView('dashboard'); }}
+                    onBack={() => { setShowLocationsManager(false); }}
                 />
             );
-            case 'arsenal': return (
-                <ArsenalView 
-                    currentUserId={currentUserId}
-                    
-                    setups={arsenalData.setups} 
-                    onAddSetup={(l: string) => handleAddItem('setups', l)} 
-                    onDeleteSetup={(id: string) => handleDeleteItem('setups', id)} 
-                    onEditSetup={(id: string, l: string) => handleEditItem('setups', id, l)}
-                    onMoveSetup={(id: string, dir: 'up' | 'down') => handleMoveItem('setups', id, dir)} 
+        }
 
-                    techniques={arsenalData.techniques} 
-                    onAddTechnique={(l: string) => handleAddItem('techniques', l)} 
-                    onDeleteTechnique={(id: string) => handleDeleteItem('techniques', id)} 
-                    onEditTechnique={(id: string, l: string) => handleEditItem('techniques', id, l)}
-                    onMoveTechnique={(id: string, dir: 'up' | 'down') => handleMoveItem('techniques', id, dir)} 
-
-                    lureTypes={arsenalData.lureTypes} 
-                    onAddLureType={(l: string) => handleAddItem('ref_lure_types', l)} 
-                    onDeleteLureType={(id: string) => handleDeleteItem('ref_lure_types', id)} 
-                    onEditLureType={(id: string, l: string) => handleEditItem('ref_lure_types', id, l)}
-                    onMoveLureType={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_lure_types', id, dir)} 
-
-                    colors={arsenalData.colors} 
-                    onAddColor={(l: string) => handleAddItem('ref_colors', l)} 
-                    onDeleteColor={(id: string) => handleDeleteItem('ref_colors', id)} 
-                    onEditColor={(id: string, l: string) => handleEditItem('ref_colors', id, l)}
-                    onMoveColor={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_colors', id, dir)} 
-
-                    sizes={arsenalData.sizes} 
-                    onAddSize={(l: string) => handleAddItem('ref_sizes', l)} 
-                    onDeleteSize={(id: string) => handleDeleteItem('ref_sizes', id)} 
-                    onEditSize={(id: string, l: string) => handleEditItem('ref_sizes', id, l)}
-                    onMoveSize={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_sizes', id, dir)} 
-
-                    weights={arsenalData.weights} 
-                    onAddWeight={(l: string) => handleAddItem('ref_weights', l)} 
-                    onDeleteWeight={(id: string) => handleDeleteItem('ref_weights', id)} 
-                    onEditWeight={(id: string, l: string) => handleEditItem('ref_weights', id, l)}
-                    onMoveWeight={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_weights', id, dir)} 
-                />
-            );
+        switch (currentView) {
+            case 'dashboard': 
+                return (
+                    <Dashboard 
+                        userName={userProfile?.pseudo || 'Pêcheur'}
+                        currentUserId={currentUserId}
+                        sessions={sessions}
+                        
+                        // Props Moteur Universel
+                        oracleData={oraclePoints} 
+                        isOracleLoading={isOracleLoading || isWeatherLoading}
+                        
+                        // Props de Gestion des Lieux
+                        activeLocationLabel={activeLocation?.label || "Sélectionner un secteur"}
+                        activeLocationId={activeLocationId}
+                        availableLocations={arsenalData.locations}
+                        onLocationClick={() => setShowLocationsManager(true)}
+                        onLocationSelect={setActiveLocationId} 
+                        // [CORRECTION] Ajout de la prop manquante exigée par l'interface DashboardProps
+                        setActiveLocationId={setActiveLocationId}
+                        
+                        // Actions standard
+                        onEditSession={(s) => { setEditingSession(s); setCurrentView('session'); }}
+                        onDeleteSession={handleDeleteSession}
+                        onMagicDiscovery={handleMagicDiscovery}
+                        
+                        // Props Arsenal
+                        lureTypes={arsenalData.lureTypes}
+                        colors={arsenalData.colors}
+                        locations={arsenalData.locations}
+                    />
+                );
+            case 'history':
+                return <HistoryView sessions={sessions} onDeleteSession={handleDeleteSession} onEditSession={handleEditRequest} currentUserId={currentUserId} />;
+            case 'arsenal':
+                return (
+                    <ArsenalView 
+                        currentUserId={currentUserId}
+                        setups={arsenalData.setups} 
+                        onAddSetup={(l: string) => handleAddItem('setups', l)} 
+                        onDeleteSetup={(id: string) => handleDeleteItem('setups', id)} 
+                        onEditSetup={(id: string, l: string) => handleEditItem('setups', id, l)}
+                        onMoveSetup={(id: string, dir: 'up' | 'down') => handleMoveItem('setups', id, dir)} 
+                        techniques={arsenalData.techniques} 
+                        onAddTechnique={(l: string) => handleAddItem('techniques', l)} 
+                        onDeleteTechnique={(id: string) => handleDeleteItem('techniques', id)} 
+                        onEditTechnique={(id: string, l: string) => handleEditItem('techniques', id, l)}
+                        onMoveTechnique={(id: string, dir: 'up' | 'down') => handleMoveItem('techniques', id, dir)} 
+                        lureTypes={arsenalData.lureTypes} 
+                        onAddLureType={(l: string) => handleAddItem('ref_lure_types', l)} 
+                        onDeleteLureType={(id: string) => handleDeleteItem('ref_lure_types', id)} 
+                        onEditLureType={(id: string, l: string) => handleEditItem('ref_lure_types', id, l)}
+                        onMoveLureType={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_lure_types', id, dir)} 
+                        colors={arsenalData.colors} 
+                        onAddColor={(l: string) => handleAddItem('ref_colors', l)} 
+                        onDeleteColor={(id: string) => handleDeleteItem('ref_colors', id)} 
+                        onEditColor={(id: string, l: string) => handleEditItem('ref_colors', id, l)}
+                        onMoveColor={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_colors', id, dir)} 
+                        sizes={arsenalData.sizes} 
+                        onAddSize={(l: string) => handleAddItem('ref_sizes', l)} 
+                        onDeleteSize={(id: string) => handleDeleteItem('ref_sizes', id)} 
+                        onEditSize={(id: string, l: string) => handleEditItem('ref_sizes', id, l)}
+                        onMoveSize={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_sizes', id, dir)} 
+                        weights={arsenalData.weights} 
+                        onAddWeight={(l: string) => handleAddItem('ref_weights', l)} 
+                        onDeleteWeight={(id: string) => handleDeleteItem('ref_weights', id)} 
+                        onEditWeight={(id: string, l: string) => handleEditItem('ref_weights', id, l)}
+                        onMoveWeight={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_weights', id, dir)} 
+                    />
+                );
             case 'coach': 
                 return (
                     <CoachView 
                         sessions={sessions} 
                         arsenalData={arsenalData} 
-                        // Michael : Branchement direct sur le snapshot live dynamique
                         liveSnapshot={currentLiveSnapshot} 
                     />
                 );
-            case 'profile': return <ProfileView userProfile={userProfile} sessions={sessions} onUpdateProfile={setUserProfile} />;
-            default: return (
-                <Dashboard 
-                    sessions={sessions} 
-                    onDeleteSession={handleDeleteSession} 
-                    onEditSession={handleEditRequest} 
-                    onMagicDiscovery={handleMagicDiscovery} 
-                    userName={userProfile.pseudo} 
-                    currentUserId={currentUserId} 
-                    lureTypes={arsenalData.lureTypes} 
-                    colors={arsenalData.colors} 
-                    locations={arsenalData.locations}
-                    activeLocationId={activeLocationId}
-                    setActiveLocationId={setActiveLocationId}
-                    oraclePoints={oraclePoints}
-                    isOracleLoading={isOracleLoading}
-                />
-            ); 
+            case 'profile':
+                return <ProfileView userProfile={userProfile!} sessions={sessions} onUpdateProfile={setUserProfile} />;
+            case 'session':
+                return (
+                    <SessionForm 
+                        onAddSession={handleAddSession}
+                        onUpdateSession={(id, data) => handleSaveSession({ ...data, id } as Session)} 
+                        initialData={editingSession}
+                        initialDiscovery={magicDraft}
+                        zones={arsenalData.spots} 
+                        setups={arsenalData.setups}
+                        techniques={arsenalData.techniques}
+                        lures={arsenalData.lures}
+                        lureTypes={arsenalData.lureTypes}
+                        colors={arsenalData.colors}
+                        sizes={arsenalData.sizes}
+                        weights={arsenalData.weights}
+                        locations={arsenalData.locations} 
+                        defaultLocationId={activeLocationId} 
+                        lastCatchDefaults={lastCatchDefaults}
+                    />
+                );
+            default:
+                return null;
         }
     };
 
@@ -454,25 +449,27 @@ const App: React.FC = () => {
 
     return ( 
         <div className="min-h-screen bg-[#FAF9F6] pb-24 text-stone-600">
-            <button onClick={toggleUser} className="fixed bottom-24 right-4 z-50 bg-stone-800 text-white p-3 rounded-full shadow-2xl border-2 border-white flex items-center gap-2 hover:scale-110 transition-transform">
-                <Users size={20} /><span className="text-xs font-bold hidden sm:inline">Switch {currentUserId === 'user_1' ? 'User 2' : 'User 1'}</span>
-            </button>
-
-            <header className="sticky top-0 z-30 border-b border-stone-100 bg-white/80 p-4 backdrop-blur-md"> 
-                <div className="mx-auto flex max-w-5xl items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <button onClick={() => setIsMenuOpen(true)} className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-xl transition-colors"><Menu size={24} strokeWidth={2.5} /></button>
-                        <div className="flex items-center gap-3">
-                            <div className="rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 p-2 text-white shadow-lg"><Fish size={20} /></div>
-                            <div>
-                                <h1 className="text-lg font-bold text-stone-800">Seine Oracle</h1>
-                                <span className="text-[10px] font-bold text-amber-600 tracking-widest uppercase">v4.5 • {userProfile.pseudo}</span>
-                            </div>
-                        </div> 
+            {!showLocationsManager && (
+                // [RESTAURATION HEADER] Ajout du bouton Menu (Burger)
+                <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-stone-200 px-4 py-3 flex items-center justify-between shadow-sm">
+                    <div className="flex items-center gap-2">
+                        {/* BOUTON MENU RESTAURÉ */}
+                        <button onClick={() => setIsMenuOpen(true)} className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-xl transition-colors">
+                            <Menu size={24} strokeWidth={2.5} />
+                        </button>
+                        
+                        <div className="w-8 h-8 bg-stone-800 rounded-lg flex items-center justify-center">
+                            <Fish className="text-white" size={20} />
+                        </div>
+                        <span className="font-black text-lg tracking-tighter text-stone-800">SEINE<span className="text-amber-500">ORACLE</span></span>
                     </div>
-                </div>
-            </header>
-            
+                    <button onClick={() => setCurrentView('profile')} className="w-8 h-8 rounded-full bg-stone-100 overflow-hidden border border-stone-200">
+                        {userProfile?.avatarBase64 ? <img src={userProfile.avatarBase64} alt="Profile" className="w-full h-full object-cover" /> : <User size={20} className="text-stone-400 m-auto mt-1" />}
+                    </button>
+                </header>
+            )}
+
+            {/* [RESTAURATION SIDEBAR] Menu latéral complet */}
             {isMenuOpen && (
                 <>
                     <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-sm z-50 animate-in fade-in" onClick={() => setIsMenuOpen(false)} />
@@ -480,12 +477,13 @@ const App: React.FC = () => {
                         <div className="flex justify-between items-center mb-8"><span className="text-xs font-bold text-stone-400 uppercase tracking-widest">Menu Principal</span><button onClick={() => setIsMenuOpen(false)} className="p-2 text-stone-400 hover:bg-stone-100 rounded-full"><X size={20} /></button></div>
                         <div className="flex items-center gap-4 mb-8 bg-stone-50 p-4 rounded-2xl border border-stone-100">
                             <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center border-2 border-amber-100 text-amber-500 overflow-hidden shadow-inner">
-                                {userProfile.avatarBase64 ? <img src={userProfile.avatarBase64} alt="Avatar" className="w-full h-full object-cover"/> : <User size={24} />}
+                                {userProfile?.avatarBase64 ? <img src={userProfile.avatarBase64} alt="Avatar" className="w-full h-full object-cover"/> : <User size={24} />}
                             </div>
-                            <div><div className="font-black text-stone-800 text-lg leading-none">{userProfile.pseudo}</div><div className="text-xs text-stone-400 font-medium mt-1">v4.5 Soldat du Quai</div></div>
+                            <div><div className="font-black text-stone-800 text-lg leading-none">{userProfile?.pseudo}</div><div className="text-xs text-stone-400 font-medium mt-1">v4.5 Soldat du Quai</div></div>
                         </div>
                         <nav className="space-y-2 flex-1">
-                            <button onClick={() => navigateFromMenu('locations')} className="w-full flex items-center justify-between p-4 rounded-2xl text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-all font-bold">
+                            {/* Lien Mes Secteurs corrigé pour pointer vers LocationsManager */}
+                            <button onClick={() => { setShowLocationsManager(true); setIsMenuOpen(false); }} className="w-full flex items-center justify-between p-4 rounded-2xl text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-all font-bold">
                                 <span className="flex items-center gap-3"><MapPin size={20} className="text-emerald-500"/> Mes Secteurs</span><ChevronRight size={16} />
                             </button>
 
@@ -498,11 +496,13 @@ const App: React.FC = () => {
                 </>
             )}
 
-            <main className="mx-auto max-w-xl p-4 lg:max-w-5xl">{renderContent()}</main>
-            
+            <main className="max-w-md mx-auto">
+                {renderContent()}
+            </main>
+
             <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-stone-200 bg-white pb-safe shadow-lg"> 
                 <div className="mx-auto flex max-w-lg items-center justify-around py-3">
-                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('dashboard'); }} className={`flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-amber-600' : 'text-stone-400'}`}><Home size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Oracle</span></button>
+                    <button onClick={() => { setShowLocationsManager(false); setCurrentView('dashboard'); }} className={`flex flex-col items-center gap-1 ${currentView === 'dashboard' && !showLocationsManager ? 'text-amber-600' : 'text-stone-400'}`}><Home size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Live</span></button>
                     <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('history'); }} className={`flex flex-col items-center gap-1 ${currentView === 'history' ? 'text-amber-600' : 'text-stone-400'}`}><ScrollText size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Journal</span></button>
                     
                     <div className="relative -top-6 flex items-center justify-center gap-3">

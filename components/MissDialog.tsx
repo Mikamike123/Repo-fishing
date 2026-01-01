@@ -5,10 +5,9 @@ import {
     Miss, Zone, RefLureType, RefColor, RefSize, RefWeight, 
     FullEnvironmentalSnapshot, Location 
 } from '../types';
-import { doc, getDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions'; 
 import { getApp } from 'firebase/app';
-import { db } from '../lib/firebase';
+// NETTOYAGE : Suppression de db, doc, getDoc car plus d'accès direct à environmental_logs
 import { fetchHistoricalWeatherContext } from '../lib/universal-weather-service';
 
 interface MissDialogProps {
@@ -17,8 +16,8 @@ interface MissDialogProps {
   onSave: (data: any) => void;
   initialData?: Miss | null;
   availableZones: Zone[];
-  locationId: string;   // REQUIS pour le filtrage par secteur
-  locations: Location[]; // REQUIS pour la simulation Gold Standard
+  locationId: string;   
+  locations: Location[]; 
   sessionStartTime: string;
   sessionEndTime: string;
   sessionDate: string;
@@ -94,48 +93,13 @@ const MissDialog: React.FC<MissDialogProps> = ({
 
     const fetchEnv = async () => {
       setIsLoadingEnv(true);
-      const GOLDEN_SECTOR_ID = import.meta.env.VITE_GOLDEN_SECTOR_ID;
+      // NETTOYAGE : Suppression de GOLDEN_SECTOR_ID
       
       try {
-        if (locationId === GOLDEN_SECTOR_ID) {
-          const hourStr = time.split(':')[0];
-          const docId = `${sessionDate}_${hourStr}00`;
-          const snap = await getDoc(doc(db, 'environmental_logs', docId));
-
-          if (snap.exists()) {
-            const d = snap.data() as any;
-            setEnvSnapshot({
-              weather: {
-                temperature: d.weather?.temp || 0,
-                pressure: d.weather?.pressure || 0,
-                windSpeed: d.weather?.windSpeed || 0,
-                windDirection: d.weather?.windDir || 0,
-                precip: d.weather?.precip || 0,
-                clouds: d.weather?.cloudCover || 0,
-                conditionCode: d.weather?.condition_code || 0
-              },
-              hydro: {
-                flowRaw: d.hydro?.flow || 0,
-                flowLagged: d.computed?.flow_lagged || 0,
-                level: d.hydro?.level || 0,
-                waterTemp: d.hydro?.waterTemp ?? null,
-                turbidityIdx: d.computed?.turbidity_idx || 0
-              },
-              scores: {
-                sandre: d.computed?.score_sandre || 0,
-                brochet: d.computed?.score_brochet || 0,
-                perche: d.computed?.score_perche || 0,
-                blackbass: d.computed?.score_blackbass || 0
-              },
-              metadata: { sourceLogId: snap.id, calculationDate: d.updatedAt || d.timestamp }
-            });
-            setEnvStatus('found');
-          } else {
-            setEnvStatus('not-found');
-          }
-        } else {
-          const currentLocation = locations.find(l => l.id === locationId);
-          if (currentLocation?.coordinates) {
+        // NETTOYAGE : Logique Universelle Uniquement
+        const currentLocation = locations.find(l => l.id === locationId);
+        
+        if (currentLocation?.coordinates) {
             const weatherContext = await fetchHistoricalWeatherContext(
                 currentLocation.coordinates.lat, 
                 currentLocation.coordinates.lng, 
@@ -145,6 +109,7 @@ const MissDialog: React.FC<MissDialogProps> = ({
             if (weatherContext) {
                 const functionsInstance = getFunctions(getApp(), 'europe-west1');
                 const getHistoricalContext = httpsCallable(functionsInstance, 'getHistoricalContext');
+                
                 const result = await getHistoricalContext({
                     weather: weatherContext.snapshot,
                     weatherHistory: weatherContext.history,
@@ -153,21 +118,27 @@ const MissDialog: React.FC<MissDialogProps> = ({
                 });
 
                 const cloudData = result.data as any;
+                
                 if (cloudData) {
                     setEnvSnapshot({
                         weather: { ...weatherContext.snapshot },
                         hydro: { 
-                                flowRaw: 0, flowLagged: 0, level: 0, 
-                                waterTemp: cloudData.waterTemp ?? null, 
-                                turbidityIdx: Math.min(1, (cloudData.turbidityNTU || 5) / 50) 
-                              },
+                            flowRaw: 0, 
+                            flowLagged: 0, 
+                            level: 0, 
+                            waterTemp: cloudData.waterTemp ?? null, 
+                            turbidityIdx: Math.min(1, (cloudData.turbidityNTU || 5) / 50) 
+                        },
                         scores: cloudData.scores ?? { sandre: 0, brochet: 0, perche: 0, blackbass: 0 },
-                        metadata: { sourceLogId: 'gold_standard_simulated', calculationDate: new Date().toISOString() }
+                        metadata: { sourceLogId: 'universel_simulated_miss', calculationDate: new Date().toISOString() }
                     });
                     setEnvStatus('simulated');
+                } else {
+                    setEnvStatus('not-found');
                 }
+            } else {
+                setEnvStatus('not-found');
             }
-          }
         }
       } catch (e) {
         console.error("Erreur récupération environnement (Miss) Michael :", e);

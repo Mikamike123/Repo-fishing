@@ -8,10 +8,10 @@ import {
     SpeciesType, Zone, Technique, Catch, RefLureType, 
     RefColor, RefSize, RefWeight, FullEnvironmentalSnapshot, Location 
 } from '../types';
-import { doc, getDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions'; 
 import { getApp } from 'firebase/app';
-import { db, functions, storage, USER_ID } from '../lib/firebase';
+// NETTOYAGE : Suppression de doc, getDoc, db car plus d'accès direct à environmental_logs
+import { functions, storage, USER_ID } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { fetchHistoricalWeatherContext } from '../lib/universal-weather-service';
 import ExifReader from 'exifreader';
@@ -168,81 +168,49 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
 
         const fetchEnv = async () => {
             setIsLoadingEnv(true);
-            const NANTERRE_SECTOR_ID = "WYAjhoUeeikT3mS0hjip";
+            // NETTOYAGE : Suppression de NANTERRE_SECTOR_ID
             
             try {
-                if (locationId === NANTERRE_SECTOR_ID) {
-                    const hourStr = time.split(':')[0];
-                    const docId = `${sessionDate}_${hourStr}00`;
-                    const snap = await getDoc(doc(db, 'environmental_logs', docId));
+                // NETTOYAGE : Suppression du bloc if (locationId === NANTERRE_SECTOR_ID)
+                // On utilise UNIQUEMENT le moteur universel
 
-                    if (snap.exists()) {
-                        const d = snap.data() as any;
-                        setEnvSnapshot({
-                            weather: {
-                                temperature: d.weather?.temp || 0,
-                                pressure: d.weather?.pressure || 0,
-                                windSpeed: d.weather?.windSpeed || 0,
-                                windDirection: d.weather?.windDir || 0,
-                                precip: d.weather?.precip || 0,
-                                clouds: d.weather?.cloudCover || 0,
-                                conditionCode: d.weather?.condition_code || 0
-                            },
-                            hydro: {
-                                flowRaw: d.hydro?.flow || 0,
-                                flowLagged: d.computed?.flow_lagged || 0,
-                                level: d.hydro?.level || 0,
-                                waterTemp: d.hydro?.waterTemp ?? null,
-                                turbidityIdx: d.computed?.turbidity_idx || 0
-                            },
-                            scores: {
-                                sandre: d.computed?.score_sandre || 0,
-                                brochet: d.computed?.score_brochet || 0,
-                                perche: d.computed?.score_perche || 0,
-                                blackbass: d.computed?.score_blackbass || 0
-                            },
-                            metadata: { sourceLogId: snap.id, calculationDate: d.updatedAt || d.timestamp }
+                const currentLocation = locations.find(l => l.id === locationId);
+                if (currentLocation?.coordinates) {
+                    const weatherContext = await fetchHistoricalWeatherContext(
+                        currentLocation.coordinates.lat, 
+                        currentLocation.coordinates.lng, 
+                        sessionDate
+                    );
+
+                    if (weatherContext) {
+                        const functionsInstance = getFunctions(getApp(), 'europe-west1');
+                        const getHistoricalContext = httpsCallable(functionsInstance, 'getHistoricalContext');
+                        const result = await getHistoricalContext({
+                            weather: weatherContext.snapshot,
+                            weatherHistory: weatherContext.history,
+                            location: currentLocation,
+                            dateStr: sessionDate
                         });
-                        setEnvStatus('found');
-                    }
-                } else {
-                    const currentLocation = locations.find(l => l.id === locationId);
-                    if (currentLocation?.coordinates) {
-                        const weatherContext = await fetchHistoricalWeatherContext(
-                            currentLocation.coordinates.lat, 
-                            currentLocation.coordinates.lng, 
-                            sessionDate
-                        );
 
-                        if (weatherContext) {
-                            const functionsInstance = getFunctions(getApp(), 'europe-west1');
-                            const getHistoricalContext = httpsCallable(functionsInstance, 'getHistoricalContext');
-                            const result = await getHistoricalContext({
-                                weather: weatherContext.snapshot,
-                                weatherHistory: weatherContext.history,
-                                location: currentLocation,
-                                dateStr: sessionDate
+                        const cloudData = result.data as any;
+                        if (cloudData) {
+                            setEnvSnapshot({
+                                weather: { ...weatherContext.snapshot },
+                                hydro: { 
+                                        flowRaw: 0, 
+                                        flowLagged: 0, 
+                                        level: 0, 
+                                        waterTemp: cloudData.waterTemp ?? null, 
+                                        turbidityIdx: Math.min(1, (cloudData.turbidityNTU || 5) / 50) 
+                                    },
+                                scores: cloudData.scores ?? { sandre: 0, brochet: 0, perche: 0, blackbass: 0 },
+                                metadata: { sourceLogId: 'universel_simulated', calculationDate: new Date().toISOString() }
                             });
-
-                            const cloudData = result.data as any;
-                            if (cloudData) {
-                                setEnvSnapshot({
-                                    weather: { ...weatherContext.snapshot },
-                                    hydro: { 
-                                            flowRaw: 0, 
-                                            flowLagged: 0, 
-                                            level: 0, 
-                                            waterTemp: cloudData.waterTemp ?? null, 
-                                            turbidityIdx: Math.min(1, (cloudData.turbidityNTU || 5) / 50) 
-                                          },
-                                    scores: cloudData.scores ?? { sandre: 0, brochet: 0, perche: 0, blackbass: 0 },
-                                    metadata: { sourceLogId: 'gold_standard_simulated', calculationDate: new Date().toISOString() }
-                                });
-                                setEnvStatus('simulated');
-                            }
+                            setEnvStatus('simulated');
                         }
                     }
                 }
+                
             } catch (e) {
                 console.error("Erreur Env Catch Michael :", e);
                 setEnvStatus('not-found');

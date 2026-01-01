@@ -50,8 +50,6 @@ interface LocationsManagerProps {
     onBack: () => void;
 }
 
-const GOLDEN_SECTOR_ID = import.meta.env.VITE_GOLDEN_SECTOR_ID; 
-
 const LocationsManager: React.FC<LocationsManagerProps> = ({ 
     locations, spots,
     onAddLocation, onEditLocation, onDeleteLocation, onToggleFavorite, onMoveLocation,
@@ -382,7 +380,7 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
                             </div>
                             <div className="flex items-center gap-2"><div className="flex flex-col mr-2">{index > 0 && <button onClick={(e) => { e.stopPropagation(); onMoveLocation(loc.id, 'up'); }} className="p-1 hover:bg-stone-200 rounded text-stone-400"><ChevronUp size={12} /></button>}{index < sortedLocations.length - 1 && <button onClick={(e) => { e.stopPropagation(); onMoveLocation(loc.id, 'down'); }} className="p-1 hover:bg-stone-200 rounded text-stone-400"><ChevronDown size={12} /></button>}</div>
                             <button onClick={(e) => handleStartEditLocation(e, loc)} className="p-2 text-stone-300 hover:text-amber-600 transition-colors"><Edit2 size={18} /></button>
-                            <button onClick={(e) => { e.stopPropagation(); loc.id !== GOLDEN_SECTOR_ID && onDeleteLocation(loc.id); }} className={`p-2 transition-colors ${loc.id === GOLDEN_SECTOR_ID ? 'text-stone-200 cursor-not-allowed' : 'text-stone-300 hover:text-rose-500'}`} disabled={loc.id === GOLDEN_SECTOR_ID}>{loc.id === GOLDEN_SECTOR_ID ? <Lock size={18} /> : <Trash2 size={18} />}</button>
+                            <button onClick={(e) => { e.stopPropagation(); onDeleteLocation(loc.id); }} className="p-2 text-stone-300 hover:text-rose-500 transition-colors"><Trash2 size={18} /></button>
                             <ChevronRight className="text-stone-300 ml-2" size={20} /></div>
                         </div>
                     );

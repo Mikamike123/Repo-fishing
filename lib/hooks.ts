@@ -1,78 +1,15 @@
+// lib/hooks.ts
+// [NETTOYAGE] Ce fichier contenait la logique de récupération des "environmental_logs" (Vigicrues Legacy).
+// Désormais, toutes les données environnementales passent par :
+// 1. universal-weather-service.ts (Météo temps réel & historique)
+// 2. oracle-service.ts (Prévision & Simulation Hydro Universelle)
+// 3. historical.ts (Cloud Function pour l'archivage)
+
 import { useState, useEffect } from 'react';
-import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
-import { db } from './firebase';
-import { FullEnvironmentalSnapshot } from '../types';
 
-// --- PARTIE 1 : ENVIRONNEMENT LIVE ---
-
-export interface LatestEnvironment {
-  weather: FullEnvironmentalSnapshot['weather'] | null;
-  hydro: FullEnvironmentalSnapshot['hydro'] | null;
-  scores: FullEnvironmentalSnapshot['scores'] | null;
-  computed: any | null; 
-  isLoading: boolean;
-}
-
-export const useLatestEnvironment = (): LatestEnvironment => {
-  const [data, setData] = useState<LatestEnvironment>({
-    weather: null, hydro: null, scores: null, computed: null, isLoading: true,
-  });
-
-  useEffect(() => {
-    const q = query(
-      collection(db, 'environmental_logs'),
-      orderBy('__name__', 'desc'), 
-      limit(2)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        const docs = snapshot.docs.map(d => d.data());
-        const latestDoc = docs[0];
-        const previousDoc = docs[1];
-
-        const hasScores = latestDoc.computed?.score_sandre > 0;
-        const d = hasScores ? latestDoc : (previousDoc || latestDoc);
-        
-        setData({
-          weather: {
-            temperature: d.weather?.temp || 0,
-            pressure: d.weather?.pressure || 0,
-            windSpeed: d.weather?.windSpeed || 0,
-            windDirection: d.weather?.windDir || 0, 
-            clouds: d.weather?.cloudCover || 0,
-            precip: d.weather?.precip || 0,
-            conditionCode: d.weather?.condition_code || 0
-          },
-          hydro: {
-            waterTemp: d.hydro?.waterTemp || null,
-            level: d.hydro?.level || 0,
-            flowRaw: d.hydro?.flow || 0,
-            flowLagged: d.computed?.flow_lagged || 0,
-            turbidityIdx: d.computed?.turbidity_idx || 0
-          },
-          scores: {
-            sandre: d.computed?.score_sandre || 0,
-            brochet: d.computed?.score_brochet || 0,
-            perche: d.computed?.score_perche || 0,
-          },
-          computed: d.computed || null,
-          isLoading: false,
-        });
-      } else {
-        setData((prev) => ({ ...prev, isLoading: false }));
-      }
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  return data;
-};
-
-export const useCurrentConditions = useLatestEnvironment;
-
-// --- PARTIE 2 : HISTORIQUE GRAPHIQUE (SÉCURISÉ) ---
+// --- HISTORIQUE GRAPHIQUE (UNIVERSAL OPEN-METEO) ---
+// Ce hook reste utile car il interroge l'API Archive d'Open-Meteo pour les analyses passées.
+// Il n'a aucune dépendance à la collection 'environmental_logs'.
 
 export interface HistoricalDataPoint {
   time: number;
@@ -94,7 +31,7 @@ export const useHistoricalWeather = (
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // 1. Clause de garde : On ne fait rien si les coords manquent ou si le hook est désactivé
+    // 1. Clause de garde
     if (lat === undefined || lng === undefined || !date || options.enabled === false) return;
 
     const fetchHistory = async () => {
@@ -109,19 +46,16 @@ export const useHistoricalWeather = (
 
         // 2. SÉCURITÉ DATE : On empêche de demander le futur à l'API Archive
         const now = new Date();
-        const maxAllowedDateStr = now.toISOString().split('T')[0]; // Date du jour format YYYY-MM-DD
+        const maxAllowedDateStr = now.toISOString().split('T')[0];
         
         const startStr = startDate.toISOString().split('T')[0];
         let endStr = endDate.toISOString().split('T')[0];
 
-        // Si la date de fin demandée est dans le futur, on la ramène à aujourd'hui
         if (endStr > maxAllowedDateStr) {
             endStr = maxAllowedDateStr;
         }
 
-        // Si après correction, le début est après la fin (ex: tout est dans le futur), on annule l'appel
         if (startStr > endStr) {
-            // console.log("ℹ️ [useHistoricalWeather] Plage 100% future, appel Archive annulé.");
             setLoading(false);
             return;
         }
@@ -130,7 +64,6 @@ export const useHistoricalWeather = (
 
         const res = await fetch(url);
         
-        // Gestion silencieuse des erreurs 400 (souvent dues aux dates limites)
         if (!res.ok) {
            if (res.status === 400) {
              console.warn(`⚠️ Météo Historique : Date hors limites ignorée (${startStr} au ${endStr})`);
