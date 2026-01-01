@@ -70,7 +70,32 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
         }
     }, [locationId, filteredSpots, zones, spotId]);
 
-    // --- LOGIQUE D'ACQUISITION ENVIRONNEMENTALE (CORRIGÉE) ---
+    // --- HELPER : Calcul du temps moyen de session (Precision ISO) ---
+    const calculateSessionMidpoint = (dateStr: string, start: string, end: string): string => {
+        try {
+            const d = new Date(dateStr);
+            const [h1, m1] = start.split(':').map(Number);
+            const [h2, m2] = end.split(':').map(Number);
+            
+            // Conversion en minutes depuis minuit
+            const startMin = h1 * 60 + m1;
+            const endMin = h2 * 60 + m2;
+            
+            // Calcul du point médian (attention au passage de minuit non géré ici mais rare en session standard)
+            const midMin = Math.round((startMin + endMin) / 2);
+            const midH = Math.floor(midMin / 60);
+            const midM = midMin % 60;
+            
+            // Mise à jour de l'heure
+            d.setHours(midH, midM, 0, 0);
+            return d.toISOString();
+        } catch (e) {
+            console.warn("Erreur calcul heure médiane, fallback date brute", e);
+            return new Date(dateStr).toISOString();
+        }
+    };
+
+    // --- LOGIQUE D'ACQUISITION ENVIRONNEMENTALE (CORRIGÉE AVEC HEURE PRÉCISE) ---
     useEffect(() => {
         if (!locationId || locations.length === 0) return;
 
@@ -84,7 +109,6 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
 
         const fetchEnv = async () => {
             setIsLoadingEnv(true);
-            // On ne touche plus à envStatus ici pour éviter la boucle
             
             try {
                 const hourStr = startTime.split(':')[0];
@@ -92,6 +116,7 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
                 const isGolden = locationId === GOLDEN_SECTOR_ID;
 
                 if (isGolden) {
+                    // Pour le Golden (Nanterre), on reste sur la logique d'ID horaire simple
                     const docId = `${date}_${hourStr}00`;
                     const docRef = doc(db, 'environmental_logs', docId);
                     const snap = await getDoc(docRef);
@@ -140,10 +165,13 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
                         return;
                     }
 
+                    // Calcul de l'heure précise (Moyenne de session) pour éviter le bug "Minuit"
+                    const preciseIsoDate = calculateSessionMidpoint(date, startTime, endTime);
+
                     const weatherContext = await fetchHistoricalWeatherContext(
                         currentLocation.coordinates.lat,
                         currentLocation.coordinates.lng,
-                        date
+                        preciseIsoDate // On passe l'ISO précis
                     );
 
                     if (!weatherContext) {
@@ -154,11 +182,12 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
                     const functionsInstance = getFunctions(getApp(), 'europe-west1');
                     const getHistoricalContext = httpsCallable(functionsInstance, 'getHistoricalContext');
 
+                    // Appel Cloud Function avec la date précise
                     const result = await getHistoricalContext({
                         weather: weatherContext.snapshot,
                         weatherHistory: weatherContext.history,
                         location: currentLocation,
-                        dateStr: date
+                        dateStr: preciseIsoDate // Indispensable pour que le backend trouve le bon index horaire
                     });
 
                     const cloudData = result.data as any;
@@ -191,8 +220,7 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
 
         const timeoutId = setTimeout(fetchEnv, 800);
         return () => clearTimeout(timeoutId);
-        // Michael : On retire envStatus des dépendances pour casser la boucle infinie
-    }, [date, startTime, locationId, locations, initialData]);
+    }, [date, startTime, endTime, locationId, locations, initialData]); // Ajout de endTime aux dépendances
 
     // --- HANDLERS ---
     const handleDeleteCatch = (id: string) => {

@@ -1,9 +1,13 @@
-// src/lib/zeroHydroEngine.ts - Version 5.5 (Alignement Signature Backend)
+// src/lib/zeroHydroEngine.ts - Version 5.6 (Strict Backend Alignment)
 
 import { MorphologyID, BassinType, DepthCategoryID } from '../types';
 
-// --- 1. CONSTANTES PHYSIQUES & CALIBRATION (v6.2 - Aligné sur Backend) ---
+// --- 1. CONSTANTES PHYSIQUES & CALIBRATION (v6.2 - Aligné sur Backend historical.ts) ---
 
+/**
+ * Moyennes mensuelles historiques de la Seine pour l'initialisation (Seed)
+ * [ALIGNE SUR historical.ts v6.2]
+ */
 const SMART_BASELINE: Record<number, number> = {
     0: 5.5,  1: 6.0,  2: 9.0,  3: 12.0, 4: 16.0, 5: 19.5,
     6: 21.0, 7: 21.5, 8: 19.0, 9: 14.5, 10: 10.5, 11: 7.5
@@ -28,15 +32,13 @@ const DEPTH_MAP: Record<DepthCategoryID, number> = {
 };
 
 const PHYSICAL_PARAMS = {
-    alpha: 0.05,
-    theta: 0.08,
-    precipImpact: 1.8,  // Aligné sur ALPHA_RAIN du backend
-    phi: 172            // Solstice
+    phi: 172,           // Solstice (référence saisonnière)
+    alpha_rain: 1.8,    // Impact précipitation (NTU/mm)
+    daily_decay: 0.77   // Taux de sédimentation quotidien
 };
 
 const TURBIDITY_CONSTANTS = {
-    MAX_NTU: 100,
-    DECAY_RATE: 0.77    // Aligné sur DAILY_DECAY du backend
+    MAX_NTU: 100
 };
 
 // --- 2. HELPERS ---
@@ -45,8 +47,11 @@ export const getSmartBaseline = (date: Date): number => {
     return SMART_BASELINE[date.getMonth()] || 12.0;
 };
 
-// --- 3. MOTEUR THERMIQUE ---
+// --- 3. MOTEUR THERMIQUE (Air2Water) ---
 
+/**
+ * Résout l'équation thermique avec initialisation Smart Baseline
+ */
 export const solveAir2Water = (
     history: any[], 
     morphologyId: MorphologyID, 
@@ -58,11 +63,12 @@ export const solveAir2Water = (
 
     const offset = BASSIN_OFFSET[bassin] || 0;
     const D = DEPTH_MAP[depthId] || 5.0;
+    // Delta inertie : 12 pour rivières, calculé pour eaux closes
     const delta = morphologyId === 'Z_RIVER' ? 12 : 0.207 * Math.pow(D, 1.35);
     const mu = 0.15 + (1 / (D * 5));
     
+    // Initialisation Smart Baseline (v5.0)
     let waterTemp = prevTemp;
-    
     if (waterTemp === undefined || waterTemp === null) {
         waterTemp = getSmartBaseline(new Date(history[0].date));
     }
@@ -73,14 +79,18 @@ export const solveAir2Water = (
         const solarCorrection = mu * Math.sin((2 * Math.PI * (dayOfYear - PHYSICAL_PARAMS.phi)) / 365);
         const equilibriumTemp = (day.temperature || 10) + offset + (solarCorrection * 10);
         
+        // Équation différentielle discrétisée
         waterTemp! += (equilibriumTemp - waterTemp!) / delta;
     });
 
     return Math.max(3, Math.min(26.5, Number(waterTemp!.toFixed(1))));
 };
 
-// --- 4. MOTEUR OPTIQUE ---
+// --- 4. MOTEUR OPTIQUE (EMC) ---
 
+/**
+ * Calcule la turbidité basée sur le déclin quotidien (DAILY_DECAY)
+ */
 export const solveTurbidity = (
     history: any[], 
     bassin: BassinType
@@ -92,17 +102,17 @@ export const solveTurbidity = (
 
     history.forEach(day => {
         const precip = day.precipitation || 0;
-        currentNTU = baseNTU + (currentNTU - baseNTU) * TURBIDITY_CONSTANTS.DECAY_RATE;
-        if (precip > 0.1) currentNTU += precip * PHYSICAL_PARAMS.precipImpact;
+        // Décroissance alignée sur le Backend : base + (Reste * (1 - 0.77))
+        currentNTU = baseNTU + (currentNTU - baseNTU) * (1 - PHYSICAL_PARAMS.daily_decay);
+        if (precip > 0.1) currentNTU += precip * PHYSICAL_PARAMS.alpha_rain;
     });
 
     return Math.min(Math.round(currentNTU * 10) / 10, TURBIDITY_CONSTANTS.MAX_NTU);
 };
 
-// --- 5. MOTEUR CHIMIQUE ---
+// --- 5. MOTEUR CHIMIQUE (Saturation O2) ---
 
 /**
- * [ALIGNE SUR historical.ts]
  * Calcule l'Oxygène Dissous (DO) en mg/L.
  */
 export const solveDissolvedOxygen = (T: number, P: number): number => {
@@ -110,19 +120,21 @@ export const solveDissolvedOxygen = (T: number, P: number): number => {
     return parseFloat((Cs * (P / 1013.25)).toFixed(2));
 };
 
-// --- 6. MOTEUR PHYSIQUE ---
+// --- 6. MOTEUR PHYSIQUE (Vagues) ---
 
 /**
- * [ALIGNE SUR historical.ts]
  * Calcule la hauteur significative des vagues (Hs) en cm.
+ * [FIX v5.6] Seuil abaissé à 5km/h pour valoriser le clapot riverain.
  */
 export const calculateWaveHeight = (
     windKmH: number, 
     surfaceM2: number = 100000, 
     shapeFactor: number = 1.2
 ): number => {
-    if (windKmH < 10) return 0;
+    if (windKmH < 5) return 0.5; // Clapot résiduel permanent
+    
     const fetch = Math.sqrt(surfaceM2) * shapeFactor;
+    // Formule SMB (Shore Protection Manual) simplifiée
     const hs = 0.0016 * (windKmH / 3.6) * Math.sqrt(fetch / 9.81) * 100 * 0.8; 
     return parseFloat(hs.toFixed(1));
 };

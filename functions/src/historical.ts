@@ -3,7 +3,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import { MorphologyID, BassinType, DepthCategoryID, FullEnvironmentalSnapshot } from "./types";
 
-// --- 1. CONSTANTES PHYSIQUES v6.2 (ÉDITION ÉQUILIBRÉE SEINE) ---
+// --- 1. CONSTANTES PHYSIQUES v6.4 (REFINED PHYSICS & 24H SYNC) ---
 
 const BASSIN_OFFSET: Record<BassinType, number> = {
     'URBAIN': 1.2, 'AGRICOLE': 0.5, 'FORESTIER': 0.0, 'PRAIRIE': 0.3
@@ -17,21 +17,10 @@ const DEPTH_MAP: Record<DepthCategoryID, number> = {
     'Z_LESS_3': 2.0, 'Z_3_15': 6.0, 'Z_MORE_15': 15.0
 };
 
-// Michael : Dictionnaire Smart Baseline (v5.0) pour l'initialisation thermique
-// Valeurs calibrées pour la Seine (Moyennes mensuelles historiques)
+// Michael : Smart Baseline alignée sur le Live v7.3 [cite: 432]
 const SMART_BASELINE: Record<number, number> = {
-    0: 5.5,  // Janvier (Source SFD v5.0) [cite: 432]
-    1: 6.0,  // Février
-    2: 9.0,  // Mars
-    3: 12.0, // Avril
-    4: 16.0, // Mai
-    5: 19.5, // Juin
-    6: 21.0, // Juillet (Source SFD v5.0) [cite: 432]
-    7: 21.5, // Août
-    8: 19.0, // Septembre
-    9: 14.5, // Octobre
-    10: 10.5,// Novembre
-    11: 7.5  // Décembre
+    0: 5.5,  1: 6.0,  2: 9.0,  3: 12.0, 4: 16.0, 5: 19.5,
+    6: 21.0, 7: 21.5, 8: 19.0, 9: 14.5, 10: 10.5, 11: 7.5
 };
 
 const PHI = 172; 
@@ -65,7 +54,7 @@ interface BioContext {
     date: Date;
 }
 
-// --- 3. MOTEURS PHYSIQUES ---
+// --- 3. MOTEURS PHYSIQUES (V6.3 - HORAIRE) ---
 
 function solveAir2Water(history: any[], morphoId: MorphologyID, bassin: BassinType, depthId: DepthCategoryID, meanDepth?: number): number {
     const offset = BASSIN_OFFSET[bassin] || 0;
@@ -73,19 +62,25 @@ function solveAir2Water(history: any[], morphoId: MorphologyID, bassin: BassinTy
     const delta = morphoId === 'Z_RIVER' ? 12 : 0.207 * Math.pow(D, 1.35); 
     const mu = 0.15 + (1 / (D * 5));
 
-    // Michael : Application de la Smart Baseline au lieu de l'air J-45 pour tuer le biais de Cold Start 
+    // Michael : Application de la Smart Baseline (J-45)
+    // L'historique est désormais horaire, donc on prend le premier point
     const firstDate = (history && history.length > 0) ? new Date(history[0].date) : new Date();
     const month = firstDate.getMonth();
     let waterTemp = SMART_BASELINE[month] || 12;
 
-    history.forEach((day: any) => {
-        const date = new Date(day.date);
+    // Boucle Horaire (Alignement Live)
+    history.forEach((hour: any) => {
+        const date = new Date(hour.date);
         const dayOfYear = Math.floor((date.getTime() - new Date(date.getFullYear(), 0, 0).getTime()) / 86400000);
         const solarCorrection = mu * Math.sin((2 * Math.PI * (dayOfYear - PHI)) / 365);
-        const equilibriumTemp = (day.temperature || 10) + offset + (solarCorrection * 10);
-        // Équation différentielle Air2Water [cite: 19, 25]
-        waterTemp += (equilibriumTemp - waterTemp) / delta;
+        
+        // Température d'équilibre horaire
+        const equilibriumTemp = (hour.temperature || 10) + offset + (solarCorrection * 10);
+        
+        // Équation différentielle Air2Water (Pas de temps dt = 1h => division par 24) [cite: 19]
+        waterTemp += (equilibriumTemp - waterTemp) / (delta * 24);
     });
+    
     return Math.max(3, Math.min(26.5, waterTemp));
 }
 
@@ -95,7 +90,8 @@ function solveDissolvedOxygen(T: number, P: number): number {
 }
 
 function calculateWaveHeight(windKmH: number, surfaceM2: number = 100000, shapeFactor: number = 1.2): number {
-    if (windKmH < 10) return 0;
+    // [REFINEMENT] Abaissement du seuil à 3km/h pour capter les rides (9.9km/h ne doit pas valoir 0)
+    if (windKmH < 3) return 0;
     const fetch = Math.sqrt(surfaceM2) * shapeFactor;
     const hs = 0.0016 * (windKmH / 3.6) * Math.sqrt(fetch / 9.81) * 100 * 0.8; 
     return parseFloat(hs.toFixed(1));
@@ -104,19 +100,43 @@ function calculateWaveHeight(windKmH: number, surfaceM2: number = 100000, shapeF
 function solveUltreiaFlow(history: any[]) {
     let api = 15; 
     const dailySignals: number[] = [];
+    
+    // Facteur d'accumulation horaire pour s'aligner sur le decay journalier
+    // K_daily = K_hourly ^ 24  => K_hourly = K_daily ^ (1/24)
+    
+    let currentDayIndex = -1;
 
-    history.forEach((day: any) => {
-        const rain = day.precipitation || day.precip || 0;
-        const temp = day.temperature || 15;
-        const currentK = Math.max(0.70, K_BASE - (temp * K_TEMP_SENSITIVITY));
-        api = (api * currentK) + rain;
-        dailySignals.push(api);
+    history.forEach((hour: any) => {
+        const rain = hour.precipitation || hour.precip || 0;
+        const temp = hour.temperature || 15;
+        
+        // Calcul du K local horaire
+        const currentK_Base = Math.max(0.70, K_BASE - (temp * K_TEMP_SENSITIVITY));
+        const hourlyK = Math.pow(currentK_Base, 1/24);
+
+        // API update horaire
+        api = (api * hourlyK) + rain;
+
+        // Pour le calcul de tendance, on garde une trace journalière (sampling à midi ou moyenne)
+        // Ici on prend la valeur à chaque changement de jour pour simplifier le signal lissé
+        const d = new Date(hour.date);
+        if (d.getDate() !== currentDayIndex) {
+            dailySignals.push(api);
+            currentDayIndex = d.getDate();
+        }
     });
+
+    // Si l'historique est trop court, on push la dernière valeur
+    if (dailySignals.length === 0) dailySignals.push(api);
+    // On force la dernière valeur précise (fin de session)
+    dailySignals[dailySignals.length - 1] = api;
 
     const getWeightedSignal = (idx: number) => {
         let weighted = 0;
+        // Kernel inversé pour prendre [J, J-1, J-2...]
         for (let i = 0; i < LAG_KERNEL.length; i++) {
-            const val = dailySignals[idx - i] || dailySignals[0];
+            const indexToRead = idx - i;
+            const val = indexToRead >= 0 ? dailySignals[indexToRead] : dailySignals[0];
             weighted += val * LAG_KERNEL[i];
         }
         return weighted;
@@ -187,6 +207,7 @@ const computeUltreiaScore = (species: string, ctx: BioContext, lux: number, oxyF
 // --- 6. CLOUD FUNCTION PRINCIPALE ---
 
 export const getHistoricalContext = onCall({ region: "europe-west1" }, async (request) => {
+    // Michael: weatherHistory doit maintenant être un tableau HORAIRE de 45 jours
     const { weather, weatherHistory, location, dateStr } = request.data;
     if (!weather || !location || !weatherHistory) throw new HttpsError("invalid-argument", "Data missing.");
 
@@ -195,22 +216,33 @@ export const getHistoricalContext = onCall({ region: "europe-west1" }, async (re
     const morphoId = (morpho?.typeId || 'Z_RIVER') as MorphologyID;
     const bassin = (morpho?.bassin || 'URBAIN') as BassinType;
 
+    // Résolution thermique horaire (haute précision)
     const Tw = solveAir2Water(weatherHistory, morphoId, bassin, morpho?.depthId || 'Z_3_15');
     const { intensity, derivative, trend } = solveUltreiaFlow(weatherHistory);
     
+    // Turbidité Horaire
     const baseNTU = BASSIN_TURBIDITY_BASE[bassin] || 8.0;
     let NTU = baseNTU;
-    weatherHistory.forEach((day: any) => {
-        const r = day.precipitation || day.precip || 0;
-        NTU = baseNTU + (NTU - baseNTU) * (1 - DAILY_DECAY);
+    
+    // Conversion du taux de décantation journalier en taux horaire
+    // (1 - decay)^1/24
+    const hourlyDecayFactor = Math.pow(1 - DAILY_DECAY, 1/24);
+
+    weatherHistory.forEach((hour: any) => {
+        const r = hour.precipitation || hour.precip || 0;
+        // Décroissance horaire
+        NTU = baseNTU + (NTU - baseNTU) * hourlyDecayFactor;
+        // Apport instantané
         if (r > 0.1) NTU += r * ALPHA_RAIN;
     });
 
     const P = weather.pressure || 1013;
     const DO = solveDissolvedOxygen(Tw, P);
     const wind = weather.windSpeed || 0;
+    // Utilisation de la physique raffinée (cutoff 3km/h)
     const wavesHs = calculateWaveHeight(wind, morpho?.surfaceArea, morpho?.shapeFactor);
 
+    // Lux et Crépuscule basés sur l'heure exacte de la session
     const lux = (function(d, c) {
         const h = d.getHours() + (d.getMinutes() / 60);
         const elev = Math.sin(Math.PI * (h - 7) / 12);
@@ -224,9 +256,28 @@ export const getHistoricalContext = onCall({ region: "europe-west1" }, async (re
         return 1.0 + (Math.max(p1, p2) * 0.4);
     })(sessionDate);
 
+    // [SYNC 24H] Delta Pression sur 24h (et non plus 3h) pour alignement Frontend/Physiologie
+    const sessionTs = sessionDate.getTime();
+    let closestIdx = weatherHistory.length - 1;
+    let minDiff = Infinity;
+    
+    weatherHistory.forEach((h: any, i: number) => {
+        const diff = Math.abs(new Date(h.date).getTime() - sessionTs);
+        if (diff < minDiff) {
+            minDiff = diff;
+            closestIdx = i;
+        }
+    });
+
+    const currentPress = weatherHistory[closestIdx]?.pressure || P;
+    // On recule de 24 index (24 heures)
+    // Sécurité : si historique trop court (ne devrait pas arriver avec 45j), on prend le premier dispo
+    const prevPress = closestIdx >= 24 ? weatherHistory[closestIdx - 24].pressure : weatherHistory[0].pressure;
+    const pressureTrend = currentPress - prevPress;
+
     const context: BioContext = {
         waterTemp: Tw, cloudCover: weather.clouds || 0, windSpeed: wind,
-        pressureTrend: P - (weatherHistory[weatherHistory.length - 1]?.pressure || P),
+        pressureTrend: pressureTrend,
         turbidityNTU: NTU, dissolvedOxygen: DO, waveHeight: wavesHs,
         flowIndex: intensity, flowDerivative: derivative, flowTrend: trend, date: sessionDate
     };
@@ -252,10 +303,11 @@ export const getHistoricalContext = onCall({ region: "europe-west1" }, async (re
             calculationDate: new Date().toISOString(),
             calculationMode: 'ULTREIA_CALIBRATED' as any,
             flowStatus: trend,
-            morphologyType: morphoId 
+            morphologyType: morphoId,
+            sourceLogId: 'ultreia_hourly_45d'
         }
     };
 
-    logger.info(`Ultreia Balanced v6.2. Sandre: ${response.scores.sandre}, Pike: ${response.scores.brochet}`);
+    logger.info(`Ultreia Hourly v6.4 (Synced). Sandre: ${response.scores.sandre}, Temp: ${Tw}°C`);
     return response;
 });
