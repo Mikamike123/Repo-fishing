@@ -1,4 +1,4 @@
-// lib/oracle-service.ts - Version 7.4 (Aligned 45d History & Refined Wave Physics)
+// lib/oracle-service.ts - Version 7.5 (Physics Alignment: Air Temp for Flow Decay)
 
 import { calculateUniversalBioScores, BioContext, BioScores } from './bioScoreEngine';
 import { solveDissolvedOxygen, calculateWaveHeight, BASSIN_TURBIDITY_BASE } from './zeroHydroEngine'; 
@@ -44,8 +44,8 @@ const ALPHA_RAIN = 1.8;
 const DAILY_DECAY = 0.77;
 
 /**
- * MOTEUR D'ESTIMATION PHYSIQUE & BIOLOGIQUE v7.3
- * Synchronisation barométrique 24h stricte pour éliminer l'écart Live/Backend.
+ * MOTEUR D'ESTIMATION PHYSIQUE & BIOLOGIQUE v7.5
+ * Synchronisation Hydro : Utilisation de T_Air pour l'évapotranspiration (Flow Decay)
  */
 export const fetchOracleChartData = async (
     lat: number, 
@@ -62,7 +62,7 @@ export const fetchOracleChartData = async (
         const surface = morphology?.surfaceArea || 100000; 
         const shape = morphology?.shapeFactor || 1.2;
 
-        // [ALIGNEMENT] Passage à 45 jours pour matcher le Backend et stabiliser l'inertie thermique
+        // [ALIGNEMENT] Historique 45 jours
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,surface_pressure,cloud_cover,wind_speed_10m,precipitation&timezone=Europe%2FParis&past_days=45&forecast_days=4`;
         const response = await fetch(url);
         if (!response.ok) throw new Error('Météo Oracle indisponible');
@@ -91,7 +91,7 @@ export const fetchOracleChartData = async (
             const dayOfYear = Math.floor((ts - new Date(date.getFullYear(), 0, 0).getTime()) / (oneHour * 24));
             
             const precip = hourly.precipitation[i] || 0;
-            const Ta = hourly.temperature_2m[i];
+            const Ta = hourly.temperature_2m[i]; // Température AIR
             const Patm = hourly.surface_pressure[i];
             const windKmH = hourly.wind_speed_10m[i];
 
@@ -107,8 +107,10 @@ export const fetchOracleChartData = async (
             currentNTU = baseNTU + (currentNTU - baseNTU) * hourlyDecayFactor;
             if (precip > 0.1) currentNTU += precip * ALPHA_RAIN;
 
-            // 3. Flux API & Tendance
-            const currentK = Math.max(0.70, K_BASE - (currentWaterTemp * K_TEMP_SENSITIVITY));
+            // 3. Flux API & Tendance [CORRECTION ICI]
+            // On utilise Ta (Air) et non currentWaterTemp pour le séchage des sols (Evapotranspiration)
+            // Cela aligne le Frontend (15%) sur le Backend (21%) qui est plus juste physiquement.
+            const currentK = Math.max(0.70, K_BASE - (Ta * K_TEMP_SENSITIVITY));
             const hourlyK = Math.pow(currentK, 1/24);
             api = (api * hourlyK) + precip; 
             
@@ -122,8 +124,7 @@ export const fetchOracleChartData = async (
             // Filtrage : On ne commence à traiter les scores que pour la fenêtre d'affichage (T-12h à T+72h)
             if (ts < startGraph || ts > endGraph) continue;
 
-            // 4. BioScores - Synchronisation Barométrique 24h
-            // On calcule le delta P sur 24 points (24h) pour satisfaire la physiologie des physoclistes
+            // 4. BioScores
             const dissolvedOxygen = solveDissolvedOxygen(currentWaterTemp, Patm);
             const prevPress24h = i >= 24 ? hourly.surface_pressure[i - 24] : hourly.surface_pressure[0];
             const deltaP24h = Patm - prevPress24h;
@@ -132,7 +133,7 @@ export const fetchOracleChartData = async (
                 waterTemp: currentWaterTemp,
                 cloudCover: hourly.cloud_cover[i],
                 windSpeed: windKmH,
-                pressureTrend: deltaP24h, // Injection du gradient 24h synchronisé
+                pressureTrend: deltaP24h, 
                 turbidityNTU: currentNTU,
                 dissolvedOxygen: dissolvedOxygen,
                 waveHeight: hs,
@@ -144,7 +145,7 @@ export const fetchOracleChartData = async (
 
             const rawScores = calculateUniversalBioScores(ctx);
 
-            // 5. Lissage EMA pour la stabilité visuelle du graphique
+            // 5. Lissage EMA
             if (points.length === 0) {
                 emaScores = { ...rawScores };
             } else {
