@@ -198,8 +198,6 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
                                 weather: { ...weatherContext.snapshot },
                                 hydro: { 
                                         flowRaw: 0, 
-                                        flowLagged: 0, 
-                                        level: 0, 
                                         waterTemp: cloudData.waterTemp ?? null, 
                                         turbidityIdx: Math.min(1, (cloudData.turbidityNTU || 5) / 50) 
                                     },

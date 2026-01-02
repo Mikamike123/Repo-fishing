@@ -157,8 +157,8 @@ const SessionDetailModal: React.FC<SessionDetailModalProps> = ({ session, isOpen
                             </h3>
                             <div className="grid grid-cols-3 gap-3">
                                 <DataTile label="Temp. Eau" value={env?.hydro?.waterTemp?.toFixed(1)} unit="°C" icon={Thermometer} theme="orange" />
-                                <DataTile label="Débit" value={env?.hydro?.flowLagged?.toFixed(0)} unit="m³/s" icon={Droplets} theme="cyan" />
-                                <DataTile label="Niveau" value={env?.hydro?.level} unit="mm" icon={Waves} theme="slate" />
+                                <DataTile label="Débit" value={env?.hydro?.flowRaw?.toFixed(0)} unit="m³/s" icon={Droplets} theme="cyan" />
+                                
                                 <DataTile label="Clarté (Idx)" value={env?.hydro?.turbidityIdx?.toFixed(2)} unit="" icon={Eye} theme="emerald" />
                                 <div className="col-span-2 bg-stone-100/40 rounded-2xl flex items-center justify-center p-3 border border-stone-200/50">
                                     <div className="text-center">

@@ -43,10 +43,12 @@ export const generateFishingNarrative = (sessions: Session[], arsenal: AppData):
             
             const h = env.hydro;
             const wTemp = typeof h?.waterTemp === 'number' ? h.waterTemp.toFixed(1) : 'N/A';
-            const flow = typeof h?.flowLagged === 'number' ? h.flowLagged.toFixed(1) : 'N/A';
+            // On utilise flowRaw maintenant
+            const flow = typeof h?.flowRaw === 'number' ? h.flowRaw.toFixed(1) : 'N/A';
             const turb = typeof h?.turbidityIdx === 'number' ? h.turbidityIdx.toFixed(2) : 'N/A';
             
-            text += `HYDROLOGIE: Eau ${wTemp}°C, Débit ${flow}m3/s (Brut: ${h?.flowRaw || 'N/A'}), Niveau ${h?.level || 'N/A'}mm, Turbidité Idx ${turb}\n`;
+            // On simplifie la phrase (plus de distinction Brut/Lagged et plus de Niveau)
+            text += `HYDROLOGIE: Eau ${wTemp}°C, Débit ${flow}m3/s, Turbidité Idx ${turb}\n`;
             
             const s = env.scores;
             text += `BIOSCORES: Sandre ${s?.sandre?.toFixed(0) || 'N/A'}, Brochet ${s?.brochet?.toFixed(0) || 'N/A'}, Perche ${s?.perche?.toFixed(0) || 'N/A'}\n`;

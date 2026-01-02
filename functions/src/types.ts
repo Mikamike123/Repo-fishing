@@ -35,9 +35,7 @@ export interface WeatherSnapshot {
 }
 
 export interface HydroSnapshot {
-  flowRaw: number;          
-  flowLagged: number;       
-  level: number;            
+  flowRaw: number;                  
   waterTemp: number | null; 
   tFond?: number;            
   turbidityIdx?: number;

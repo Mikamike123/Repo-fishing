@@ -388,8 +388,8 @@ export const getHistoricalContext = onCall({ region: "europe-west1" }, async (re
             turbidityIdx: parseFloat(Math.min(1.0, NTU / 80).toFixed(2)),
             dissolvedOxygen: DO,
             waveHeight: wavesHs,
-            flowRaw: Math.round(intensity), 
-            flowLagged: 0, level: 0
+            flowRaw: Math.round(intensity) 
+            
         },
         scores: {
             sandre: computeUltreiaScore('Sandre', context, lux, calculateOxygenFactor(DO), crep),
