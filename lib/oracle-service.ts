@@ -15,6 +15,8 @@ export interface OracleDataPoint extends BioScores {
     waveHeight: number;
     bestScore: number;
     flowRaw: number;
+    // [FIX] Ajout du champ pour le Dashboard
+    flowStatus?: 'Montée' | 'Décrue' | 'Stable';
 }
 
 const BASIN_PARAMS: Record<BassinType, { offset: number }> = {
@@ -159,7 +161,9 @@ export const fetchOracleChartData = async (
                 brochet: Math.round(emaScores.brochet),
                 perche: Math.round(emaScores.perche),
                 blackbass: Math.round(emaScores.blackbass),
-                flowRaw: Math.round(intensity)
+                flowRaw: Math.round(intensity),
+                // [FIX] Injection de la donnée calculée plus haut
+                flowStatus: trend
             });
         }
         return points;

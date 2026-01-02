@@ -276,7 +276,16 @@ const LiveStatusSection: React.FC<any> = ({
                         const val = getVal(key);
                         if (val === null) return null;
                         if (key === 'flowIndex' && !isRiver) return null;
-                        return <DataTile key={key} label={meta.label} value={val} unit={meta.unit} icon={<meta.icon size={16} />} color={getTileTheme(meta.theme)} loading={isLoading} description={meta.description} />;
+
+                        // [CORRECTION] Injection dynamique du statut (Décrue/Montée)
+                        let displayUnit = meta.unit;
+                        if (key === 'flowIndex') {
+                            // Recherche ROBUSTE : Soit à la racine (aplatie), soit dans metadata
+                            const status = (liveOraclePoint as any)?.flowStatus || (liveOraclePoint as any)?.metadata?.flowStatus;
+                            if (status) displayUnit = `% (${status})`;
+                        }
+
+                        return <DataTile key={key} label={meta.label} value={val} unit={displayUnit} icon={<meta.icon size={16} />} color={getTileTheme(meta.theme)} loading={isLoading} description={meta.description} />;
                     })}
                 </div>
             </div>

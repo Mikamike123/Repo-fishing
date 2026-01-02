@@ -5,6 +5,8 @@ import {
     Waves, Eye, CloudRain, AlertOctagon, Maximize2, MapPin 
 } from 'lucide-react';
 import { Session, SpeciesType } from '../types';
+// [ALIGNEMENT] Import des référentiels pour la cohérence UI avec SessionCard
+import { WEATHER_METADATA, HYDRO_METADATA } from '../constants/indicators';
 
 const getWindDir = (deg?: number) => {
     if (deg === undefined) return '';
@@ -22,6 +24,8 @@ const SessionDetailModal: React.FC<SessionDetailModalProps> = ({ session, isOpen
     if (!isOpen || !session) return null;
 
     const env = session.envSnapshot;
+    // Détection du mode simulé pour l'affichage éventuel (optionnel ici mais gardé pour cohérence)
+    const isSimulated = env?.metadata?.calculationMode === 'ZERO_HYDRO' || (env?.metadata?.calculationMode as any) === 'ULTREIA_CALIBRATED';
 
     const formatCatchTime = (c: any) => {
         if (c.time) return c.time;
@@ -67,12 +71,15 @@ const SessionDetailModal: React.FC<SessionDetailModalProps> = ({ session, isOpen
         const iconClass = currentTheme.split(' icon-text-')[1];
         const containerClass = currentTheme.split(' icon-text-')[0];
 
+        // Protection contre l'affichage vide
+        if (value === undefined || value === null || value === '--') return null;
+
         return (
             <div className={`${containerClass} p-3 rounded-2xl border shadow-sm flex flex-col items-center justify-center text-center transition-transform hover:scale-[1.02]`}>
                 <Icon size={16} className={`${iconClass} mb-1`} />
                 <div className="text-[8px] font-black opacity-60 uppercase tracking-tighter mb-0.5">{label}</div>
                 <div className="text-sm font-black">
-                    {value !== undefined && value !== null ? value : '--'}
+                    {value}
                     <span className="text-[10px] ml-0.5 font-bold opacity-50">{unit}</span>
                 </div>
             </div>
@@ -132,34 +139,75 @@ const SessionDetailModal: React.FC<SessionDetailModalProps> = ({ session, isOpen
                 <div className="p-6 space-y-8 overflow-y-auto bg-stone-50/50">
                     
                     <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        {/* ATMOSPHÈRE */}
+                        {/* ATMOSPHÈRE : Données Météo Dynamiques */}
                         <div className="space-y-4">
                             <h3 className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] flex items-center gap-2 ml-1">
                                 <CloudSun size={14} /> Atmosphère
                             </h3>
                             <div className="grid grid-cols-3 gap-3">
-                                <DataTile label="Couverture" value={env?.weather?.clouds} unit="%" icon={CloudSun} theme="slate" />
-                                
-                                <DataTile label="Temp. Air" value={env?.weather?.temperature ? Math.round(env.weather.temperature) : null} unit="°C" icon={Thermometer} theme="rose" />
-                                <DataTile label="Pression" value={env?.weather?.pressure?.toFixed(0)} unit="hPa" icon={Gauge} theme="indigo" />
-                                <DataTile label="Vitesse Vent" value={env?.weather?.windSpeed ? Math.round(env.weather.windSpeed) : null} unit="km/h" icon={Wind} theme="amber" />
-                                
-                                <DataTile label="Direction" value={getWindDir(env?.weather?.windDirection)} unit="" icon={Wind} theme="amber" />
-                                
-                                <DataTile label="Précip." value={env?.weather?.precip} unit="mm" icon={CloudRain} theme="blue" />
+                                {Object.entries(WEATHER_METADATA).map(([key, meta]) => {
+                                    let val = env?.weather?.[meta.dataKey as keyof typeof env.weather];
+                                    let unit = meta.unit;
+                                    
+                                    if (key === 'wind') {
+                                        unit = `km/h ${getWindDir(env?.weather?.windDirection)}`;
+                                    }
+                                    
+                                    return (
+                                        <DataTile 
+                                            key={key}
+                                            label={meta.label} 
+                                            value={val !== undefined ? Math.round(val as number) : null} 
+                                            unit={unit} 
+                                            icon={meta.icon} 
+                                            theme={meta.theme} 
+                                        />
+                                    );
+                                })}
                             </div>
                         </div>
 
-                        {/* HYDROLOGIE */}
+                        {/* HYDROLOGIE : Données Hydro Dynamiques (Vagues, Débit %, Statut) */}
                         <div className="space-y-4">
                             <h3 className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] flex items-center gap-2 ml-1">
                                 <Waves size={14} /> Hydrologie
                             </h3>
                             <div className="grid grid-cols-3 gap-3">
-                                <DataTile label="Temp. Eau" value={env?.hydro?.waterTemp?.toFixed(1)} unit="°C" icon={Thermometer} theme="orange" />
-                                <DataTile label="Débit" value={env?.hydro?.flowRaw?.toFixed(0)} unit="m³/s" icon={Droplets} theme="cyan" />
-                                
-                                <DataTile label="Clarté (Idx)" value={env?.hydro?.turbidityIdx?.toFixed(2)} unit="" icon={Eye} theme="emerald" />
+                                {Object.entries(HYDRO_METADATA).map(([key, meta]) => {
+                                    // Nettoyage: On n'affiche plus 'level' (obsolète)
+                                    if (key === 'level') return null;
+
+                                    let val = env?.hydro?.[meta.dataKey as keyof typeof env.hydro];
+                                    // Si la valeur (ex: Waves) n'est pas présente, la tuile ne s'affiche pas
+                                    if (val === undefined || val === null) return null;
+
+                                    let displayVal: string | number = val as number;
+                                    let unit = meta.unit;
+
+                                    if (key === 'waterTemp' || key === 'turbidity' || key === 'oxygen' || key === 'waves') {
+                                        displayVal = (val as number).toFixed(1);
+                                    } else if (key === 'flow' || key === 'flowIndex') {
+                                        // [FIX] Affichage en % + Statut (ex: 23% (Décrue))
+                                        displayVal = Math.round(val as number);
+                                        if ((env?.metadata as any)?.flowStatus) {
+                                            unit = `% (${(env?.metadata as any).flowStatus})`;
+                                        } else {
+                                            unit = '%';
+                                        }
+                                    }
+
+                                    return (
+                                        <DataTile 
+                                            key={key}
+                                            label={meta.label} 
+                                            value={displayVal} 
+                                            unit={unit} 
+                                            icon={meta.icon} 
+                                            theme={meta.theme}
+                                        />
+                                    );
+                                })}
+
                                 <div className="col-span-2 bg-stone-100/40 rounded-2xl flex items-center justify-center p-3 border border-stone-200/50">
                                     <div className="text-center">
                                         <div className="text-[8px] font-black text-stone-400 uppercase tracking-tighter mb-0.5">Snapshot ID</div>
