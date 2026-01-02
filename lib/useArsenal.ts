@@ -53,15 +53,14 @@ export const useArsenal = (currentUserId: string) => {
     };
 
     // Suppression (Soft Delete)
+    // MODIFICATION : Retrait de window.confirm pour laisser l'UI gérer la confirmation
     const handleDeleteItem = async (col: string, id: string) => { 
-        if (window.confirm("Archiver cet élément ?")) {
-            try { 
-                await updateDoc(doc(db, col, id), { 
-                    active: false, 
-                    updatedAt: Timestamp.now() 
-                }); 
-            } catch (e) { console.error(e); } 
-        }
+        try { 
+            await updateDoc(doc(db, col, id), { 
+                active: false, 
+                updatedAt: Timestamp.now() 
+            }); 
+        } catch (e) { console.error(e); } 
     };
 
     // Édition Générique (La clé pour ton problème GPS)

@@ -1,6 +1,6 @@
 // App.tsx
 import React, { useState, useEffect, useMemo } from 'react'; 
-import { Home, PlusCircle, ScrollText, Settings, Fish, Bot, User, Menu, X, ChevronRight, Users, MapPin } from 'lucide-react';
+import { Home, PlusCircle, ScrollText, Settings, Fish, Bot, User, Menu, X, ChevronRight, MapPin, Anchor } from 'lucide-react';
 import { 
   onSnapshot, query, orderBy, 
   QuerySnapshot, DocumentData, 
@@ -23,6 +23,7 @@ import { useArsenal } from './lib/useArsenal';
 import { fetchOracleChartData, OracleDataPoint } from './lib/oracle-service'; 
 import { fetchUniversalWeather } from './lib/universal-weather-service'; 
 
+// Ajout de 'locations' dans les vues disponibles
 type View = 'dashboard' | 'session' | 'history' | 'arsenal' | 'coach' | 'profile' | 'locations';
 
 const App: React.FC = () => {
@@ -35,9 +36,6 @@ const App: React.FC = () => {
     const [editingSession, setEditingSession] = useState<Session | null>(null);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     
-    // État pour le Manager de lieux
-    const [showLocationsManager, setShowLocationsManager] = useState(false);
-
     // --- NOUVEL ÉTAT : BROUILLON MAGIC SCAN ---
     const [magicDraft, setMagicDraft] = useState<any>(null);
 
@@ -51,6 +49,9 @@ const App: React.FC = () => {
     const [isOracleLoading, setIsOracleLoading] = useState(false);
     const [displayedWeather, setDisplayedWeather] = useState<WeatherSnapshot | null>(null);
     const [isWeatherLoading, setIsWeatherLoading] = useState(false);
+
+    // --- SMART ROUTING VERS SECTEUR ---
+    const [targetLocationId, setTargetLocationId] = useState<string | null>(null);
 
     // --- UTILISATION DU HOOK ARSENAL ---
     const { 
@@ -253,7 +254,7 @@ const App: React.FC = () => {
             
             await updateDoc(doc(db, 'sessions', id), updatePayload);
             setEditingSession(null);
-            setCurrentView('history');
+            setCurrentView('history'); 
         } catch (error) { console.error(error); }
     };
 
@@ -298,33 +299,42 @@ const App: React.FC = () => {
         setIsMenuOpen(false); 
     };
 
-    const toggleUser = () => {
-        const nextUser = currentUserId === 'user_1' ? 'user_2' : 'user_1';
-        setCurrentUserId(nextUser);
+    // --- ROUTING HANDLERS ---
+    const handleOpenLocation = () => {
+        if (activeLocationId) {
+            setTargetLocationId(activeLocationId);
+            setCurrentView('locations');
+        } else {
+            setCurrentView('locations');
+        }
     };
 
     const renderContent = () => { 
-        if (showLocationsManager) {
-            return (
-                <LocationsManager 
-                    locations={arsenalData.locations}
-                    spots={arsenalData.spots}
-                    onAddLocation={(l: string, coords: any) => handleAddItem('locations', l, coords ? { coordinates: coords } : undefined)}
-                    onEditLocation={(id, l, extra) => handleEditItem('locations', id, l, extra)}
-                    onDeleteLocation={(id: string) => handleDeleteItem('locations', id)}
-                    onToggleFavorite={handleToggleLocationFavorite}
-                    onMoveLocation={(id: string, dir: 'up' | 'down') => handleMoveItem('locations', id, dir)} 
-                    
-                    onAddSpot={(l: string, locId: string) => handleAddItem('zones', l, { locationId: locId })}
-                    onDeleteSpot={(id: string) => handleDeleteItem('zones', id)}
-                    onEditSpot={(id: string, l: string) => handleEditItem('zones', id, l)}
-
-                    onBack={() => { setShowLocationsManager(false); }}
-                />
-            );
-        }
-
         switch (currentView) {
+            case 'locations':
+                return (
+                    <LocationsManager 
+                        userId={currentUserId}
+                        initialOpenLocationId={targetLocationId}
+                        locations={arsenalData.locations}
+                        spots={arsenalData.spots}
+                        onAddLocation={(l: string, coords: any) => handleAddItem('locations', l, coords ? { coordinates: coords } : undefined)}
+                        onEditLocation={(id, l, extra) => handleEditItem('locations', id, l, extra)}
+                        onDeleteLocation={(id: string) => handleDeleteItem('locations', id)}
+                        onToggleFavorite={handleToggleLocationFavorite}
+                        onMoveLocation={(id: string, dir: 'up' | 'down') => handleMoveItem('locations', id, dir)} 
+                        
+                        onAddSpot={(l: string, locId: string) => handleAddItem('zones', l, { locationId: locId })}
+                        onDeleteSpot={(id: string) => handleDeleteItem('zones', id)}
+                        onEditSpot={(id: string, l: string) => handleEditItem('zones', id, l)}
+
+                        onBack={() => { 
+                            setTargetLocationId(null);
+                            setCurrentView('dashboard'); 
+                        }}
+                    />
+                );
+
             case 'dashboard': 
                 return (
                     <Dashboard 
@@ -340,9 +350,11 @@ const App: React.FC = () => {
                         activeLocationLabel={activeLocation?.label || "Sélectionner un secteur"}
                         activeLocationId={activeLocationId}
                         availableLocations={arsenalData.locations}
-                        onLocationClick={() => setShowLocationsManager(true)}
+                        
+                        // Clic sur le titre -> Ouvre le LocationsManager
+                        onLocationClick={handleOpenLocation}
+                        
                         onLocationSelect={setActiveLocationId} 
-                        // [CORRECTION] Ajout de la prop manquante exigée par l'interface DashboardProps
                         setActiveLocationId={setActiveLocationId}
                         
                         // Actions standard
@@ -422,6 +434,7 @@ const App: React.FC = () => {
                         locations={arsenalData.locations} 
                         defaultLocationId={activeLocationId} 
                         lastCatchDefaults={lastCatchDefaults}
+                        // CORRECTION : suppression de userId, onClose, arsenal qui causaient les erreurs
                     />
                 );
             default:
@@ -449,27 +462,24 @@ const App: React.FC = () => {
 
     return ( 
         <div className="min-h-screen bg-[#FAF9F6] pb-24 text-stone-600">
-            {!showLocationsManager && (
-                // [RESTAURATION HEADER] Ajout du bouton Menu (Burger)
-                <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-stone-200 px-4 py-3 flex items-center justify-between shadow-sm">
-                    <div className="flex items-center gap-2">
-                        {/* BOUTON MENU RESTAURÉ */}
-                        <button onClick={() => setIsMenuOpen(true)} className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-xl transition-colors">
-                            <Menu size={24} strokeWidth={2.5} />
-                        </button>
-                        
-                        <div className="w-8 h-8 bg-stone-800 rounded-lg flex items-center justify-center">
-                            <Fish className="text-white" size={20} />
-                        </div>
-                        <span className="font-black text-lg tracking-tighter text-stone-800">SEINE<span className="text-amber-500">ORACLE</span></span>
-                    </div>
-                    <button onClick={() => setCurrentView('profile')} className="w-8 h-8 rounded-full bg-stone-100 overflow-hidden border border-stone-200">
-                        {userProfile?.avatarBase64 ? <img src={userProfile.avatarBase64} alt="Profile" className="w-full h-full object-cover" /> : <User size={20} className="text-stone-400 m-auto mt-1" />}
+            {/* HEADER FIXE */}
+            <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-stone-200 px-4 py-3 flex items-center justify-between shadow-sm">
+                <div className="flex items-center gap-2">
+                    <button onClick={() => setIsMenuOpen(true)} className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-xl transition-colors">
+                        <Menu size={24} strokeWidth={2.5} />
                     </button>
-                </header>
-            )}
+                    
+                    <div className="w-8 h-8 bg-stone-800 rounded-lg flex items-center justify-center">
+                        <Fish className="text-white" size={20} />
+                    </div>
+                    <span className="font-black text-lg tracking-tighter text-stone-800">SEINE<span className="text-amber-500">ORACLE</span></span>
+                </div>
+                <button onClick={() => setCurrentView('profile')} className="w-8 h-8 rounded-full bg-stone-100 overflow-hidden border border-stone-200">
+                    {userProfile?.avatarBase64 ? <img src={userProfile.avatarBase64} alt="Profile" className="w-full h-full object-cover" /> : <User size={20} className="text-stone-400 m-auto mt-1" />}
+                </button>
+            </header>
 
-            {/* [RESTAURATION SIDEBAR] Menu latéral complet */}
+            {/* BURGER MENU LATÉRAL */}
             {isMenuOpen && (
                 <>
                     <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-sm z-50 animate-in fade-in" onClick={() => setIsMenuOpen(false)} />
@@ -482,13 +492,13 @@ const App: React.FC = () => {
                             <div><div className="font-black text-stone-800 text-lg leading-none">{userProfile?.pseudo}</div><div className="text-xs text-stone-400 font-medium mt-1">v4.5 Soldat du Quai</div></div>
                         </div>
                         <nav className="space-y-2 flex-1">
-                            {/* Lien Mes Secteurs corrigé pour pointer vers LocationsManager */}
-                            <button onClick={() => { setShowLocationsManager(true); setIsMenuOpen(false); }} className="w-full flex items-center justify-between p-4 rounded-2xl text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-all font-bold">
-                                <span className="flex items-center gap-3"><MapPin size={20} className="text-emerald-500"/> Mes Secteurs</span><ChevronRight size={16} />
+                            
+                            <button onClick={() => { setCurrentView('arsenal'); setIsMenuOpen(false); }} className="w-full flex items-center justify-between p-4 rounded-2xl text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-all font-bold group">
+                                <span className="flex items-center gap-3"><Anchor size={20} className="text-stone-400 group-hover:text-amber-500 transition-colors"/> Mon Arsenal</span><ChevronRight size={16} />
                             </button>
 
-                            <button onClick={() => navigateFromMenu('profile')} className="w-full flex items-center justify-between p-4 rounded-2xl text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-all font-bold">
-                                <span className="flex items-center gap-3"><User size={20} className="text-amber-500"/> Mon Profil</span><ChevronRight size={16} />
+                            <button onClick={() => navigateFromMenu('profile')} className="w-full flex items-center justify-between p-4 rounded-2xl text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-all font-bold group">
+                                <span className="flex items-center gap-3"><User size={20} className="text-stone-400 group-hover:text-amber-500 transition-colors"/> Mon Profil</span><ChevronRight size={16} />
                             </button>
                         </nav>
                         <div className="mt-auto pt-6 border-t border-stone-100 text-center"><p className="text-[10px] text-stone-300 tracking-tighter uppercase font-bold">Seine Oracle v4.5 RAG Ready</p></div>
@@ -500,9 +510,11 @@ const App: React.FC = () => {
                 {renderContent()}
             </main>
 
+            {/* BOTTOM NAVIGATION */}
             <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-stone-200 bg-white pb-safe shadow-lg"> 
                 <div className="mx-auto flex max-w-lg items-center justify-around py-3">
-                    <button onClick={() => { setShowLocationsManager(false); setCurrentView('dashboard'); }} className={`flex flex-col items-center gap-1 ${currentView === 'dashboard' && !showLocationsManager ? 'text-amber-600' : 'text-stone-400'}`}><Home size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Live</span></button>
+                    <button onClick={() => { setTargetLocationId(null); setCurrentView('dashboard'); }} className={`flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-amber-600' : 'text-stone-400'}`}><Home size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Live</span></button>
+                    
                     <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('history'); }} className={`flex flex-col items-center gap-1 ${currentView === 'history' ? 'text-amber-600' : 'text-stone-400'}`}><ScrollText size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Journal</span></button>
                     
                     <div className="relative -top-6 flex items-center justify-center gap-3">
@@ -520,7 +532,8 @@ const App: React.FC = () => {
                     </div>
 
                     <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('coach'); }} className={`flex flex-col items-center gap-1 ${currentView === 'coach' ? 'text-emerald-600' : 'text-stone-400'}`}><Bot size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Coach</span></button>
-                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('arsenal'); }} className={`flex flex-col items-center gap-1 ${currentView === 'arsenal' ? 'text-amber-600' : 'text-stone-400'}`}><Settings size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Arsenal</span></button>
+                    
+                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('locations'); }} className={`flex flex-col items-center gap-1 ${currentView === 'locations' ? 'text-indigo-600' : 'text-stone-400'}`}><MapPin size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Secteurs</span></button>
                 </div>
             </nav>
         </div>
