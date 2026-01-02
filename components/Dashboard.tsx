@@ -156,10 +156,13 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
                 </div>
             </div>
 
+            {/* [CORRECTION] Ajout des props manquantes pour piloter le changement de secteur */}
             <OracleHero 
                 locations={uniqueLocationsList} 
                 dataPoints={oracleData} 
-                isLoading={isOracleLoading} 
+                isLoading={isOracleLoading}
+                activeLocationId={activeLocationId}
+                onLocationChange={onLocationSelect} 
             />
 
             <LiveStatusSection 
@@ -182,8 +185,7 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
     );
 };
 
-// ... (Le reste des composants ProgressionHeader, TrophiesSection, ActivityFeed reste inchangé et doit être inclus)
-// Je les inclus ici pour que tu aies le fichier complet
+// ... (Le reste des composants ProgressionHeader, TrophiesSection, ActivityFeed est conservé tel quel)
 
 const ProgressionHeader: React.FC<any> = ({ sessions, currentUserId }) => {
     const currentYear = new Date().getFullYear();
