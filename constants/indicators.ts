@@ -101,21 +101,5 @@ export const HYDRO_METADATA: Record<string, IndicatorMeta> = {
         icon: Activity,
         theme: "cyan",
         dataKey: "dissolvedOxygen"
-    },
-    flow: {
-        label: "Débit (S)",
-        description: "Débit réel mesuré (Seine uniquement).",
-        unit: " m³/s",
-        icon: Waves,
-        theme: "purple",
-        dataKey: "flowLagged"
-    },
-    level: {
-        label: "Niveau (S)",
-        description: "Hauteur d'eau (Seine uniquement).",
-        unit: " mm",
-        icon: ShieldCheck,
-        theme: "indigo",
-        dataKey: "level"
     }
 };

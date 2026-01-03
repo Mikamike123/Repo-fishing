@@ -4,7 +4,7 @@ import {
     AlertOctagon, Anchor, Activity, Camera, 
     PieChart, ChevronUp, Trophy, Flame
 } from 'lucide-react';
-import { Session, UserProfile } from '../types';
+import { Session, UserProfile, AppData } from '../types';
 import { updateUserPseudo } from '../lib/user-service';
 import { doc, updateDoc } from 'firebase/firestore'; 
 import { db } from '../lib/firebase';
@@ -12,14 +12,16 @@ import { buildUserHistory } from '../lib/gamification';
 
 // IMPORTS MODULAIRES
 import { RecordsGrid } from './RecordsGrid';
+import StrategicIntelligence from './StrategicIntelligence';
 
 interface ProfileViewProps {
   userProfile: UserProfile;
   sessions: Session[];
+  arsenalData: AppData;
   onUpdateProfile: (newProfile: UserProfile) => void;
 }
 
-const ProfileView: React.FC<ProfileViewProps> = ({ userProfile, sessions, onUpdateProfile }) => {
+const ProfileView: React.FC<ProfileViewProps> = ({ userProfile, sessions, arsenalData, onUpdateProfile }) => {
   const [expandedYear, setExpandedYear] = useState<number | null>(new Date().getFullYear());
   const [showDonutYear, setShowDonutYear] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -110,7 +112,8 @@ const ProfileView: React.FC<ProfileViewProps> = ({ userProfile, sessions, onUpda
         </div>
         <RecordsGrid sessions={userSessions} title="Records de tous les temps" isGold={true} />
       </div>
-
+      {/* MICHAEL : AJOUT DE L'INTELLIGENCE STRATÉGIQUE ICI */}
+      <StrategicIntelligence sessions={userSessions} userId={userProfile.id} arsenal={arsenalData} />
       {/* STATS ANNUELLES */}
       <div className="space-y-6">
         {statsByYear.map((stat) => {

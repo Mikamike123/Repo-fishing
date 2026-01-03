@@ -6,6 +6,7 @@ import { onSnapshot, query, orderBy } from 'firebase/firestore';
 import { askFishingCoach } from '../lib/ai-service'; 
 import { Session, AppData } from '../types'; 
 import { generateFishingNarrative } from '../lib/fishingNarrativeService'; 
+import { calculateDeepKPIs } from '../lib/analytics-service'; // Michael : Import du nouveau moteur d'analytics
 
 // Michael : Rendu propre du Markdown (Gras et Puces)
 const formatMessage = (text: string) => {
@@ -35,9 +36,10 @@ interface CoachViewProps {
     sessions: Session[];
     arsenalData: AppData;
     liveSnapshot: any; 
+    currentUserId: string;
 }
 
-const CoachView: React.FC<CoachViewProps> = ({ sessions, arsenalData, liveSnapshot }) => {
+const CoachView: React.FC<CoachViewProps> = ({ sessions, arsenalData, liveSnapshot, currentUserId }) => {
     const [input, setInput] = useState('');
     const [messages, setMessages] = useState<any[]>([]);
     const [isCoachTyping, setIsCoachTyping] = useState(false);
@@ -60,7 +62,6 @@ const CoachView: React.FC<CoachViewProps> = ({ sessions, arsenalData, liveSnapsh
                 timestamp: doc.data().timestamp?.toDate() || new Date()
             }));
 
-            // Michael : Accueil dynamique utilisant le userName du profil
             setMessages(fetched.length ? fetched : [{ 
                 id: 'init', 
                 content: `Salut **${liveSnapshot?.userName || 'Pêcheur'}** ! Je suis branché sur le secteur **${liveSnapshot?.locationName || 'en cours...'}**. Prêt pour l'analyse ?`, 
@@ -69,7 +70,6 @@ const CoachView: React.FC<CoachViewProps> = ({ sessions, arsenalData, liveSnapsh
             }]);
         });
         return () => unsubscribe();
-    // Michael : On réagit si le nom du secteur OU le pseudo change
     }, [liveSnapshot?.locationName, liveSnapshot?.userName]); 
 
     useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
@@ -81,28 +81,41 @@ const CoachView: React.FC<CoachViewProps> = ({ sessions, arsenalData, liveSnapsh
         setInput('');
         setIsCoachTyping(true);
         try {
-            // 1. Génération du narratif PASSÉ (RAG)
-            const narrative = generateFishingNarrative(sessions, arsenalData);
+            // Michael : Filtrage strict des sessions pour l'utilisateur actuel
+            const userSessions = sessions.filter(s => s.userId === currentUserId);
 
-            // 2. Préparation du contexte LIVE enrichi
+            // 1. Génération du narratif PASSÉ (RAG) filtré sur l'utilisateur
+            const narrative = generateFishingNarrative(userSessions, arsenalData);
+
+            // 2. Michael : Calcul des KPIs stratégiques avec currentUserId
+            const insights = calculateDeepKPIs(sessions, currentUserId, arsenalData);
+
+            // 3. Préparation du contexte LIVE enrichi
+            const env = liveSnapshot?.env;
             const liveText = `
-                CONTEXTE ENVIRONNEMENTAL COMPLET :
-                - Secteur : ${liveSnapshot?.locationName}
-                - Température Air : ${liveSnapshot?.env?.weather?.temperature}°C
-                - Ciel : ${liveSnapshot?.env?.weather?.clouds}% de nuages
-                - Vent : ${liveSnapshot?.env?.weather?.windSpeed} km/h (Direction : ${liveSnapshot?.env?.weather?.windDirection}°)
-                - Pression : ${liveSnapshot?.env?.weather?.pressure} hPa
-                - Hydrologie : Eau à ${liveSnapshot?.env?.hydro?.waterTemp?.toFixed(1)}°C, Débit ${liveSnapshot?.env?.hydro?.flowLagged} m3/s, Turbidité ${liveSnapshot?.env?.hydro?.turbidityIdx}
-                - BioScores : Sandre ${liveSnapshot?.scores?.sandre?.toFixed(0)}, Perche ${liveSnapshot?.scores?.perche?.toFixed(0)}, Brochet ${liveSnapshot?.scores?.brochet?.toFixed(0)}
+                --- SITUATION LIVE (PRÉSENT) ---
+                LIEU: ${liveSnapshot?.locationName || 'Inconnu'}
+                
+                ATMOSPHÈRE: Air ${env?.weather?.temperature?.toFixed(1)}°C, Pres. ${env?.weather?.pressure}hPa, Vent ${env?.weather?.windSpeed}km/h (${env?.weather?.windDirection}°), Nuages ${env?.weather?.clouds}%, Précip. ${env?.weather?.precip || 0}mm (Code: ${env?.weather?.conditionCode})
+                
+                HYDROLOGIE: Eau ${env?.hydro?.waterTemp?.toFixed(1) || 'N/A'}°C, Courant ${env?.hydro?.flowRaw || 0}%, Turb. ${env?.hydro?.turbidityIdx?.toFixed(2) || 'N/A'} (NTU: ${env?.hydro?.turbidityNTU || 'N/A'}), O2 ${env?.hydro?.dissolvedOxygen || 'N/A'}mg/L, Vagues ${env?.hydro?.waveHeight || 'N/A'}cm
+                
+                CONTEXTE: Tendance ${env?.metadata?.flowStatus || 'Stable'}, Morpho ${env?.metadata?.morphologyType || 'Inconnue'}
+                
+                BIOSCORES: Sandre ${liveSnapshot?.scores?.sandre?.toFixed(0) || '0'}, Perche ${liveSnapshot?.scores?.perche?.toFixed(0) || '0'}, Brochet ${liveSnapshot?.scores?.brochet?.toFixed(0) || '0'}${liveSnapshot?.scores?.blackbass ? `, Bass ${liveSnapshot?.scores?.blackbass.toFixed(0)}` : ''}
             `;
 
-            // 3. Appel de l'IA (Michael: signature avec 5 arguments : msg, loc, past, live, userName)
+            // 4. Michael : Utilisation des coordonnées dynamiques du liveSnapshot
+            const locationCoords = liveSnapshot?.coordinates || { lat: 48.8566, lng: 2.3522 }; 
+
+            // 5. Appel de l'IA avec signature V10.0 (msg, coords, past, live, name, insights)
             await askFishingCoach(
                 msg, 
-                { lat: 48.8912, lng: 2.1932 }, 
+                locationCoords, 
                 narrative, 
                 liveText, 
-                liveSnapshot?.userName || "Pêcheur"
+                liveSnapshot?.userName || "Pêcheur",
+                insights
             );
         } finally {
             setIsCoachTyping(false);

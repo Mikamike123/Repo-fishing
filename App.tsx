@@ -75,16 +75,20 @@ const App: React.FC = () => {
         return arsenalData.locations[0].id;
     }, [arsenalData.locations]);
 
-    // Initialisation de la sélection
+    // Michael : On assure que la sélection reste toujours sur un favori (ou le défaut)
     useEffect(() => { 
         if (!activeLocationId && defaultLocationId) {
+           setActiveLocationId(defaultLocationId);
+         }
+    // Sécurité : Si la location active a été supprimée OU n'est plus favorite, on rebascule
+        if (activeLocationId && arsenalData.locations.length > 0) {
+           const currentLoc = arsenalData.locations.find(l => l.id === activeLocationId);
+           const isFav = currentLoc?.isFavorite;
+        
+        if (!currentLoc || !isFav) {
             setActiveLocationId(defaultLocationId);
         }
-        // Sécurité : Si la location active a été supprimée, on rebascule sur le défaut
-        if (activeLocationId && arsenalData.locations.length > 0) {
-            const exists = arsenalData.locations.find(l => l.id === activeLocationId);
-            if (!exists) setActiveLocationId(defaultLocationId);
-        }
+     }
     }, [defaultLocationId, activeLocationId, arsenalData.locations]);
 
     const activeLocation = useMemo(() => {
@@ -349,7 +353,7 @@ const App: React.FC = () => {
                         // Props de Gestion des Lieux
                         activeLocationLabel={activeLocation?.label || "Sélectionner un secteur"}
                         activeLocationId={activeLocationId}
-                        availableLocations={arsenalData.locations}
+                        availableLocations={arsenalData.locations.filter(l => l.active && l.isFavorite)}
                         
                         // Clic sur le titre -> Ouvre le LocationsManager
                         onLocationClick={handleOpenLocation}
@@ -366,6 +370,7 @@ const App: React.FC = () => {
                         lureTypes={arsenalData.lureTypes}
                         colors={arsenalData.colors}
                         locations={arsenalData.locations}
+                        arsenalData={arsenalData}
                     />
                 );
             case 'history':
@@ -411,11 +416,12 @@ const App: React.FC = () => {
                     <CoachView 
                         sessions={sessions} 
                         arsenalData={arsenalData} 
-                        liveSnapshot={currentLiveSnapshot} 
+                        liveSnapshot={currentLiveSnapshot}
+                        currentUserId={currentUserId} 
                     />
                 );
             case 'profile':
-                return <ProfileView userProfile={userProfile!} sessions={sessions} onUpdateProfile={setUserProfile} />;
+                return <ProfileView userProfile={userProfile!} sessions={sessions} arsenalData={arsenalData} onUpdateProfile={setUserProfile} />;
             case 'session':
                 return (
                     <SessionForm 

@@ -7,7 +7,6 @@ import { getCachedWaterTemp } from './hubeau-service';
 const MODEL_NAME = "gemini-2.5-flash"; 
 const CONTEXT_READ_LIMIT = 15; 
 
-// Michael : Chargement de l'historique conversationnel
 const loadChatHistory = async (): Promise<Content[]> => {
     const q = query(chatHistoryCollection, orderBy('timestamp', 'asc'), limit(CONTEXT_READ_LIMIT));
     const snapshot = await getDocs(q);
@@ -33,45 +32,75 @@ const saveMessage = async (role: 'user' | 'model', content: string) => {
 };
 
 /**
- * askFishingCoach - Moteur de l'Oracle Pêche
- * Michael : Signature mise à jour à 5 arguments pour inclure le pseudo dynamique.
+ * askFishingCoach - Moteur de l'Oracle Pêche (V10.5 - Human Grammar & Clear Terms)
  */
 export const askFishingCoach = async (
     userMessage: string, 
     currentLocation: { lat: number, lng: number },
     narrativeContext: string = "",
     liveContext: string = "",
-    userName: string = "Michael" // Michael : 5ème argument ajouté pour corriger TS2554
+    userName: string = "Michael",
+    strategicContext: string = "" 
 ): Promise<string> => {
     await saveMessage('user', userMessage);
     try {
         const history = await loadChatHistory();
+        const isFirstInteraction = history.length === 0;
+        
+        const techKeywords = ['météo', 'eau', 'condition', 'température', 'vent', 'courant', 'pression', 'ntu', 'oxygène', 'o2', 'stats', 'kpi'];
+        const wantsTechInfo = techKeywords.some(key => userMessage.toLowerCase().includes(key));
+
         const currentWaterTempData = await getCachedWaterTemp();
         const currentWaterTemp = currentWaterTempData ? `${currentWaterTempData.temperature.toFixed(1)} °C` : 'Non disponible';
 
-        // --- OPTION C : L'ANALYSTE MÉTÉO-TACTIQUE (VERSION PERSONNALISÉE) ---
+        let structureInstruction = "";
+        
+        if (isFirstInteraction) {
+            structureInstruction = `
+                STRUCTURE OBLIGATOIRE (PREMIER MESSAGE) :
+                1. NARRATIF (90 mots max) : Ton analyse de binôme, traduction sensorielle simple, espèce cible (BioScore) et combo **leurre/technique** en gras.
+                2. LE COIN PÉDAGO : Bloc final avec les data brutes (Eau, O2, NTU, Flow %, Vagues cm, BioScore).`;
+        } else if (wantsTechInfo) {
+            structureInstruction = `
+                MODE TECHNIQUE : Réponds sur l'environnement ou les statistiques de Michael.
+                - Utilise le "PROFIL DE PERFORMANCE" pour prouver tes dires.
+                - Reste concis (90 mots max).
+                2. LE COIN PÉDAGO : Ajoute le bloc des data brutes du moment.`;
+        } else {
+            structureInstruction = `
+                MODE TACTIQUE FLUIDE : 
+                - Réponse courte (60 mots max).
+                - Pas de chiffres bruts. Pas de section pédagogique.
+                - Cite une archive de Michael uniquement si elle valide ton conseil.`;
+        }
+
         const systemInstruction = `
-            Tu es le "Coach Oracle", l'expert tactique et le binôme de pêche de ${userName}. 
+            Tu es le "Coach Oracle", binôme de pêche expert de ${userName}.
             
-            TON TON : 
-            - Agis comme un analyste météo-pêche professionnel (style "expert de terrain").
-            - Interpelle ${userName} par son nom de temps en temps pour renforcer la complicité.
-            - Ne sois pas une simple base de données : synthétise les infos de manière humaine.
-            - Sois direct, amical, mais d'une précision chirurgicale sur les patterns.
+            RÈGLES GRAMMATICALES CRITIQUES :
+            - Emploie TOUJOURS les articles définis ou indéfinis devant les noms de poissons (ex: "le sandre", "la perche", "un brochet"). 
+            - Ne dis jamais "prises de Perche" mais "captures de perches".
+            
+            TON : Naturel, expert, complice. Évite les termes lyriques ou pompeux.
 
-            TES RÈGLES DE RÉPONSE (SYNTHÈSE & NUANCE) :
-            1. L'OUVERTURE (SYNTHÈSE ENVIRONNEMENTALE) : Ne liste pas les chiffres un par un. Fais une phrase qui résume le "mood" global de la session (Air/Ciel/Vent/Pression). 
-            2. ANALYSE HYDRO : Interprète le débit et la turbidité. Explique à ${userName} si les conditions sont "confortables" ou si le poisson risque d'être collé au fond.
-            3. STRATÉGIE (LE CONSEIL) : Propose une approche basée sur le BioScore le plus haut et le matériel de son Arsenal.
-            4. CORRÉLATION ARCHIVES (RAG) : Ne récite JAMAIS ses sessions passées sous forme de liste. Cite un fait passé uniquement s'il valide ou invalide ta théorie actuelle.
-            5. CONCISION : Reste sous les 120 mots. Utilise impérativement le **gras** pour les leurres et techniques.
+            MATRICE SENSORIELLE (LEXIQUE SIMPLE) :
+            HYDROLOGIE :
+                - O2 : > 9mg/L : "Eau très oxygénée" | < 7mg/L : "Eau peu active".
+                - NTU : < 5 : "Eau cristalline" | 10-20 : "Eau teintée" | > 30 : "Eau boueuse".
+                - Flow % : > 70% : "Fort courant" | < 30% : "Faible courant".
+                - Tendance : "Montée" : "Poussée d'eau" | "Décrue" : "Période de décrue (optimal)" | "Stable" : "Eaux stables".
+            ATMOSPHÈRE :
+                - Pressure : < 1005hPa : "Basse pression" | > 1020hPa : "Haute pression".
+                - Clouds : < 20% : "Grand soleil" | 50-80% : "Ciel voilé" | 100% : "Ciel couvert".
 
-            CONTEXTE LIVE (SUR LE QUAI) :
-            ${liveContext}
-            Note : La température de l'eau HubEau (référence Seine) est de ${currentWaterTemp}.
+            PROFIL DE PERFORMANCE DE ${userName.toUpperCase()} :
+            ${strategicContext}
 
-            SOURCE DE VÉRITÉ / ARCHIVES DE ${userName.toUpperCase()} (LE PASSÉ) :
-            ${narrativeContext}
+            ${structureInstruction}
+
+            CONTEXTE LIVE : ${liveContext}
+            NOTE : HubEau de référence : ${currentWaterTemp}.
+            ARCHIVES HISTORIQUES : ${narrativeContext}
         `;
 
         const contents: Content[] = [...history, { role: 'user', parts: [{ text: userMessage }] }];
@@ -81,15 +110,15 @@ export const askFishingCoach = async (
             contents: contents,
             config: {
                 systemInstruction: systemInstruction,
-                temperature: 0.65, 
+                temperature: 0.6, // Michael : On baisse pour plus de rigueur sur les consignes
             },
         });
         
-        const aiResponse = response.text?.trim() || `Désolé ${userName}, mon analyse est floue.`;
+        const aiResponse = response.text?.trim() || `L'analyse est un peu trouble pour ${userName}...`;
         await saveMessage('model', aiResponse);
         return aiResponse;
     } catch (error) {
         console.error("Erreur Oracle Michael :", error);
-        return "L'Oracle est momentanément indisponible suite à une erreur technique.";
+        return "L'Oracle est momentanément indisponible.";
     }
 };

@@ -1,10 +1,11 @@
-// components/Dashboard.tsx - Version 8.3 (Final Fix Interface & Logic)
+// components/Dashboard.tsx - Version 8.6 (Intelligence Stratégique Intégrée & Repliable)
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
-    Clock, Trophy, Users, User as UserIcon, Flame, MapPin, ChevronDown, Fish 
+    Clock, Trophy, Users, User as UserIcon, Flame, MapPin, ChevronDown, Fish,
+    Target, ChevronUp // Michael : Icônes pour l'accordéon stratégique
 } from 'lucide-react';
-import { Session, RefLureType, RefColor, Location, WeatherSnapshot } from '../types';
+import { Session, RefLureType, RefColor, Location, WeatherSnapshot, AppData } from '../types';
 import SessionCard from './SessionCard';
 import SessionDetailModal from './SessionDetailModal';
 import DeleteConfirmDialog from './DeleteConfirmDialog';
@@ -14,6 +15,7 @@ import { fetchUniversalWeather } from '../lib/universal-weather-service';
 import { OracleDataPoint } from '../lib/oracle-service'; 
 import OracleHero from './OracleHero';
 import { WEATHER_METADATA, HYDRO_METADATA } from '../constants/indicators';
+import StrategicIntelligence from './StrategicIntelligence'; // Michael : Import du moteur de stats
 
 import { 
     getWindDir, getWeatherIcon, getTileTheme,
@@ -29,7 +31,6 @@ const SPECIES_CONFIG: Record<string, { label: string; key: string; hexColor: str
     'Silure': { label: 'Silure', key: 'silure', hexColor: '#4b5563' }, 
 };
 
-// [CORRECTION] Interface complète alignée sur App.tsx
 interface DashboardProps {
     sessions: Session[];
     onDeleteSession: (id: string) => void;
@@ -40,7 +41,6 @@ interface DashboardProps {
     lureTypes: RefLureType[];
     colors: RefColor[];
     
-    // Props complètes
     locations: Location[]; 
     activeLocationId: string;
     setActiveLocationId: (id: string) => void;
@@ -48,11 +48,11 @@ interface DashboardProps {
     oracleData: OracleDataPoint[]; 
     isOracleLoading: boolean;
 
-    // [NOUVEAU] Les props manquantes qui causaient l'erreur
     activeLocationLabel: string;
     availableLocations: Location[]; 
     onLocationClick: () => void;
     onLocationSelect: (id: string) => void;
+    arsenalData: AppData; // Michael : Indispensable pour la résolution des noms de leurres
 }
 
 const Dashboard: React.FC<DashboardProps> = (props) => {
@@ -61,15 +61,12 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
         activeLocationId, setActiveLocationId, 
         oracleData, isOracleLoading,
         onDeleteSession, onEditSession,
-        
-        // Récupération des nouvelles props
         activeLocationLabel,
-        availableLocations: propsAvailableLocations, // Renommage pour éviter conflit
         onLocationClick,
-        onLocationSelect
+        onLocationSelect,
+        arsenalData
     } = props;
 
-    
     const [displayedWeather, setDisplayedWeather] = useState<WeatherSnapshot | null>(null);
     const [isWeatherLoading, setIsWeatherLoading] = useState(false);
     const [selectedSession, setSelectedSession] = useState<Session | null>(null);
@@ -78,9 +75,15 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
     const [sessionIdToDelete, setSessionIdToDelete] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
 
+    // Michael : État pour le volet d'intelligence (replié par défaut)
+    const [isIntelligenceExpanded, setIsIntelligenceExpanded] = useState(false);
+
+    // Michael : Calcul du nombre de sessions pour l'en-tête (pour ne pas perdre l'info au fix du doublon)
+    const userSessionsCount = useMemo(() => 
+        sessions.filter(s => s.userId === currentUserId && s.active).length
+    , [sessions, currentUserId]);
+
     // --- LOGIQUE LOCATIONS ---
-    // On utilise les props passées par App.tsx en priorité
-    // Si elles sont vides (ce qui ne devrait pas arriver), on garde la logique locale en fallback
     const uniqueLocationsMap = useMemo(() => {
         const map = new Map<string, Location>();
         locations.forEach(l => { if (l.id && !map.has(l.id)) map.set(l.id, l); });
@@ -93,27 +96,22 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
         uniqueLocationsList.find((l: any) => l.isDefault === true) || uniqueLocationsList[0]
     , [uniqueLocationsList]);
 
-    // [CORRECTION] Utilisation de la prop OU calcul local (renommé)
     const displayLocations = useMemo(() => {
-        if (propsAvailableLocations && propsAvailableLocations.length > 0) {
-            return propsAvailableLocations;
-        }
-        // Fallback local (ancienne logique)
-        const final: Location[] = [];
-        const seen = new Set<string>();
-        if (defaultLocation) { final.push(defaultLocation); seen.add(defaultLocation.id); }
-        uniqueLocationsList.filter(l => l.active && l.isFavorite).forEach(fav => {
-            if (final.length < 4 && !seen.has(fav.id)) { final.push(fav); seen.add(fav.id); }
-        });
-        return final;
-    }, [propsAvailableLocations, uniqueLocationsList, defaultLocation]);
+        const favorites = locations.filter(l => l.active && l.isFavorite);
+        if (favorites.length === 0 && defaultLocation) return [defaultLocation];
+        return favorites;
+    }, [locations, defaultLocation]);
 
-    // Effet de bord pour initialiser si vide
     useEffect(() => { 
-        if (!activeLocationId && defaultLocation) {
-            setActiveLocationId(defaultLocation.id); 
+        if (!activeLocationId) {
+            const firstFav = locations.find(l => l.active && l.isFavorite);
+            if (firstFav) {
+                setActiveLocationId(firstFav.id); 
+            } else if (defaultLocation) {
+                setActiveLocationId(defaultLocation.id);
+            }
         }
-    }, [defaultLocation, activeLocationId, setActiveLocationId]);
+    }, [defaultLocation, activeLocationId, setActiveLocationId, locations]);
 
     const targetLocation = useMemo(() => uniqueLocationsMap.get(activeLocationId) || defaultLocation || null, [uniqueLocationsMap, activeLocationId, defaultLocation]);
 
@@ -147,7 +145,6 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
         <div className="space-y-8 animate-in fade-in duration-500 pb-20">
             <ProgressionHeader sessions={sessions} currentUserId={currentUserId} />
             
-            {/* Header Location Selector (Cliquable) */}
             <div onClick={onLocationClick} className="flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-transform -mb-4 z-10 relative">
                 <div className="flex items-center gap-2 text-stone-400 font-bold uppercase tracking-widest text-[10px] bg-stone-50 px-3 py-1 rounded-full border border-stone-100 hover:bg-stone-100 hover:text-stone-600 transition-colors">
                     <MapPin size={12} />
@@ -156,7 +153,6 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
                 </div>
             </div>
 
-            {/* [CORRECTION] Ajout des props manquantes pour piloter le changement de secteur */}
             <OracleHero 
                 locations={uniqueLocationsList} 
                 dataPoints={oracleData} 
@@ -167,9 +163,8 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
 
             <LiveStatusSection 
                 activeLocationId={activeLocationId}
-                // [CORRECTION] On utilise onLocationSelect (prop) ou setActiveLocationId
                 setActiveLocationId={onLocationSelect || setActiveLocationId} 
-                availableLocations={displayLocations} // On utilise la liste calculée/reçue
+                availableLocations={displayLocations} 
                 targetLocation={targetLocation}
                 liveScores={liveOraclePoint} 
                 displayedWeather={displayedWeather}
@@ -177,15 +172,67 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
                 liveOraclePoint={liveOraclePoint}
             />
 
+            {/* Michael : Bloc Intelligence Stratégique Repliable (Correction doublon titre gérée) */}
+            <div className="bg-white rounded-[2rem] border border-stone-100 shadow-sm overflow-hidden transition-all duration-500">
+                <button 
+                    onClick={() => setIsIntelligenceExpanded(!isIntelligenceExpanded)}
+                    className="w-full p-6 flex items-center justify-between group hover:bg-stone-50 transition-colors"
+                >
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl group-hover:scale-110 transition-transform">
+                            <Target size={20} />
+                        </div>
+                        <div className="text-left">
+                            <h3 className="text-sm font-black text-stone-800 uppercase tracking-tighter italic leading-none">Intelligence Stratégique</h3>
+                            <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest mt-1">Analyse tactique • {userSessionsCount} sessions</p>
+                        </div>
+                    </div>
+                    {isIntelligenceExpanded ? <ChevronUp size={20} className="text-stone-300" /> : <ChevronDown size={20} className="text-stone-300" />}
+                </button>
+                
+                {isIntelligenceExpanded && (
+                    <div className="px-6 pb-8 animate-in slide-in-from-top-4 duration-500">
+                        <StrategicIntelligence 
+                            sessions={sessions} 
+                            userId={currentUserId} 
+                            arsenal={arsenalData} 
+                            hideHeader={true} // Michael : On masque l'en-tête interne pour éviter le doublon visuel
+                        />
+                    </div>
+                )}
+            </div>
+
             <TrophiesSection sessions={sessions} currentUserId={currentUserId} />
-            <ActivityFeed sessions={sessions} currentUserId={currentUserId} onDelete={(id: string) => { setSessionIdToDelete(id); setIsDeleteConfirmOpen(true); }} onEdit={onEditSession} onSelect={(s: Session) => { setSelectedSession(s); setIsDetailOpen(true); }} deletingId={deletingId} />
+            
+            <ActivityFeed 
+                sessions={sessions} 
+                currentUserId={currentUserId} 
+                onDelete={(id: string) => { setSessionIdToDelete(id); setIsDeleteConfirmOpen(true); }} 
+                onEdit={onEditSession} 
+                onSelect={(s: Session) => { setSelectedSession(s); setIsDetailOpen(true); }} 
+                deletingId={deletingId} 
+            />
+
             <SessionDetailModal session={selectedSession} isOpen={isDetailOpen} onClose={() => setIsDetailOpen(false)} />
-            <DeleteConfirmDialog isOpen={isDeleteConfirmOpen} onClose={() => { setIsDeleteConfirmOpen(false); setSessionIdToDelete(null); }} onConfirm={() => { if (sessionIdToDelete) { setIsDeleteConfirmOpen(false); setDeletingId(sessionIdToDelete); setTimeout(() => { onDeleteSession(sessionIdToDelete); setDeletingId(null); setSessionIdToDelete(null); }, 300); } }} />
+            
+            <DeleteConfirmDialog 
+                isOpen={isDeleteConfirmOpen} 
+                onClose={() => { setIsDeleteConfirmOpen(false); setSessionIdToDelete(null); }} 
+                onConfirm={() => { 
+                    if (sessionIdToDelete) { 
+                        setIsDeleteConfirmOpen(false); 
+                        setDeletingId(sessionIdToDelete); 
+                        setTimeout(() => { 
+                            onDeleteSession(sessionIdToDelete); 
+                            setDeletingId(null); 
+                            setSessionIdToDelete(null); 
+                        }, 300); 
+                    } 
+                }} 
+            />
         </div>
     );
 };
-
-// ... (Le reste des composants ProgressionHeader, TrophiesSection, ActivityFeed est conservé tel quel)
 
 const ProgressionHeader: React.FC<any> = ({ sessions, currentUserId }) => {
     const currentYear = new Date().getFullYear();
@@ -235,8 +282,6 @@ const LiveStatusSection: React.FC<any> = ({
             case 'oxygen': return liveOraclePoint?.dissolvedOxygen ? liveOraclePoint.dissolvedOxygen.toFixed(1) : '--';
             case 'waves': return liveOraclePoint?.waveHeight !== undefined ? liveOraclePoint.waveHeight.toFixed(1) : '--';
             case 'flowIndex': return liveOraclePoint?.flowRaw !== undefined ? Math.round(liveOraclePoint.flowRaw) : '--';
-            case 'flow': return null; 
-            case 'level': return null;
             default: return '--';
         }
     };
@@ -272,15 +317,12 @@ const LiveStatusSection: React.FC<any> = ({
                         return <DataTile key={key} label={meta.label} value={val} unit={unit} icon={key === 'tempAir' && displayedWeather ? getWeatherIcon(displayedWeather.clouds) : <meta.icon size={16} />} color={getTileTheme(meta.theme)} loading={isLoading} description={meta.description} />;
                     })}
                     {Object.entries(HYDRO_METADATA).map(([key, meta]) => {
-                        // NETTOYAGE : Suppression du filtre restrictif
                         const val = getVal(key);
                         if (val === null) return null;
                         if (key === 'flowIndex' && !isRiver) return null;
 
-                        // [CORRECTION] Injection dynamique du statut (Décrue/Montée)
                         let displayUnit = meta.unit;
                         if (key === 'flowIndex') {
-                            // Recherche ROBUSTE : Soit à la racine (aplatie), soit dans metadata
                             const status = (liveOraclePoint as any)?.flowStatus || (liveOraclePoint as any)?.metadata?.flowStatus;
                             if (status) displayUnit = `% (${status})`;
                         }
