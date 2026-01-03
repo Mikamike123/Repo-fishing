@@ -1,5 +1,5 @@
 // lib/ai-service.ts
-import { ai, chatHistoryCollection } from './firebase'; 
+import { ai, getChatHistoryCollection } from './firebase'; 
 import { query, orderBy, limit, getDocs, addDoc, Timestamp } from "firebase/firestore";
 import { Content, GenerateContentResponse } from '@google/genai'; 
 import { getCachedWaterTemp } from './hubeau-service'; 
@@ -7,8 +7,10 @@ import { getCachedWaterTemp } from './hubeau-service';
 const MODEL_NAME = "gemini-2.5-flash"; 
 const CONTEXT_READ_LIMIT = 15; 
 
-const loadChatHistory = async (): Promise<Content[]> => {
-    const q = query(chatHistoryCollection, orderBy('timestamp', 'asc'), limit(CONTEXT_READ_LIMIT));
+// Michael : loadChatHistory avec userId
+const loadChatHistory = async (userId: string): Promise<Content[]> => {
+    const chatCol = getChatHistoryCollection(userId); 
+    const q = query(chatCol, orderBy('timestamp', 'asc'), limit(CONTEXT_READ_LIMIT));
     const snapshot = await getDocs(q);
     return snapshot.docs
         .map(doc => {
@@ -23,28 +25,42 @@ const loadChatHistory = async (): Promise<Content[]> => {
         .filter((content): content is Content => content !== null);
 };
 
-const saveMessage = async (role: 'user' | 'model', content: string) => {
-    await addDoc(chatHistoryCollection, {
-        role: role,
-        content: content,
-        timestamp: Timestamp.now()
-    });
+// Michael : saveMessage avec userId
+const saveMessage = async (userId: string, role: 'user' | 'model', content: string) => {
+    try {
+        const chatCol = getChatHistoryCollection(userId);
+        await addDoc(chatCol, {
+            role: role,
+            content: content,
+            timestamp: Timestamp.now()
+        });
+    } catch (error) {
+        console.error("Erreur sauvegarde message Michael:", error);
+    }
 };
 
 /**
- * askFishingCoach - Moteur de l'Oracle Pêche (V10.5 - Human Grammar & Clear Terms)
+ * askFishingCoach - Moteur de l'Oracle Pêche
  */
 export const askFishingCoach = async (
     userMessage: string, 
     currentLocation: { lat: number, lng: number },
     narrativeContext: string = "",
     liveContext: string = "",
-    userName: string = "Michael",
-    strategicContext: string = "" 
+    userName: string = "Pêcheur", // MODIF MICHAEL : Valeur dynamique
+    strategicContext: string = "",
+    userId: string = "guest" 
 ): Promise<string> => {
-    await saveMessage('user', userMessage);
+    
+    // --- LOGS DE DEBUG MICHAEL ---
+    console.log("--- DEBUG ORACLE ---");
+    console.log("Utilisateur:", userName, "ID:", userId);
+    console.log("Message envoyé:", userMessage);
+
+    saveMessage(userId, 'user', userMessage);
+    
     try {
-        const history = await loadChatHistory();
+        const history = await loadChatHistory(userId);
         const isFirstInteraction = history.length === 0;
         
         const techKeywords = ['météo', 'eau', 'condition', 'température', 'vent', 'courant', 'pression', 'ntu', 'oxygène', 'o2', 'stats', 'kpi'];
@@ -76,49 +92,35 @@ export const askFishingCoach = async (
 
         const systemInstruction = `
             Tu es le "Coach Oracle", binôme de pêche expert de ${userName}.
-            
-            RÈGLES GRAMMATICALES CRITIQUES :
-            - Emploie TOUJOURS les articles définis ou indéfinis devant les noms de poissons (ex: "le sandre", "la perche", "un brochet"). 
-            - Ne dis jamais "prises de Perche" mais "captures de perches".
-            
-            TON : Naturel, expert, complice. Évite les termes lyriques ou pompeux.
-
-            MATRICE SENSORIELLE (LEXIQUE SIMPLE) :
-            HYDROLOGIE :
-                - O2 : > 9mg/L : "Eau très oxygénée" | < 7mg/L : "Eau peu active".
-                - NTU : < 5 : "Eau cristalline" | 10-20 : "Eau teintée" | > 30 : "Eau boueuse".
-                - Flow % : > 70% : "Fort courant" | < 30% : "Faible courant".
-                - Tendance : "Montée" : "Poussée d'eau" | "Décrue" : "Période de décrue (optimal)" | "Stable" : "Eaux stables".
-            ATMOSPHÈRE :
-                - Pressure : < 1005hPa : "Basse pression" | > 1020hPa : "Haute pression".
-                - Clouds : < 20% : "Grand soleil" | 50-80% : "Ciel voilé" | 100% : "Ciel couvert".
-
-            PROFIL DE PERFORMANCE DE ${userName.toUpperCase()} :
-            ${strategicContext}
-
+            RÈGLES GRAMMATICALES CRITIQUES : Articles devant les poissons.
+            TON : Naturel, expert, complice.
             ${structureInstruction}
-
             CONTEXTE LIVE : ${liveContext}
-            NOTE : HubEau de référence : ${currentWaterTemp}.
+            NOTE : HubEau : ${currentWaterTemp}.
             ARCHIVES HISTORIQUES : ${narrativeContext}
         `;
 
         const contents: Content[] = [...history, { role: 'user', parts: [{ text: userMessage }] }];
+
+        console.log("Appel Gemini API en cours..."); // LOG MICHAEL
 
         const response: GenerateContentResponse = await ai.models.generateContent({
             model: MODEL_NAME,
             contents: contents,
             config: {
                 systemInstruction: systemInstruction,
-                temperature: 0.6, // Michael : On baisse pour plus de rigueur sur les consignes
+                temperature: 0.6,
             },
         });
         
-        const aiResponse = response.text?.trim() || `L'analyse est un peu trouble pour ${userName}...`;
-        await saveMessage('model', aiResponse);
+        const aiResponse = response.text?.trim() || `L'analyse est trouble pour ${userName}...`;
+        
+        console.log("Réponse IA reçue avec succès !"); // LOG MICHAEL
+        saveMessage(userId, 'model', aiResponse);
         return aiResponse;
-    } catch (error) {
-        console.error("Erreur Oracle Michael :", error);
+
+    } catch (error: any) {
+        console.error("❌ ERREUR ORACLE MICHAEL :", error); // LOG D'ERREUR DÉTAILLÉ
         return "L'Oracle est momentanément indisponible.";
     }
 };

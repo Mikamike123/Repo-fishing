@@ -1,8 +1,10 @@
+// components/MagicScanButton.tsx
 import React, { useRef, useState } from 'react';
 import { Wand2, Loader2 } from 'lucide-react';
 import { extractSessionDraft } from '../lib/discovery-service';
 import { httpsCallable } from 'firebase/functions';
-import { functions, storage, USER_ID } from '../lib/firebase';
+// Michael : On retire USER_ID de l'import car il est désormais dynamique
+import { functions, storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 interface MagicScanButtonProps {
@@ -10,13 +12,15 @@ interface MagicScanButtonProps {
     userPseudo: string;
     lureTypes: any[]; 
     colors: any[];    
+    userId: string; // Michael : Ajout indispensable pour le multi-user
 }
 
 const MagicScanButton: React.FC<MagicScanButtonProps> = ({ 
     onDiscoveryComplete, 
     userPseudo, 
     lureTypes, 
-    colors 
+    colors,
+    userId // Michael : Récupération du userId passé par le parent
 }) => {
     const [isLoading, setIsLoading] = useState(false);
     const fileRef = useRef<HTMLInputElement>(null);
@@ -52,7 +56,8 @@ const MagicScanButton: React.FC<MagicScanButtonProps> = ({
             });
 
             // 5. Upload Storage
-            const storageRef = ref(storage, `catches/${USER_ID}/magic_${Date.now()}_${file.name.replace(/\s/g, '_')}`);
+            // Michael : Le dossier de stockage est désormais lié à l'UID réel de l'utilisateur connecté
+            const storageRef = ref(storage, `catches/${userId}/magic_${Date.now()}_${file.name.replace(/\s/g, '_')}`);
             const uploadPromise = uploadBytes(storageRef, file);
 
             const [aiResult, uploadResult] = await Promise.all([analyzePromise, uploadPromise]);
@@ -73,7 +78,7 @@ const MagicScanButton: React.FC<MagicScanButtonProps> = ({
 
             onDiscoveryComplete(draft);
         } catch (err) {
-            console.error("Échec du Magic Scan:", err);
+            console.error("Échec du Magic Scan Michael :", err);
             alert("L'Oracle a eu un problème technique. Vérifie ta connexion.");
         } finally {
             setIsLoading(false);

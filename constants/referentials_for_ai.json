@@ -37,6 +37,10 @@
       "label": "Finesse - Worm"
     },
     {
+      "id": "ZivliOHUdKGrheFpulXq",
+      "label": "Réactif - Cuillère"
+    },
+    {
       "id": "aAcZBbm9fyatu9z8exHV",
       "label": "Vibrant - Shad"
     },
@@ -157,70 +161,70 @@
   ],
   "techniques": [
     {
-      "id": "1qSU5V4XBt88IlF41Xnn",
-      "label": "Animation Saccadée - Twitching / Jerking"
-    },
-    {
-      "id": "3PZSalqWDqmvyY5QjZlp",
-      "label": "Contact Fond - Carolina Rig"
-    },
-    {
-      "id": "44F1Tvs6POHSKzSFXb60",
-      "label": "Contact Fond - Cheburashka"
-    },
-    {
-      "id": "7suco47G5clt3wOVuiWE",
+      "id": "061UdOTA0Xl3iacaI1Tx",
       "label": "Animation Saccadée - Darting"
     },
     {
-      "id": "KwHAdwwUCcfG6zG0EEFB",
+      "id": "13eElHaxErQPiVvOu0pZ",
       "label": "Animation Saccadée - Walking The Dog"
     },
     {
-      "id": "MygMhsApMSNvUeLKDfAg",
-      "label": "Animation Saccadée - Drop Shot"
-    },
-    {
-      "id": "VxABw8Bd395fuO5ZEZsY",
-      "label": "Inconnu - Je ne m’en souviens pas"
-    },
-    {
-      "id": "Z7nUbumpt6HGTYkPZsCD",
+      "id": "5j4uBwaLi95o1J50wJEx",
       "label": "Contact Fond - Drop Shot"
     },
     {
-      "id": "ZwNy9AjW0qsd3Giooi7J",
-      "label": "Linéaire - Cranking"
+      "id": "7f3LE9BGsTWZ9QvkqDef",
+      "label": "Contact Fond - Carolina Rig"
     },
     {
-      "id": "b7GKMwQh5DLch3I50nGd",
-      "label": "Contact Fond - Grattage (TP)"
-    },
-    {
-      "id": "cNV9cLtom2Q9Mwyy7LZk",
+      "id": "8JY01I07x3U4WEgNzAc9",
       "label": "Linéaire - Lancer-Ramener"
     },
     {
-      "id": "wKx6z9l3q4Ek3Ckzp9kC",
+      "id": "LCAL7WFYSZNXPnNh6kDX",
       "label": "Linéaire - Slow Rolling"
+    },
+    {
+      "id": "ZmyybdXASQX7ollZnfAi",
+      "label": "Contact Fond - Cheburashka"
+    },
+    {
+      "id": "bIeSUEuXM0hAV6yXCU2q",
+      "label": "Inconnu - Je ne m’en souviens pas"
+    },
+    {
+      "id": "jgwtrzcAUP0x65ih82UK",
+      "label": "Linéaire - Cranking"
+    },
+    {
+      "id": "k9kJOIfgEDb8v5ruGhEE",
+      "label": "Animation Saccadée - Drop Shot"
+    },
+    {
+      "id": "syC5fXgAMusSWe0rN7mr",
+      "label": "Contact Fond - Grattage (TP)"
+    },
+    {
+      "id": "u8Jccztola19yo2PiZYr",
+      "label": "Animation Saccadée - Twitching / Jerking"
     }
   ],
   "setups": [
     {
-      "id": "3hpiRQ3jFfH6vztpdnsM",
-      "label": "Combo Brochet - Canne Savage"
-    },
-    {
-      "id": "56hF84XiMw1tnOq5OBHa",
+      "id": "WbGWTDnZCffccw9nDAWU",
       "label": "Combo Sandre - Canne Major Ceaena"
     },
     {
-      "id": "eNwi1h4mvSHjaY4ALdFj",
+      "id": "mix2lxe2ryRvvLLSXpU0",
+      "label": "Combo Brochet - Canne Savage"
+    },
+    {
+      "id": "yIM0iwpX1sg23tt2rTOn",
       "label": "Combo X - Canne et moulinet inconnus"
     }
   ],
   "metadata": {
-    "exportedAt": "2026-01-03T13:01:21.014Z",
+    "exportedAt": "2026-01-03T13:20:38.057Z",
     "version": "4.5-arsenal-only"
   }
 }

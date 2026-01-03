@@ -1,4 +1,4 @@
-// components/Dashboard.tsx - Version 9.2 (Expérience complète & Nettoyage Journal)
+// components/Dashboard.tsx - Version 9.3 (Auth Compatible)
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
     Activity, Target, ScrollText, MapPin, ChevronDown, Flame, Trophy 
@@ -11,7 +11,7 @@ import { OracleDataPoint } from '../lib/oracle-service';
 import { DashboardLiveTab } from './DashboardLiveTab';
 import { DashboardTacticsTab } from './DashboardTacticsTab';
 import { DashboardActivityTab } from './DashboardActivityTab';
-import { RecordsGrid } from './RecordsGrid'; // Michael : Import nécessaire pour les trophées
+import { RecordsGrid } from './RecordsGrid'; 
 
 type DashboardTab = 'live' | 'tactics' | 'activity' | 'experience';
 
@@ -37,10 +37,12 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = (props) => {
+    // Michael : Extraction de toutes les propriétés pour éviter les erreurs "undefined"
     const { 
         sessions, currentUserId, locations, activeLocationId, setActiveLocationId, 
         oracleData, isOracleLoading, onDeleteSession, onEditSession,
-        activeLocationLabel, onLocationClick, onLocationSelect, arsenalData
+        activeLocationLabel, onLocationClick, onLocationSelect, arsenalData,
+        onMagicDiscovery, userName 
     } = props;
 
     const [activeTab, setActiveTab] = useState<DashboardTab>('live');
@@ -114,6 +116,7 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
                         isLoading={isLoading}
                         onLocationClick={onLocationClick}
                         activeLocationLabel={activeLocationLabel}
+                        onMagicDiscovery={onMagicDiscovery}
                     />
                 )}
 
@@ -128,7 +131,6 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
                 {activeTab === 'experience' && (
                     <div className="space-y-6 animate-in slide-in-from-right duration-500">
                         <ProgressionHeader sessions={sessions} currentUserId={currentUserId} />
-                        {/* Michael : Déplacement des trophées ici */}
                         <TrophiesSection sessions={sessions} currentUserId={currentUserId} />
                     </div>
                 )}
@@ -170,7 +172,6 @@ const ProgressionHeader: React.FC<any> = ({ sessions, currentUserId }) => {
     );
 };
 
-// Michael : Composant Trophées rapatrié dans le fichier principal pour la vue Expérience
 const TrophiesSection: React.FC<any> = ({ sessions, currentUserId }) => (
     <div className="bg-white rounded-[2.5rem] p-8 border border-stone-100 shadow-organic space-y-8 mx-2">
         <div className="flex items-center justify-between mb-2">

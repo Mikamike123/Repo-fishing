@@ -10,8 +10,8 @@ import {
 } from '../types';
 import { getFunctions, httpsCallable } from 'firebase/functions'; 
 import { getApp } from 'firebase/app';
-// NETTOYAGE : Suppression de doc, getDoc, db car plus d'accès direct à environmental_logs
-import { functions, storage, USER_ID } from '../lib/firebase';
+// NETTOYAGE : Suppression de USER_ID de l'import car il est désormais dynamique
+import { functions, storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { fetchHistoricalWeatherContext } from '../lib/universal-weather-service';
 import ExifReader from 'exifreader';
@@ -34,6 +34,7 @@ interface CatchDialogProps {
     weights: RefWeight[];
     lastCatchDefaults?: Catch | null;
     userPseudo?: string;
+    userId: string; // MICHAEL : Reçu de SessionFormUI
 }
 
 const SPECIES_CONFIG: Record<string, { max: number }> = {
@@ -77,7 +78,7 @@ const compressImageForAI = (file: File): Promise<{ blob: Blob, base64: string }>
 const CatchDialog: React.FC<CatchDialogProps> = ({ 
     isOpen, onClose, onSave, initialData, availableZones, locationId, locations, availableTechniques, 
     sessionStartTime, sessionEndTime, sessionDate, lureTypes, colors, sizes, weights,
-    lastCatchDefaults, userPseudo = "Michael"
+    lastCatchDefaults, userPseudo = "Michael", userId // MICHAEL : On utilise le userId des props
 }) => {
     const [species, setSpecies] = useState<SpeciesType>('Sandre');
     const [size, setSize] = useState<number>(45);
@@ -168,12 +169,7 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
 
         const fetchEnv = async () => {
             setIsLoadingEnv(true);
-            // NETTOYAGE : Suppression de NANTERRE_SECTOR_ID
-            
             try {
-                // NETTOYAGE : Suppression du bloc if (locationId === NANTERRE_SECTOR_ID)
-                // On utilise UNIQUEMENT le moteur universel
-
                 const currentLocation = locations.find(l => l.id === locationId);
                 if (currentLocation?.coordinates) {
                     const weatherContext = await fetchHistoricalWeatherContext(
@@ -244,7 +240,8 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
             });
             
             const fileName = `catch_${Date.now()}_${file.name.replace(/\s/g, '_')}`;
-            const storageRef = ref(storage, `catches/${USER_ID}/${fileName}`);
+            // MICHAEL : Utilisation de l'UID réel pour le chemin Storage au lieu de la constante statique
+            const storageRef = ref(storage, `catches/${userId}/${fileName}`);
             const uploadPromise = uploadBytes(storageRef, blob);
             
             const [aiResult, uploadResult] = await Promise.all([analyzePromise, uploadPromise]);

@@ -130,8 +130,7 @@ const ConfigSection: React.FC<{
 };
 
 const ArsenalView: React.FC<ArsenalViewProps> = (props) => {
-    const ADMIN_ID = "user_1";
-    const isReadOnly = props.currentUserId !== ADMIN_ID;
+    const isReadOnly = false;
 
     return (
         <div className="pb-32 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-[1600px] mx-auto">
@@ -141,7 +140,7 @@ const ArsenalView: React.FC<ArsenalViewProps> = (props) => {
                         <div className="p-4 bg-stone-900 rounded-[1.5rem] text-white shadow-xl shadow-stone-200"><Anchor size={32} /></div>
                         <div>
                             <h2 className="text-3xl font-black text-stone-800 tracking-tighter uppercase italic leading-none">
-                                Arsenal V3.1
+                                Arsenal
                             </h2>
                             <p className="text-sm text-stone-400 mt-2 font-bold uppercase tracking-widest">
                                 {isReadOnly ? "Référentiels Globaux" : "Configuration du Système"}

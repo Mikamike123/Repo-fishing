@@ -14,12 +14,12 @@ const OUTPUT_FILE = 'referentials_for_ai.json';
  * On exclut 'locations' pour garantir la confidentialité des zones de pêche.
  */
 const REFS_COLLECTIONS = [
-    'ref_lure_types', // Types de leurres (LS, PN, etc.) [cite: 788]
-    'ref_colors',     // Nuancier des couleurs [cite: 788]
-    'ref_sizes',      // Tailles référencées [cite: 788]
-    'ref_weights',    // Poids référencés [cite: 788]
-    'techniques',     // Techniques de pêche (Linéaire, Verticale...) [cite: 787]
-    'setups'          // Combos canne/moulinet [cite: 786]
+    'ref_lure_types', // Types de leurres (LS, PN, etc.)
+    'ref_colors',     // Nuancier des couleurs
+    'ref_sizes',      // Tailles référencées
+    'ref_weights',    // Poids référencés
+    'techniques',     // Techniques de pêche (Linéaire, Verticale...)
+    'setups'          // Combos canne/moulinet
 ];
 
 async function exportReferentials() {
@@ -38,11 +38,12 @@ async function exportReferentials() {
     const db = getFirestore();
     const finalExport: Record<string, any> = {};
 
-    console.log("🚀 Extraction des référentiels techniques Oracle...");
+    console.log("🚀 Extraction des référentiels techniques Oracle (uniquement les items actifs)...");
 
     for (const colName of REFS_COLLECTIONS) {
         try {
-            const snapshot = await db.collection(colName).get();
+            // Michael : Ajout du filtre .where('active', '==', true) pour n'exporter que les items valides
+            const snapshot = await db.collection(colName).where('active', '==', true).get();
             
             finalExport[colName] = snapshot.docs.map(doc => {
                 const data = doc.data();
@@ -53,7 +54,7 @@ async function exportReferentials() {
                 };
             });
             
-            console.log(`✅ ${colName} : ${snapshot.size} éléments`);
+            console.log(`✅ ${colName} : ${finalExport[colName].length} éléments actifs extraits`);
         } catch (error) {
             console.error(`⚠️ Erreur sur la collection ${colName}:`, error);
         }

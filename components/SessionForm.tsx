@@ -28,6 +28,7 @@ interface SessionFormProps {
     lastCatchDefaults?: Catch | null;
     locations: Location[];
     defaultLocationId: string;
+    currentUserId: string;
 }
 
 const SessionForm: React.FC<SessionFormProps> = (props) => {
@@ -281,6 +282,7 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
             handleSaveCatch={handleSaveCatch}
             handleSaveMiss={handleSaveMiss}
             handleSubmit={handleSubmit}
+            userId={props.currentUserId}
         />
     );
 };

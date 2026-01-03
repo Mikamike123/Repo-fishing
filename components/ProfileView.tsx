@@ -1,11 +1,11 @@
+// components/ProfileView.tsx
 import React, { useState, useMemo, useRef } from 'react';
 import { 
-    User, Edit2, Check, ChevronDown, Calendar, Fish, 
-    AlertOctagon, Anchor, Activity, Camera, 
-    PieChart, ChevronUp, Trophy, Flame
+    User, Camera, Calendar, Fish, 
+    AlertOctagon, Anchor, PieChart, 
+    ChevronUp, ChevronDown, Trophy, Flame, LogOut // Michael : Ajout de LogOut
 } from 'lucide-react';
 import { Session, UserProfile, AppData } from '../types';
-import { updateUserPseudo } from '../lib/user-service';
 import { doc, updateDoc } from 'firebase/firestore'; 
 import { db } from '../lib/firebase';
 import { buildUserHistory } from '../lib/gamification';
@@ -19,9 +19,10 @@ interface ProfileViewProps {
   sessions: Session[];
   arsenalData: AppData;
   onUpdateProfile: (newProfile: UserProfile) => void;
+  onLogout: () => void; // Michael : Ajout indispensable pour la sécurité
 }
 
-const ProfileView: React.FC<ProfileViewProps> = ({ userProfile, sessions, arsenalData, onUpdateProfile }) => {
+const ProfileView: React.FC<ProfileViewProps> = ({ userProfile, sessions, arsenalData, onUpdateProfile, onLogout }) => {
   const [expandedYear, setExpandedYear] = useState<number | null>(new Date().getFullYear());
   const [showDonutYear, setShowDonutYear] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -91,10 +92,18 @@ const ProfileView: React.FC<ProfileViewProps> = ({ userProfile, sessions, arsena
   return (
     <div className="pb-24 animate-in fade-in duration-300 space-y-8 px-4">
       
-      {/* HEADER PROFIL SIMPLIFIÉ */}
-      <div className="flex flex-col items-center pt-8">
+      {/* HEADER PROFIL */}
+      <div className="flex flex-col items-center pt-8 relative">
+        {/* Michael : Bouton de déconnexion ajouté pour la gestion de session */}
+        <button 
+            onClick={onLogout}
+            className="absolute top-4 right-0 p-3 bg-red-50 text-red-500 rounded-2xl hover:bg-red-100 transition-all active:scale-95 flex items-center gap-2 font-bold text-[10px] uppercase tracking-widest shadow-sm border border-red-100"
+        >
+            <LogOut size={14} /> Déconnexion
+        </button>
+
         <div className="relative w-32 h-32 bg-white rounded-full mb-6 border-[6px] border-white shadow-2xl overflow-hidden group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-          {userProfile.avatarBase64 ? <img src={userProfile.avatarBase64} className="w-full h-full object-cover" /> : <User size={56} className="m-auto mt-8 text-stone-200" />}
+          {userProfile.avatarBase64 ? <img src={userProfile.avatarBase64} className="w-full h-full object-cover" alt="Profile" /> : <User size={56} className="m-auto mt-8 text-stone-200" />}
           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"><Camera size={28} className="text-white" /></div>
         </div>
         <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
@@ -112,8 +121,10 @@ const ProfileView: React.FC<ProfileViewProps> = ({ userProfile, sessions, arsena
         </div>
         <RecordsGrid sessions={userSessions} title="Records de tous les temps" isGold={true} />
       </div>
+
       {/* MICHAEL : AJOUT DE L'INTELLIGENCE STRATÉGIQUE ICI */}
       <StrategicIntelligence sessions={userSessions} userId={userProfile.id} arsenal={arsenalData} />
+
       {/* STATS ANNUELLES */}
       <div className="space-y-6">
         {statsByYear.map((stat) => {

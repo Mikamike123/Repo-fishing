@@ -38,7 +38,7 @@ interface SessionFormUIProps {
     weights: RefWeight[];
     lastCatchDefaults?: Catch | null;
     locations: Location[];
-    
+    userId: string;
     date: string; setDate: (v: string) => void;
     startTime: string; setStartTime: (v: string) => void;
     endTime: string; setEndTime: (v: string) => void;
@@ -71,7 +71,7 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
         feelingScore, setFeelingScore, notes, setNotes, catches, misses, envSnapshot,
         isLoadingEnv, envStatus, isCatchModalOpen, setIsCatchModalOpen, isMissModalOpen, setIsMissModalOpen,
         editingCatch, setEditingCatch, editingMiss, setEditingMiss,
-        handleDeleteCatch, handleDeleteMiss, handleSaveCatch, handleSaveMiss, handleSubmit, zones
+        handleDeleteCatch, handleDeleteMiss, handleSaveCatch, handleSaveMiss, handleSubmit, zones, userId
     } = props;
 
     // NETTOYAGE : Suppression des références au Golden Standard
@@ -287,6 +287,7 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
                 sizes={sizes}
                 weights={weights}
                 lastCatchDefaults={lastCatchDefaults}
+                userId={userId}
             />
             
             <MissDialog 

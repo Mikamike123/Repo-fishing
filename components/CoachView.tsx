@@ -1,14 +1,15 @@
 // components/CoachView.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { Bot, Send, Loader, CornerDownLeft } from 'lucide-react';
-import { chatHistoryCollection, clearChatHistory } from '../lib/firebase';
+// Michael : Import des nouvelles fonctions dynamiques
+import { getChatHistoryCollection, clearChatHistory } from '../lib/firebase';
 import { onSnapshot, query, orderBy } from 'firebase/firestore'; 
 import { askFishingCoach } from '../lib/ai-service'; 
 import { Session, AppData } from '../types'; 
 import { generateFishingNarrative } from '../lib/fishingNarrativeService'; 
-import { calculateDeepKPIs } from '../lib/analytics-service'; // Michael : Import du nouveau moteur d'analytics
+import { calculateDeepKPIs } from '../lib/analytics-service'; 
 
-// Michael : Rendu propre du Markdown (Gras et Puces)
+// Michael : Rendu propre du Markdown (Gras et Puces) - Conservé tel quel
 const formatMessage = (text: string) => {
     return text.split('\n').map((line, i) => {
         let content = line;
@@ -37,24 +38,33 @@ interface CoachViewProps {
     arsenalData: AppData;
     liveSnapshot: any; 
     currentUserId: string;
+    userPseudo: string; // MICHAEL : Ajout indispensable ici
 }
 
-const CoachView: React.FC<CoachViewProps> = ({ sessions, arsenalData, liveSnapshot, currentUserId }) => {
+const CoachView: React.FC<CoachViewProps> = ({ 
+    sessions, arsenalData, liveSnapshot, currentUserId, userPseudo // MICHAEL : Récupération ici
+}) => {
     const [input, setInput] = useState('');
     const [messages, setMessages] = useState<any[]>([]);
     const [isCoachTyping, setIsCoachTyping] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    // --- Michael : RÉINITIALISATION DE LA MÉMOIRE ---
+    // --- Michael : RÉINITIALISATION DE LA MÉMOIRE AVEC USER_ID ---
     useEffect(() => {
         const resetAndLoad = async () => {
-            await clearChatHistory(); 
+            if (!currentUserId) return;
+            await clearChatHistory(currentUserId); 
         };
         resetAndLoad();
-    }, []); 
+    }, [currentUserId]); 
 
+    // --- Michael : SYNCHRONISATION DU CHAT DYNAMIQUE ---
     useEffect(() => {
-        const q = query(chatHistoryCollection, orderBy('timestamp', 'asc')); 
+        if (!currentUserId) return;
+
+        const chatCol = getChatHistoryCollection(currentUserId);
+        const q = query(chatCol, orderBy('timestamp', 'asc')); 
+        
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const fetched = snapshot.docs.map(doc => ({
                 id: doc.id,
@@ -64,13 +74,13 @@ const CoachView: React.FC<CoachViewProps> = ({ sessions, arsenalData, liveSnapsh
 
             setMessages(fetched.length ? fetched : [{ 
                 id: 'init', 
-                content: `Salut **${liveSnapshot?.userName || 'Pêcheur'}** ! Je suis branché sur le secteur **${liveSnapshot?.locationName || 'en cours...'}**. Prêt pour l'analyse ?`, 
+                content: `Salut **${userPseudo || 'Pêcheur'}** ! Je suis branché sur le secteur **${liveSnapshot?.locationName || 'en cours...'}**. Prêt pour l'analyse ?`, 
                 role: 'model', 
                 timestamp: new Date() 
             }]);
         });
         return () => unsubscribe();
-    }, [liveSnapshot?.locationName, liveSnapshot?.userName]); 
+    }, [liveSnapshot?.locationName, userPseudo, currentUserId]); 
 
     useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
@@ -108,14 +118,15 @@ const CoachView: React.FC<CoachViewProps> = ({ sessions, arsenalData, liveSnapsh
             // 4. Michael : Utilisation des coordonnées dynamiques du liveSnapshot
             const locationCoords = liveSnapshot?.coordinates || { lat: 48.8566, lng: 2.3522 }; 
 
-            // 5. Appel de l'IA avec signature V10.0 (msg, coords, past, live, name, insights)
+            // 5. Appel de l'IA avec signature V10.0
             await askFishingCoach(
                 msg, 
                 locationCoords, 
                 narrative, 
                 liveText, 
-                liveSnapshot?.userName || "Pêcheur",
-                insights
+                userPseudo, // MICHAEL : Transmis proprement maintenant
+                insights,
+                currentUserId 
             );
         } finally {
             setIsCoachTyping(false);
