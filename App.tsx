@@ -61,7 +61,29 @@ const App: React.FC = () => {
         handleMoveItem, 
         handleToggleLocationFavorite 
     } = useArsenal(currentUserId);
+    const handleResetCollection = async (collectionName: string, defaultItems: any[], currentItems: any[]) => {
+    try {
+        // Michael : 1. Suppression de tous les items actuels (Annule)
+        const deletePromises = currentItems.map(item => 
+            deleteDoc(doc(db, collectionName, item.id))
+        );
+        await Promise.all(deletePromises);
 
+        // 2. Ajout des items du référentiel (Remplace)
+        // Firebase générera automatiquement des nouveaux IDs uniques via addDoc
+        for (const item of defaultItems) {
+            await addDoc(collection(db, collectionName), {
+                label: item.label,
+                displayOrder: item.displayOrder || 0,
+                userId: currentUserId,
+                active: true,
+                createdAt: Timestamp.now()
+            });
+        }
+    } catch (e) {
+        console.error(`Erreur Reset sur ${collectionName}:`, e);
+    }
+};
     // --- CALCUL DU SECTEUR PAR DÉFAUT ---
     const defaultLocationId = useMemo(() => {
         if (!arsenalData.locations || arsenalData.locations.length === 0) return "";
@@ -372,6 +394,13 @@ const App: React.FC = () => {
                         onDeleteWeight={(id: string) => handleDeleteItem('ref_weights', id)} 
                         onEditWeight={(id: string, l: string) => handleEditItem('ref_weights', id, l)}
                         onMoveWeight={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_weights', id, dir)} 
+                        // Branchement des fonctions de Reset avec passage des listes actuelles pour suppression
+                        onResetTechniques={(defaults) => handleResetCollection('techniques', defaults, arsenalData.techniques)}
+                        onResetLureTypes={(defaults) => handleResetCollection('ref_lure_types', defaults, arsenalData.lureTypes)}
+                        onResetColors={(defaults) => handleResetCollection('ref_colors', defaults, arsenalData.colors)}
+                        onResetSizes={(defaults) => handleResetCollection('ref_sizes', defaults, arsenalData.sizes)}
+                        onResetWeights={(defaults) => handleResetCollection('ref_weights', defaults, arsenalData.weights)}
+                        onResetSetups={(defaults) => handleResetCollection('setups', defaults, arsenalData.setups)}
                     />
                 );
             case 'coach': 
