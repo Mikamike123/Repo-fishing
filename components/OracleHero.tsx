@@ -1,4 +1,3 @@
-// components/OracleHero.tsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { ChevronDown, Zap, Calendar, MapPin, BarChart2, Target, Plus } from 'lucide-react';
 import OracleChart, { ChartMode, TargetSpecies } from './OracleChart';
@@ -27,7 +26,6 @@ const OracleHero: React.FC<OracleHeroProps> = ({
     
     // États de sélection
     const [mode, setMode] = useState<ChartMode>('single');
-    // Note: selectedLocId est supprimé, on utilise activeLocationId
     const [targetSpecies, setTargetSpecies] = useState<TargetSpecies>('sandre'); 
     
     // Cache interne pour le mode comparatif uniquement
@@ -61,6 +59,25 @@ const OracleHero: React.FC<OracleHeroProps> = ({
 
     // Détermination de l'ID effectif (Prop ou fallback premier favori)
     const effectiveLocId = activeLocationId || (favorites.length > 0 ? favorites[0].id : '');
+    
+    // Michael : Récupération du secteur sélectionné pour accéder à sa config d'espèces
+    const selectedLocation = useMemo(() => 
+        validLocations.find(l => l.id === effectiveLocId)
+    , [validLocations, effectiveLocId]);
+
+    // Michael : Détermination des clés de données autorisées (ex: 'brochet') basées sur speciesIds (ex: 'Brochet')
+    const allowedKeys = useMemo(() => {
+        if (!selectedLocation?.speciesIds || selectedLocation.speciesIds.length === 0) {
+            return ['sandre', 'brochet', 'perche']; // Fallback historique
+        }
+        const mapping: Record<string, string> = {
+            'Sandre': 'sandre',
+            'Brochet': 'brochet',
+            'Perche': 'perche',
+            'Black-Bass': 'blackbass'
+        };
+        return selectedLocation.speciesIds.map(id => mapping[id] || id.toLowerCase());
+    }, [selectedLocation]);
 
     // --- 2. CHARGEMENT DES DONNÉES (INTERNE POUR COMPARATIF) ---
     const loadData = async (locsToLoad: Location[]) => {
@@ -73,7 +90,6 @@ const OracleHero: React.FC<OracleHeroProps> = ({
             const coords = getSafeCoordinates(loc);
             if (coords) {
                 try {
-                    // On transmet la morphologie au moteur de calcul
                     const points = await fetchOracleChartData(
                         coords.lat, 
                         coords.lng,
@@ -90,8 +106,6 @@ const OracleHero: React.FC<OracleHeroProps> = ({
         setInternalLoading(false);
     };
 
-    // Déclencheurs : On ne charge en interne que pour le mode Comparatif.
-    // Le mode Single est géré par les props dataPoints injectées par le parent.
     useEffect(() => {
         if (mode === 'compare' && isExpanded) loadData(favorites);
     }, [mode, favorites, isExpanded]);
@@ -99,23 +113,29 @@ const OracleHero: React.FC<OracleHeroProps> = ({
     // --- 3. PRÉPARATION DONNÉES GRAPHIQUE ---
     const formattedChartData = useMemo(() => {
         if (mode === 'single') {
-            // [PRIORITÉ ABSOLUE] Utilisation des données injectées par le parent (App -> Dashboard -> Hero)
-            // Cela garantit que le graphique correspond toujours aux jauges du bas.
             if (dataPoints && dataPoints.length > 0) {
-                return dataPoints.map(pt => ({
-                    time: pt.timestamp,
-                    sandre: pt.sandre,
-                    brochet: pt.brochet,
-                    perche: pt.perche,
-                    blackbass: pt.blackbass,
-                    dissolvedOxygen: pt.dissolvedOxygen,
-                    turbidityNTU: pt.turbidityNTU,
-                    waterTemp: pt.waterTemp
-                }));
+                return dataPoints.map(pt => {
+                    // Michael : On prépare l'objet de base avec les métadonnées
+                    const filteredPoint: any = {
+                        time: pt.timestamp,
+                        dissolvedOxygen: pt.dissolvedOxygen,
+                        turbidityNTU: pt.turbidityNTU,
+                        waterTemp: pt.waterTemp
+                    };
+                    
+                    // Michael : On n'injecte que les scores autorisés par la config du secteur
+                    allowedKeys.forEach(key => {
+                        if ((pt as any)[key] !== undefined) {
+                            filteredPoint[key] = (pt as any)[key];
+                        }
+                    });
+                    
+                    return filteredPoint;
+                });
             }
             return [];
         } else {
-            // Mode Comparatif (Reste basé sur le cache interne du composant)
+            // Mode Comparatif (Basé sur le cache interne)
             const baseData = cache[favorites[0]?.id];
             if (!baseData) return [];
 
@@ -132,10 +152,9 @@ const OracleHero: React.FC<OracleHeroProps> = ({
                 return mergedPoint;
             });
         }
-    }, [mode, effectiveLocId, cache, favorites, targetSpecies, dataPoints]);
+    }, [mode, cache, favorites, targetSpecies, dataPoints, allowedKeys]);
 
     // --- 4. TEXTES DYNAMIQUES ---
-    const selectedLocation = validLocations.find(l => l.id === effectiveLocId);
     const selectedCoords = selectedLocation ? getSafeCoordinates(selectedLocation) : null;
     const selectedLocName = selectedLocation 
         ? ((selectedLocation as any).label || selectedLocation.name) 
@@ -150,7 +169,6 @@ const OracleHero: React.FC<OracleHeroProps> = ({
         : `Comparaison de l'activité sur ${favorites.length} secteurs`;
 
     const summaryInfo = useMemo(() => {
-        // En mode single, on utilise les dataPoints injectés pour la synthèse
         const currentData = (mode === 'single' && dataPoints && dataPoints.length > 0) ? dataPoints : cache[effectiveLocId];
         
         if (!currentData || currentData.length === 0) return null;
@@ -159,18 +177,20 @@ const OracleHero: React.FC<OracleHeroProps> = ({
         const current = currentData.reduce((prev, curr) => 
             Math.abs(curr.timestamp - now) < Math.abs(prev.timestamp - now) ? curr : prev
         );
+
+        // Michael : On filtre la liste des scores pour la synthèse en haut à gauche
         const scores = [
-            { name: 'Sandre', score: current.sandre },
-            { name: 'Brochet', score: current.brochet },
-            { name: 'Perche', score: current.perche },
-            { name: 'Black-Bass', score: current.blackbass || 0 }
-        ];
+            { name: 'Sandre', score: current.sandre, key: 'sandre' },
+            { name: 'Brochet', score: current.brochet, key: 'brochet' },
+            { name: 'Perche', score: current.perche, key: 'perche' },
+            { name: 'Black-Bass', score: current.blackbass || 0, key: 'blackbass' }
+        ].filter(s => allowedKeys.includes(s.key)); // FILTRAGE ICI
+
         return scores.sort((a, b) => b.score - a.score)[0];
-    }, [cache, effectiveLocId, dataPoints, mode]);
+    }, [cache, effectiveLocId, dataPoints, mode, allowedKeys]);
 
     if (validLocations.length === 0) return null;
 
-    // Loading global combiné
     const effectiveLoading = isLoading || internalLoading;
 
     return (
@@ -262,6 +282,7 @@ const OracleHero: React.FC<OracleHeroProps> = ({
 
                     {mode === 'compare' && (
                         <div className="flex gap-2 mb-4 justify-center bg-stone-50 p-1.5 rounded-xl border border-stone-100 w-fit mx-auto overflow-x-auto max-w-full">
+                            {/* Michael : On filtre aussi les boutons de comparaison si nécessaire */}
                             {(['sandre', 'brochet', 'perche', 'blackbass'] as TargetSpecies[]).map(species => (
                                 <button
                                     key={species}
