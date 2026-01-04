@@ -30,3 +30,9 @@ export * from "./cleanup";
 export { getHistoricalContext } from "./historical";
 // Ajout fonctinonnalité Coach
 export { askFishingCoach } from "./coach";
+
+// 4. Maintenance (Tâches planifiées : suppression conversations histo avec coach AI)
+export * from "./maintenance";
+
+// 5. Gamification & Statistiques (Surcouche passive)
+export * from "./notations";

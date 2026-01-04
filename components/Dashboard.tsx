@@ -1,9 +1,9 @@
-// components/Dashboard.tsx - Version 9.3 (Auth Compatible)
+// components/Dashboard.tsx - Version 9.6 (Year-Filtered XP Badge)
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
     Activity, Target, ScrollText, MapPin, ChevronDown, Flame, Trophy 
 } from 'lucide-react';
-import { Session, RefLureType, RefColor, Location, WeatherSnapshot, AppData } from '../types';
+import { Session, RefLureType, RefColor, Location, WeatherSnapshot, AppData, UserProfile } from '../types';
 import { buildUserHistory, getNextLevelCap } from '../lib/gamification';
 import { fetchUniversalWeather } from '../lib/universal-weather-service';
 import { OracleDataPoint } from '../lib/oracle-service'; 
@@ -12,10 +12,14 @@ import { DashboardLiveTab } from './DashboardLiveTab';
 import { DashboardTacticsTab } from './DashboardTacticsTab';
 import { DashboardActivityTab } from './DashboardActivityTab';
 import { RecordsGrid } from './RecordsGrid'; 
+import { ExperienceBar } from './ExperienceBar';
 
 type DashboardTab = 'live' | 'tactics' | 'activity' | 'experience';
 
 interface DashboardProps {
+    activeTab?: 'live' | 'tactics' | 'activity' | 'experience';
+    onTabChange?: (tab: 'live' | 'tactics' | 'activity' | 'experience') => void;
+    userProfile: UserProfile | null;
     sessions: Session[];
     onDeleteSession: (id: string) => void;
     onEditSession: (session: Session) => void;
@@ -37,17 +41,24 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = (props) => {
-    // Michael : Extraction de toutes les propriétés pour éviter les erreurs "undefined"
     const { 
+        activeTab: propTab, onTabChange, userProfile,
         sessions, currentUserId, locations, activeLocationId, setActiveLocationId, 
         oracleData, isOracleLoading, onDeleteSession, onEditSession,
         activeLocationLabel, onLocationClick, onLocationSelect, arsenalData,
         onMagicDiscovery, userName 
     } = props;
 
-    const [activeTab, setActiveTab] = useState<DashboardTab>('live');
-    const [displayedWeather, setDisplayedWeather] = useState<WeatherSnapshot | null>(null);
-    const [isWeatherLoading, setIsWeatherLoading] = useState(false);
+    const [activeTab, setActiveTab] = useState<DashboardTab>(propTab || 'live');
+
+    useEffect(() => {
+        if (propTab) setActiveTab(propTab);
+    }, [propTab]);
+
+    const handleTabChange = (tab: DashboardTab) => {
+        setActiveTab(tab);
+        if (onTabChange) onTabChange(tab);
+    };
 
     const uniqueLocationsMap = useMemo(() => {
         const map = new Map<string, Location>();
@@ -90,16 +101,17 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
         updateWeather();
     }, [activeLocationId, targetLocation]);
 
+    const [displayedWeather, setDisplayedWeather] = useState<WeatherSnapshot | null>(null);
+    const [isWeatherLoading, setIsWeatherLoading] = useState(false);
     const isLoading = isWeatherLoading || isOracleLoading;
 
     return (
         <div className="space-y-4 animate-in fade-in duration-500 pb-20">
-            {/* 1. NAVIGATION HAUTE */}
             <div className="flex bg-stone-100/50 p-1.5 rounded-[2rem] border border-stone-100 mx-2">
-                <TabButton active={activeTab === 'live'} onClick={() => setActiveTab('live')} icon={<Activity size={18} />} label="Live" color="amber" />
-                <TabButton active={activeTab === 'tactics'} onClick={() => setActiveTab('tactics')} icon={<Target size={18} />} label="Tactique" color="emerald" />
-                <TabButton active={activeTab === 'activity'} onClick={() => setActiveTab('activity')} icon={<ScrollText size={18} />} label="Fil d'actu" color="indigo" />
-                <TabButton active={activeTab === 'experience'} onClick={() => setActiveTab('experience')} icon={<Trophy size={18} />} label="Expérience" color="rose" />
+                <TabButton active={activeTab === 'live'} onClick={() => handleTabChange('live')} icon={<Activity size={18} />} label="Live" color="amber" />
+                <TabButton active={activeTab === 'tactics'} onClick={() => handleTabChange('tactics')} icon={<Target size={18} />} label="Tactique" color="emerald" />
+                <TabButton active={activeTab === 'activity'} onClick={() => handleTabChange('activity')} icon={<ScrollText size={18} />} label="Fil d'actu" color="indigo" />
+                <TabButton active={activeTab === 'experience'} onClick={() => handleTabChange('experience')} icon={<Trophy size={18} />} label="Expérience" color="rose" />
             </div>
 
             <main className="px-1">
@@ -130,7 +142,14 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
 
                 {activeTab === 'experience' && (
                     <div className="space-y-6 animate-in slide-in-from-right duration-500">
-                        <ProgressionHeader sessions={sessions} currentUserId={currentUserId} />
+                        {/* [MODIF] Michael : Passage du lastXpYear pour le filtrage intelligent */}
+                        <ProgressionHeader 
+                            sessions={sessions} 
+                            currentUserId={currentUserId} 
+                            userName={userName} 
+                            lastXpGain={userProfile?.lastXpGain} 
+                            lastXpYear={userProfile?.lastXpYear}
+                        />
                         <TrophiesSection sessions={sessions} currentUserId={currentUserId} />
                     </div>
                 )}
@@ -139,34 +158,33 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
     );
 };
 
-const ProgressionHeader: React.FC<any> = ({ sessions, currentUserId }) => {
+// [MODIF] Michael : Ajout de lastXpYear dans les props pour la comparaison
+const ProgressionHeader: React.FC<any> = ({ sessions, currentUserId, userName, lastXpGain, lastXpYear }) => {
     const currentYear = new Date().getFullYear();
     const stats = useMemo(() => {
         const userSessions = sessions.filter((s: any) => s.userId === currentUserId);
         return buildUserHistory(userSessions)[currentYear] || { year: currentYear, levelReached: 1, xpTotal: 0, sessionCount: 0, fishCount: 0, weeksWithStreak: 0 };
     }, [sessions, currentUserId, currentYear]);
-    const nextXP = getNextLevelCap(stats.levelReached);
-    const progress = Math.min(100, (stats.xpTotal / nextXP) * 100);
+
+    // [AJOUT] Michael : On ne montre le badge QUE si l'année concorde et si c'est un gain positif
+    const isRelevantGain = lastXpYear === currentYear && lastXpGain > 0;
 
     return (
-        <div className="bg-white rounded-3xl p-6 border border-stone-200 shadow-sm relative overflow-hidden mx-2">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 relative z-10">
+        <div className="mx-2">
+            <ExperienceBar 
+                xpTotal={stats.xpTotal} 
+                level={stats.levelReached} 
+                lastXpGain={isRelevantGain ? lastXpGain : 0} // [MODIF] : Badge masqué si incohérent
+                userName={userName}
+                variant="full" 
+            />
+            
+            <div className="mt-4 bg-emerald-50/50 rounded-2xl p-4 border border-emerald-100 flex justify-between items-center">
                 <div>
-                    <div className="flex items-center space-x-2 mb-1">
-                        <span className="px-2 py-0.5 rounded-md bg-stone-100 text-stone-500 text-[10px] font-bold tracking-wider uppercase">Saison {currentYear}</span>
-                        <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-600 text-[10px] font-bold tracking-wider uppercase flex items-center"><Flame size={10} className="mr-1" />{stats.weeksWithStreak} Semaines validées</span>
-                    </div>
-                    <h2 className="text-2xl font-black text-stone-800 tracking-tighter uppercase italic">Niveau {stats.levelReached}</h2>
-                    <p className="text-sm text-stone-500 font-medium">{stats.xpTotal.toLocaleString()} XP <span className="text-stone-300">/ {nextXP.toLocaleString()} XP</span></p>
+                    <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest block">Assiduité Saison</span>
+                    <span className="text-xl font-black text-emerald-800">{stats.weeksWithStreak} Semaines</span>
                 </div>
-                <div className="text-right">
-                    <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest leading-none">Performance</div>
-                    <div className="text-stone-800 font-black text-lg">{stats.fishCount} <span className="text-xs text-stone-400">Poissons</span></div>
-                </div>
-            </div>
-            <div className="h-3 w-full bg-stone-100 rounded-full overflow-hidden relative z-10">
-                <div className="h-full bg-gradient-to-r from-amber-300 via-orange-400 to-rose-500 transition-all duration-1000 ease-out" style={{ width: `${progress}%` }} />
+                <Flame size={24} className="text-emerald-500 fill-emerald-500/20" />
             </div>
         </div>
     );

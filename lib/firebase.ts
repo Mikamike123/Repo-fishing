@@ -22,7 +22,7 @@ const getEnvVar = (key: string): string | undefined => {
 // Michael : On utilise ici les clés publiques API. 
 // Le fichier serviceAccountKey.json ne doit être utilisé QUE dans le dossier functions/
 const firebaseConfig = {
-    apiKey: getEnvVar('VITE_FIREBASE_API_KEY') || "AIzaSyBg7rhZeL217FPxcKRUqgNj_85Ujm11pQI", // Remplace par ta clé API Firebase standard si besoin
+    apiKey: getEnvVar('VITE_FIREBASE_API_KEY'), // Remplace par ta clé API Firebase standard si besoin
     authDomain: "mysupstack.firebaseapp.com",
     projectId: "mysupstack", 
     storageBucket: "mysupstack.firebasestorage.app"

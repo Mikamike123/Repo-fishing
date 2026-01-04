@@ -50,8 +50,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
       const matchesSearch = 
           (session.locationName || "").toLowerCase().includes(searchLower) || 
           (session.spotName || "").toLowerCase().includes(searchLower) || 
-          (session.notes || "").toLowerCase().includes(searchLower);
-      
+          (session.notes || "").toLowerCase().includes(searchLower) ||
+          (session.catches?.some(c => (c.species || "").toLowerCase().includes(searchLower) || (c.lureName || "").toLowerCase().includes(searchLower)) || false);
       return matchesUser && matchesSearch;
     });
 
@@ -142,7 +142,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-300 group-focus-within:text-amber-500 transition-colors" size={18} />
           <input 
             type="text"
-            placeholder="Chercher un secteur ou une observation..."
+            placeholder="Chercher un secteur, une espèce ou une observation..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-12 pr-4 py-4 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-2 focus:ring-amber-500/20 transition-all text-sm font-medium shadow-inner"

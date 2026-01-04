@@ -1,4 +1,3 @@
-// lib/gamification.ts
 import { Session, Catch, SpeciesType, YearlySnapshot } from '../types';
 import { getISOWeek, getYear, parseISO } from 'date-fns';
 
@@ -88,7 +87,6 @@ export const getNextLevelCap = (level: number): number => {
 
 // Calcul XP d'une capture unique
 export const calculateCatchXP = (c: Catch, isYearlyPB: boolean): number => {
-  // CORRECTION : Cast explicite de c.species en SpeciesType pour l'indexation
   const speciesKey = (c.species as SpeciesType) || 'Inconnu';
   const rules = SPECIES_XP[speciesKey] || SPECIES_XP['Inconnu'];
   
@@ -98,7 +96,7 @@ export const calculateCatchXP = (c: Catch, isYearlyPB: boolean): number => {
   const sizeDelta = Math.max(0, c.size - rules.maille);
   xp += sizeDelta * rules.perCm;
 
-  // Bonus Poutre/Monstre (CORRECTION : Cast explicite)
+  // Bonus Poutre/Monstre
   xp += getSizeBonus(speciesKey, c.size);
 
   // Bonus PB Saison
@@ -109,10 +107,8 @@ export const calculateCatchXP = (c: Catch, isYearlyPB: boolean): number => {
 
 // Moteur Principal : Time Travel Engine
 export const calculateSeasonStats = (allSessions: Session[], year: number): YearlySnapshot => {
-  // 1. Filtrer les sessions de l'année cible
   const yearSessions = allSessions.filter(s => getYear(parseISO(s.date)) === year);
   
-  // Trier par date pour le calcul chronologique
   yearSessions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   let xpTotal = 0;
@@ -121,30 +117,23 @@ export const calculateSeasonStats = (allSessions: Session[], year: number): Year
   
   const yearPBs: Record<string, number> = {}; 
   
-  // CORRECTION : On utilise topCatch (type Catch) pour matcher types.ts
   let topCatch: Catch | undefined;
   let topCatchScore = 0;
 
-  // Gestion des semaines pour le streak
-  const weeksMap: Record<number, number> = {}; // Semaine ISO -> nombre de sessions
+  const weeksMap: Record<number, number> = {}; 
 
-  // --- PASSAGE UNIQUE SUR LES SESSIONS ---
   yearSessions.forEach(session => {
-    // A. XP D'EFFORT
     xpTotal += XP_RULES.SESSION_BASE;
     if (session.envSnapshot) xpTotal += XP_RULES.SNAPSHOT_FULL;
     if (session.notes && session.notes.length > 50) xpTotal += XP_RULES.NOTE_BONUS;
     if (session.misses && session.misses.length > 0) xpTotal += XP_RULES.MISS_BONUS;
 
-    // Comptage semaines
     const weekNum = getISOWeek(parseISO(session.date));
     weeksMap[weekNum] = (weeksMap[weekNum] || 0) + 1;
 
-    // B. XP DE PERFORMANCE (Captures)
     session.catches.forEach(fish => {
       fishCount++;
       
-      // Check PB Saison
       let isPB = false;
       const currentPB = yearPBs[fish.species] || 0;
       if (fish.size > currentPB) {
@@ -155,16 +144,13 @@ export const calculateSeasonStats = (allSessions: Session[], year: number): Year
       const fishXP = calculateCatchXP(fish, isPB);
       xpTotal += fishXP;
 
-      // Mise à jour du "Top Catch"
       if (fishXP > topCatchScore) {
         topCatchScore = fishXP;
-        // CORRECTION : On stocke l'objet Catch complet
         topCatch = fish;
       }
     });
   });
 
-  // C. CALCUL FINAL STREAKS
   Object.values(weeksMap).forEach(count => {
     if (count >= 2) {
       weeksWithStreak++;
@@ -172,7 +158,6 @@ export const calculateSeasonStats = (allSessions: Session[], year: number): Year
     }
   });
 
-  // CORRECTION : Retour conforme à l'interface YearlySnapshot de types.ts
   return {
     year,
     levelReached: getLevelFromXP(xpTotal),
@@ -184,9 +169,6 @@ export const calculateSeasonStats = (allSessions: Session[], year: number): Year
   };
 };
 
-/**
- * Fonction Publique pour récupérer tout l'historique
- */
 export const buildUserHistory = (sessions: Session[]): Record<number, YearlySnapshot> => {
   const years = [...new Set(sessions.map(s => getYear(parseISO(s.date))))];
   const history: Record<number, YearlySnapshot> = {};

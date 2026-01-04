@@ -228,6 +228,7 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
         }
 
         const extraData = {
+            coordinates: getSafeCoords(selectedLocation),
             morphology: {
                 typeId: bioForm.typeId,
                 depthId: bioForm.depthId, 

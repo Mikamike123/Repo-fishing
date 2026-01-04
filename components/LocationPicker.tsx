@@ -14,14 +14,13 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ initialLat, initialLng,
     // Coordonnées par défaut (Nanterre) si rien n'est fourni
     const defaultCenter = { lat: 48.8924, lng: 2.2071 }; 
     
-    // État de la position du marqueur (Le point rouge)
+    // Michael : Vérification stricte pour éviter le fallback Nanterre si coords = 0 ou null
     const [markerPosition, setMarkerPosition] = useState<{ lat: number; lng: number }>(
-        initialLat && initialLng ? { lat: initialLat, lng: initialLng } : defaultCenter
+        (initialLat !== undefined && initialLng !== undefined) ? { lat: initialLat, lng: initialLng } : defaultCenter
     );
 
-    // État du centre de la caméra (Ce que l'utilisateur regarde)
     const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>(
-        initialLat && initialLng ? { lat: initialLat, lng: initialLng } : defaultCenter
+             (initialLat !== undefined && initialLng !== undefined) ? { lat: initialLat, lng: initialLng } : defaultCenter
     );
 
     // Helper de formatage (4 décimales)
@@ -40,6 +39,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ initialLat, initialLng,
     // Gestion du mouvement de la carte (Caméra)
     const handleCameraChange = useCallback((ev: MapCameraChangedEvent) => {
         setMapCenter(ev.detail.center);
+        setMarkerPosition(ev.detail.center);
     }, []);
 
     // Action : Téléporter le marqueur au centre de l'écran
@@ -72,7 +72,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ initialLat, initialLng,
                 <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""}>
                     <div className="w-full h-full relative">
                         <Map
-                            defaultCenter={defaultCenter}
+                            defaultCenter={(initialLat !== undefined && initialLng !== undefined) ? { lat: initialLat, lng: initialLng } : defaultCenter}
                             defaultZoom={13}
                             mapId="DEMO_MAP_ID" // Nécessaire pour AdvancedMarker
                             disableDefaultUI={true}

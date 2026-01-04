@@ -1,6 +1,6 @@
-// App.tsx - Version 4.8 (Auth & Whitelist Integrated)
+// App.tsx - Version 4.8.1 (Level-Up Notification Integrated)
 import React, { useState, useEffect, useMemo } from 'react'; 
-import { Home, PlusCircle, ScrollText, Fish, Bot, User, Menu, X, ChevronRight, MapPin, Anchor, ShieldAlert, LogOut } from 'lucide-react';
+import { Home, PlusCircle, ScrollText, Fish, Bot, User, Menu, X, ChevronRight, MapPin, Anchor, ShieldAlert, LogOut, PartyPopper, Sparkles } from 'lucide-react';
 import { 
   onSnapshot, query, orderBy, 
   QuerySnapshot, DocumentData, 
@@ -38,6 +38,7 @@ const App: React.FC = () => {
     // --- ÉTATS D'ORIGINE V4.6 ---
     const [currentView, setCurrentView] = useState<View>('dashboard'); 
     const [sessions, setSessions] = useState<Session[]>([]); 
+    const [activeDashboardTab, setActiveDashboardTab] = useState<'live' | 'tactics' | 'activity' | 'experience'>('live'); // Michael : État pilotable
     const [isLoading, setIsLoading] = useState(true); 
     const [editingSession, setEditingSession] = useState<Session | null>(null);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -137,7 +138,7 @@ const App: React.FC = () => {
 
     useEffect(() => { 
         if (!activeLocationId && defaultLocationId) {
-           setActiveLocationId(defaultLocationId);
+            setActiveLocationId(defaultLocationId);
          }
         if (activeLocationId && arsenalData.locations.length > 0) {
            const currentLoc = arsenalData.locations.find(l => l.id === activeLocationId);
@@ -222,16 +223,19 @@ const App: React.FC = () => {
         };
     }, [activeLocation, liveOraclePoint, displayedWeather, userProfile]);
 
-    // --- USER PROFILE ---
+    // --- USER PROFILE (MODIFIÉ : ÉCOUTE TEMPS RÉEL) ---
     useEffect(() => {
         if (!user) return;
         setIsProfileLoading(true);
-        const loadProfile = async () => {
-            const profile = await getUserProfile(currentUserId);
-            setUserProfile(profile);
+        // Michael : Utilisation d'onSnapshot pour capter le changement de niveau instantanément
+        const unsubscribe = onSnapshot(doc(db, 'users', currentUserId), (docSnap) => {
+            if (docSnap.exists()) {
+                // Michael : On fusionne les données avec l'ID du document pour le filtrage
+                setUserProfile({ ...docSnap.data(), id: docSnap.id } as UserProfile); 
+            }
             setIsProfileLoading(false);
-        };
-        loadProfile();
+        });
+        return () => unsubscribe();
     }, [currentUserId, user]); 
 
     // --- SESSIONS ---
@@ -339,12 +343,26 @@ const App: React.FC = () => {
         setCurrentView('locations');
     };
 
+    // --- GESTION NOTIFICATION LEVEL UP ---
+    const handleConsumeLevelUp = async (goToExperience: boolean) => {
+        if (!userProfile) return;
+        try {
+            await updateDoc(doc(db, 'users', currentUserId), { pendingLevelUp: false });
+            if (goToExperience) {
+                setActiveDashboardTab('experience'); // On force l'onglet Expérience
+                setCurrentView('dashboard');
+                // Note: La logique de switch d'onglet interne au Dashboard 
+                // devra être gérée via un paramètre ou un état lifté si nécessaire.
+            }
+        } catch (e) { console.error("Error resetting level notification:", e); }
+    };
+
     const renderContent = () => { 
         switch (currentView) {
             case 'locations':
                 return <LocationsManager userId={currentUserId} initialOpenLocationId={targetLocationId} locations={arsenalData.locations} spots={arsenalData.spots} onAddLocation={(l: string, coords: any) => handleAddItem('locations', l, coords ? { coordinates: coords } : undefined)} onEditLocation={(id, l, extra) => handleEditItem('locations', id, l, extra)} onDeleteLocation={(id: string) => handleDeleteItem('locations', id)} onToggleFavorite={handleToggleLocationFavorite} onMoveLocation={(id: string, dir: 'up' | 'down') => handleMoveItem('locations', id, dir)} onAddSpot={(l: string, locId: string) => handleAddItem('zones', l, { locationId: locId })} onDeleteSpot={(id: string) => handleDeleteItem('zones', id)} onEditSpot={(id: string, l: string) => handleEditItem('zones', id, l)} onBack={() => { setTargetLocationId(null); setCurrentView('dashboard'); }} />;
             case 'dashboard': 
-                return <Dashboard userName={userProfile?.pseudo || 'Pêcheur'} currentUserId={currentUserId} sessions={sessions} oracleData={oraclePoints} isOracleLoading={isOracleLoading || isWeatherLoading} activeLocationLabel={activeLocation?.label || "Sélectionner un secteur"} activeLocationId={activeLocationId} availableLocations={arsenalData.locations.filter(l => l.active && l.isFavorite)} onLocationClick={handleOpenLocation} onLocationSelect={setActiveLocationId} setActiveLocationId={setActiveLocationId} onEditSession={(s) => { setEditingSession(s); setCurrentView('session'); }} onDeleteSession={handleDeleteSession} onMagicDiscovery={handleMagicDiscovery} lureTypes={arsenalData.lureTypes} colors={arsenalData.colors} locations={arsenalData.locations} arsenalData={arsenalData} />;
+                return <Dashboard userProfile={userProfile} activeTab={activeDashboardTab} onTabChange={setActiveDashboardTab} userName={userProfile?.pseudo || 'Pêcheur'} currentUserId={currentUserId} sessions={sessions} oracleData={oraclePoints} isOracleLoading={isOracleLoading || isWeatherLoading} activeLocationLabel={activeLocation?.label || "Sélectionner un secteur"} activeLocationId={activeLocationId} availableLocations={arsenalData.locations.filter(l => l.active && l.isFavorite)} onLocationClick={handleOpenLocation} onLocationSelect={setActiveLocationId} setActiveLocationId={setActiveLocationId} onEditSession={(s) => { setEditingSession(s); setCurrentView('session'); }} onDeleteSession={handleDeleteSession} onMagicDiscovery={handleMagicDiscovery} lureTypes={arsenalData.lureTypes} colors={arsenalData.colors} locations={arsenalData.locations} arsenalData={arsenalData} />;
             case 'history':
                 return <HistoryView sessions={sessions} onDeleteSession={handleDeleteSession} onEditSession={handleEditRequest} currentUserId={currentUserId} />;
             case 'arsenal':
@@ -406,7 +424,16 @@ const App: React.FC = () => {
     }
 
     return ( 
-        <div className="min-h-screen bg-[#FAF9F6] pb-24 text-stone-600">
+        <div className="min-h-screen bg-[#FAF9F6] pb-24 text-stone-600 relative">
+            {/* Michael : La Pop-in Level Up surgit ici au-dessus de tout */}
+            {userProfile.pendingLevelUp && (
+                <LevelUpModal 
+                    level={userProfile.levelReached || 1} 
+                    onClose={() => handleConsumeLevelUp(false)} 
+                    onConfirm={() => handleConsumeLevelUp(true)}
+                />
+            )}
+
             {/* HEADER FIXE (D'ORIGINE) */}
             <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-stone-200 px-4 py-3 flex items-center justify-between shadow-sm">
                 <div className="flex items-center gap-2">
@@ -479,5 +506,58 @@ const App: React.FC = () => {
         </div>
     );
 }; 
+// Michael : Messages génériques et sardoniques pour l'évolution du soldat
+const getLevelUpMessage = (level: number) => {
+    if (level <= 5) return "Pas mal. Tu as enfin compris de quel côté se tenait la canne.";
+    if (level <= 10) return "Attention, les poissons commencent à reconnaître ton ombre à la surface.";
+    if (level <= 20) return "Expert Oracle ? L'eau est ton jardin, mais reste vigilant sur la discrétion de tes montages.";
+    return "Maître de l'Oracle. Les poissons te saluent... ou ils se moquent, c'est dur à dire.";
+};
+// Michael : Composant Pop-in "Fun" & Célébration
+const LevelUpModal: React.FC<{ level: number, onClose: () => void, onConfirm: () => void }> = ({ level, onClose, onConfirm }) => {
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300">
+            <div className="absolute inset-0 bg-stone-900/60 backdrop-blur-md" onClick={onClose} />
+            <div className="relative bg-white rounded-[2.5rem] shadow-2xl border-4 border-amber-400 p-8 max-w-sm w-full text-center overflow-hidden animate-in zoom-in duration-500">
+                {/* Effet Confettis Visuel */}
+                <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
+                    <Sparkles className="absolute top-4 left-4 text-amber-500 animate-bounce" size={24} />
+                    <Sparkles className="absolute top-10 right-10 text-orange-500 animate-pulse" size={20} />
+                    <Sparkles className="absolute bottom-10 left-10 text-yellow-500 animate-ping" size={16} />
+                </div>
+
+                <div className="relative z-10">
+                    <div className="w-24 h-24 bg-gradient-to-br from-amber-400 to-orange-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl rotate-6">
+                        <PartyPopper size={48} className="text-white" />
+                    </div>
+                    
+                    <h2 className="text-3xl font-black text-stone-800 mb-2 uppercase italic tracking-tighter">
+                        NIVEAU <span className="text-amber-500">{level}</span> !
+                    </h2>
+                    
+                    <p className="text-stone-500 font-medium mb-8 leading-relaxed italic">
+                        "{getLevelUpMessage(level)}"
+                    </p>
+
+                    <div className="space-y-3">
+                        <button 
+                            onClick={onConfirm}
+                            className="w-full py-4 bg-stone-800 hover:bg-stone-900 text-white rounded-2xl font-black shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
+                        >
+                            VOIR MON RANG <ChevronRight size={18} />
+                        </button>
+                        
+                        <button 
+                            onClick={onClose}
+                            className="w-full py-3 text-stone-400 hover:text-stone-600 font-bold text-sm uppercase tracking-widest"
+                        >
+                            Plus tard
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 export default App;

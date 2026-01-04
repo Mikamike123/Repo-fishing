@@ -207,6 +207,11 @@ export interface UserProfile {
   pseudo: string;
   createdAt: any;
   avatarBase64?: string;
+  lastXpGain?: number;
+  lastXpYear?: number;
+  xpTotal?: number;      // Ajouté pour la persistance
+  levelReached?: number; // Ajouté pour la persistance
+  pendingLevelUp?: boolean; // Le "Drapeau" de notification
 }
 
 export interface BioConditions {

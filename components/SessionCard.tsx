@@ -100,7 +100,8 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                         {isOwner ? (
                             <>
                                 <MapPin size={14} className="text-amber-500 shrink-0" />
-                                {session.locationName ? `${session.locationName} - ` : ''}{session.spotName}
+                                <span className="truncate">{session.locationName ? `${session.locationName} - ` : ''}{session.spotName}</span>
+                                {!isOwner && <span className="ml-2 text-[10px] text-amber-600 lowercase font-medium bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">par {session.userPseudo}</span>}
                             </>
                         ) : (
                             session.userPseudo
