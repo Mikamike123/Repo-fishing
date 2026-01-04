@@ -28,3 +28,5 @@ export * from "./cleanup";
 
 // 3. Moteur Universel (Récupération du contexte Météo/Hydro historique à la demande)
 export { getHistoricalContext } from "./historical";
+// Ajout fonctinonnalité Coach
+export { askFishingCoach } from "./coach";
