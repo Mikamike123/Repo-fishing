@@ -158,11 +158,11 @@ const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData,
   const isComparisonMode = propsIsComparisonMode ?? finalKeys.some(k => !SPECIES_CONFIG[k.toLowerCase()]);
 
   return (
-    <div className="w-full bg-white rounded-2xl border border-stone-100 mt-4 overflow-hidden shadow-sm h-[360px]">
-      <div className="p-6 h-full flex flex-col">
+    <div className="w-full bg-white rounded-xl border border-stone-50 mt-2 overflow-hidden shadow-sm h-[420px]">
+      <div className="p-2 h-full flex flex-col">
         <div className="flex justify-between items-start mb-2 border-b border-stone-50 pb-3">
             <div>
-                <h3 className="text-sm font-black text-stone-800 uppercase tracking-tight leading-none">
+                <h3 className="text-[11px] font-black text-stone-800 uppercase italic tracking-tight leading-none">
                   {title || (isComparisonMode ? 'COMPARATIF SECTEURS' : 'ORACLE : ANALYSE')}
                 </h3>
                 <div className="flex items-center gap-2 mt-3">
@@ -186,9 +186,9 @@ const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData,
             )}
         </div>
 
-        <div className="flex-1 min-h-0 relative -ml-2">
+        <div className="flex-1 min-h-0 relative -ml-6">
             <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 30 }}>
+            <AreaChart data={chartData} margin={{ top: 10, right: 5, left: 0, bottom: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f4" />
                 
                 {solarCycles.map((cycle, idx) => (

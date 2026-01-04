@@ -14,7 +14,7 @@ export default defineConfig(({ mode }) => {
         plugins: [
             react(),
             VitePWA({
-                registerType: 'autoUpdate',
+                registerType: 'prompt',
                 includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'logo192.png'],
                 manifest: {
                     name: 'OracleFish',
@@ -23,6 +23,8 @@ export default defineConfig(({ mode }) => {
                     theme_color: '#fdfbf7',
                     background_color: '#fdfbf7',
                     display: 'standalone',
+                    start_url: '/', 
+                    scope: '/',  
                     icons: [
                         {
                             src: 'logo192.png',

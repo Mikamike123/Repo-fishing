@@ -1,4 +1,4 @@
-// components/Dashboard.tsx - Version 9.7 (Unified Sync)
+// components/Dashboard.tsx - Version 9.8 (UI Optimization for PWA & Mobile Visibility)
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
     Activity, Target, ScrollText, MapPin, ChevronDown, Flame, Trophy 
@@ -94,14 +94,15 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
 
     return (
         <div className="space-y-4 animate-in fade-in duration-500 pb-20">
-            <div className="flex bg-stone-100/50 p-1.5 rounded-[2rem] border border-stone-100 mx-2">
-                <TabButton active={activeTab === 'live'} onClick={() => handleTabChange('live')} icon={<Activity size={18} />} label="Live" color="amber" />
-                <TabButton active={activeTab === 'tactics'} onClick={() => handleTabChange('tactics')} icon={<Target size={18} />} label="Tactique" color="emerald" />
-                <TabButton active={activeTab === 'activity'} onClick={() => handleTabChange('activity')} icon={<ScrollText size={18} />} label="Fil d'actu" color="indigo" />
-                <TabButton active={activeTab === 'experience'} onClick={() => handleTabChange('experience')} icon={<Trophy size={18} />} label="Expérience" color="rose" />
+            {/* Michael : Sélecteur d'onglets optimisé pour la visibilité PWA */}
+            <div className="flex bg-stone-200/50 p-1.5 rounded-[2rem] border border-stone-200 mx-1">
+                <TabButton active={activeTab === 'live'} onClick={() => handleTabChange('live')} icon={<Activity size={20} />} label="Live" color="amber" />
+                <TabButton active={activeTab === 'tactics'} onClick={() => handleTabChange('tactics')} icon={<Target size={20} />} label="Tactique" color="emerald" />
+                <TabButton active={activeTab === 'activity'} onClick={() => handleTabChange('activity')} icon={<ScrollText size={20} />} label="Actu" color="indigo" />
+                <TabButton active={activeTab === 'experience'} onClick={() => handleTabChange('experience')} icon={<Trophy size={20} />} label="Exp" color="rose" />
             </div>
 
-            <main className="px-1">
+            <main className="px-0">
                 {activeTab === 'live' && (
                     <DashboardLiveTab 
                         uniqueLocationsList={uniqueLocationsList}
@@ -154,7 +155,7 @@ const ProgressionHeader: React.FC<any> = ({ sessions, currentUserId, userName, l
     const isRelevantGain = lastXpYear === currentYear && lastXpGain > 0;
 
     return (
-        <div className="mx-2">
+        <div className="mx-1">
             <ExperienceBar 
                 xpTotal={stats.xpTotal} 
                 level={stats.levelReached} 
@@ -175,7 +176,7 @@ const ProgressionHeader: React.FC<any> = ({ sessions, currentUserId, userName, l
 };
 
 const TrophiesSection: React.FC<any> = ({ sessions, currentUserId }) => (
-    <div className="bg-white rounded-[2.5rem] p-8 border border-stone-100 shadow-organic space-y-8 mx-2">
+    <div className="bg-white rounded-[2.5rem] p-8 border border-stone-100 shadow-organic space-y-8 mx-1">
         <div className="flex items-center justify-between mb-2">
             <h3 className="font-black text-stone-800 flex items-center gap-2"><Trophy className="text-amber-500" size={20} /> Vos Trophées</h3>
             <span className="text-[9px] font-black bg-stone-100 text-stone-400 px-2 py-1 rounded-full uppercase tracking-tighter">Performance</span>
@@ -187,14 +188,19 @@ const TrophiesSection: React.FC<any> = ({ sessions, currentUserId }) => (
 
 const TabButton = ({ active, onClick, icon, label, color }: any) => {
     const themes: any = {
-        amber: active ? "bg-white text-amber-600 shadow-sm" : "text-stone-400 hover:text-stone-600",
-        emerald: active ? "bg-white text-emerald-600 shadow-sm" : "text-stone-400 hover:text-stone-600",
-        indigo: active ? "bg-white text-indigo-600 shadow-sm" : "text-stone-400 hover:text-stone-600",
-        rose: active ? "bg-white text-rose-600 shadow-sm" : "text-stone-400 hover:text-stone-600",
+        // Michael : Couleurs plus vives et contrastées pour une lecture en extérieur
+        amber: active ? "bg-white text-amber-600 shadow-md scale-105" : "text-stone-500 hover:text-stone-700",
+        emerald: active ? "bg-white text-emerald-600 shadow-md scale-105" : "text-stone-500 hover:text-stone-700",
+        indigo: active ? "bg-white text-indigo-600 shadow-md scale-105" : "text-stone-500 hover:text-stone-700",
+        rose: active ? "bg-white text-rose-600 shadow-md scale-105" : "text-stone-500 hover:text-stone-700",
     };
     return (
-        <button onClick={onClick} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-[10px] sm:text-[11px] font-black uppercase tracking-tighter transition-all duration-300 ${themes[color]}`}>
-            {icon} <span className="hidden sm:inline">{label}</span>
+        <button 
+            onClick={onClick} 
+            className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl text-[11px] font-black uppercase tracking-tighter transition-all duration-300 ${themes[color]}`}
+        >
+            {icon} 
+            <span className="text-[9px] font-black leading-none">{label}</span>
         </button>
     );
 };

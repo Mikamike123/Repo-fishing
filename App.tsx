@@ -1,10 +1,10 @@
-// App.tsx - Version 4.8.4 (Unified Environment, Cache & Offline Resilience)
+// App.tsx - Version 4.8.6 (Scaling Mobile & Branding Fix)
 import React, { useState, useEffect, useMemo } from 'react'; 
 import { Home, PlusCircle, ScrollText, Fish, Bot, User, Menu, X, ChevronRight, MapPin, Anchor, ShieldAlert, LogOut, PartyPopper, Sparkles, WifiOff } from 'lucide-react';
 import { 
-  onSnapshot, query, orderBy, 
-  QuerySnapshot, DocumentData, 
-  addDoc, deleteDoc, doc, Timestamp, updateDoc, collection, getDoc 
+    onSnapshot, query, orderBy, 
+    QuerySnapshot, DocumentData, 
+    addDoc, deleteDoc, doc, Timestamp, updateDoc, collection, getDoc 
 } from 'firebase/firestore'; 
 import { onAuthStateChanged, signInWithPopup, signOut, User as FirebaseUser } from 'firebase/auth';
 
@@ -172,7 +172,6 @@ const App: React.FC = () => {
     }, [arsenalData.locations, activeLocationId]);
 
     // --- SYNC ENVIRONNEMENT (UNIFIÉ & CACHÉ - v4.8.3) ---
-    // Michael : Ce bloc remplace les anciens syncOracle et updateWeather pour l'optimisation
     useEffect(() => {
         const syncEnvironment = async () => {
             if (!activeLocation?.coordinates) return;
@@ -218,21 +217,18 @@ const App: React.FC = () => {
 
         syncEnvironment();
         
-        // Intervalle de 30 minutes aligné sur la granularité horaire d'Open-Meteo
         const interval = setInterval(syncEnvironment, 30 * 60 * 1000);
         return () => clearInterval(interval);
     }, [activeLocationId, activeLocation]);
 
-    // --- [NOUVEAU] PRE-FETCHING DES FAVORIS & MÉNAGE CACHE (v4.8.3) ---
+    // --- PRE-FETCHING DES FAVORIS & MÉNAGE CACHE (v4.8.3) ---
     useEffect(() => {
         const prefetchFavorites = async () => {
-            // Michael : On lance le ménage des caches de +24h d'abord
             if (cleanupOracleCache) cleanupOracleCache();
 
             const favs = arsenalData.locations.filter(l => l.active && l.isFavorite);
             console.log(`⚡ Pre-fetching de ${favs.length} secteurs favoris...`);
             
-            // On charge les autres favoris en arrière-plan (chargement silencieux dans le localStorage)
             favs.forEach(loc => {
                 if (loc.coordinates && loc.id !== activeLocationId) {
                     getOrFetchOracleData(loc.coordinates.lat, loc.coordinates.lng, loc.id, loc.morphology);
@@ -435,7 +431,7 @@ const App: React.FC = () => {
                     colors={arsenalData.colors} 
                     locations={arsenalData.locations} 
                     arsenalData={arsenalData}
-                    displayedWeather={displayedWeather} // Michael : Injection de la météo unifiée
+                    displayedWeather={displayedWeather} 
                 />;
             case 'history':
                 return <HistoryView sessions={sessions} onDeleteSession={handleDeleteSession} onEditSession={handleEditRequest} currentUserId={currentUserId} />;
@@ -451,18 +447,19 @@ const App: React.FC = () => {
         }
     };
 
-    // --- LOGIQUE DE RENDU DE SÉCURITÉ ---
-    if (authLoading) return <div className="flex h-screen items-center justify-center bg-[#FDFBF7]"><div className="animate-spin text-amber-500 font-bold uppercase tracking-widest">Oracle Loading...</div></div>;
+    if (authLoading) return <div className="flex h-screen items-center justify-center bg-[#FDFBF7]"><div className="animate-spin text-amber-500 font-bold uppercase tracking-widest text-lg">Oracle Loading...</div></div>;
 
     if (!user) {
         return (
             <div className="flex h-screen flex-col items-center justify-center bg-[#FDFBF7] p-6 text-center animate-in fade-in duration-500">
                 <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl border border-stone-100 max-w-sm w-full">
-                    <div className="w-24 h-24 bg-stone-800 rounded-3xl flex items-center justify-center mx-auto mb-8 rotate-3 shadow-xl"><Fish size={48} className="text-white" /></div>
-                    <h1 className="text-3xl font-black text-stone-800 mb-2 tracking-tighter uppercase italic">Seine<span className="text-amber-500">Oracle</span></h1>
-                    <p className="text-stone-400 mb-10 text-sm font-medium leading-relaxed">Le carnet stratégique des soldats du quai. Accès restreint.</p>
-                    <button onClick={handleLogin} className="w-full py-4 bg-stone-800 hover:bg-stone-900 text-white rounded-2xl font-black shadow-lg transition-all active:scale-95 flex items-center justify-center gap-3"><User size={20} /> Connexion Google</button>
-                    <p className="mt-6 text-[10px] text-stone-300 uppercase font-bold tracking-widest">Version Elite 4.8.4</p>
+                    <div className="w-24 h-24 bg-stone-800 rounded-3xl flex items-center justify-center mx-auto mb-8 rotate-3 shadow-xl overflow-hidden p-4">
+                        <img src="/logo192.png" alt="Oracle Fish" className="w-full h-full object-contain" />
+                    </div>
+                    <h1 className="text-3xl font-black text-stone-800 mb-2 tracking-tighter uppercase italic">Oracle<span className="text-amber-500"> Fish</span></h1>
+                    <p className="text-stone-400 mb-10 text-base font-medium leading-relaxed">Le carnet stratégique des soldats du quai. Accès restreint.</p>
+                    <button onClick={handleLogin} className="w-full py-5 bg-stone-800 hover:bg-stone-900 text-white rounded-2xl font-black shadow-lg transition-all active:scale-95 flex items-center justify-center gap-3 text-lg"><User size={24} /> Connexion Google</button>
+                    <p className="mt-8 text-[11px] text-stone-300 uppercase font-black tracking-widest">Version Elite 4.8.5</p>
                 </div>
             </div>
         );
@@ -489,8 +486,8 @@ const App: React.FC = () => {
                     <h1 className="text-2xl font-black text-stone-800 mb-2 tracking-tighter uppercase">Profil Oracle</h1>
                     <p className="text-stone-500 mb-8 text-sm font-medium">Initialisation pour l'ID : <span className="font-mono text-xs bg-stone-100 px-2 py-1 rounded">{currentUserId}</span></p>
                     <form onSubmit={handleCreateProfile} className="space-y-4">
-                        <input type="text" placeholder="Pseudo..." value={tempPseudo} onChange={(e) => setTempPseudo(e.target.value)} className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl font-black text-center outline-none focus:ring-2 focus:ring-amber-400" autoFocus />
-                        <button type="submit" disabled={!tempPseudo.trim()} className="w-full py-4 bg-stone-800 text-white rounded-2xl font-black shadow-lg">Lancer l'Oracle</button>
+                        <input type="text" placeholder="Pseudo..." value={tempPseudo} onChange={(e) => setTempPseudo(e.target.value)} className="w-full p-4 bg-stone-50 border border-stone-200 rounded-2xl font-black text-center outline-none focus:ring-2 focus:ring-amber-400 text-lg" autoFocus />
+                        <button type="submit" disabled={!tempPseudo.trim()} className="w-full py-4 bg-stone-800 text-white rounded-2xl font-black shadow-lg text-lg">Lancer l'Oracle</button>
                     </form>
                 </div>
             </div>
@@ -498,7 +495,7 @@ const App: React.FC = () => {
     }
 
     return ( 
-        <div className="min-h-screen bg-[#FAF9F6] pb-24 text-stone-600 relative">
+        <div className="min-h-screen bg-[#FAF9F6] pb-32 text-stone-600 relative">
             {userProfile.pendingLevelUp && (
                 <LevelUpModal 
                     level={userProfile.levelReached || 1} 
@@ -507,67 +504,69 @@ const App: React.FC = () => {
                 />
             )}
 
-            <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-stone-200 px-4 py-3 flex items-center justify-between shadow-sm">
-                <div className="flex items-center gap-2">
-                    <button onClick={() => setIsMenuOpen(true)} className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-xl transition-colors">
-                        <Menu size={24} strokeWidth={2.5} />
+            {/* HEADER : Mise à jour Safe Area Top (iPhone Notch) & Scaling */}
+            <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-lg border-b border-stone-200 px-5 pt-[env(safe-area-inset-top,16px)] pb-4 flex items-center justify-between shadow-sm">
+                <div className="flex items-center gap-3">
+                    <button onClick={() => setIsMenuOpen(true)} className="p-2.5 text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-xl transition-colors">
+                        <Menu size={32} strokeWidth={2.5} />
                     </button>
-                    <div className="w-8 h-8 bg-stone-800 rounded-lg flex items-center justify-center">
-                        <Fish className="text-white" size={20} />
+                    <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center overflow-hidden p-1 border border-stone-100 shadow-sm">
+                        <img src="/logo192.png" alt="Logo" className="w-full h-full object-contain" />
                     </div>
-                    <span className="font-black text-lg tracking-tighter text-stone-800 uppercase italic">Seine<span className="text-amber-500">Oracle</span></span>
+                    <span className="font-black text-2xl tracking-tighter text-stone-800 uppercase italic">Oracle<span className="text-amber-500"> Fish</span></span>
                     
-                    {/* Michael : Indicateur Offline (v4.8.4) */}
                     {!isOnline && (
-                        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-600 rounded-full border border-amber-100 animate-pulse">
-                            <WifiOff size={12} strokeWidth={3} />
-                            <span className="text-[10px] font-black uppercase tracking-widest">Secours Offline</span>
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-600 rounded-full border border-amber-100 animate-pulse">
+                            <WifiOff size={16} strokeWidth={3} />
+                            <span className="text-[12px] font-black uppercase tracking-widest">Offline</span>
                         </div>
                     )}
                 </div>
-                <button onClick={() => setCurrentView('profile')} className="w-8 h-8 rounded-full bg-stone-100 overflow-hidden border border-stone-200">
-                    {userProfile?.avatarBase64 ? <img src={userProfile.avatarBase64} alt="Profile" className="w-full h-full object-cover" /> : <User size={20} className="text-stone-400 m-auto mt-1" />}
+                <button onClick={() => setCurrentView('profile')} className="w-12 h-12 rounded-full bg-stone-100 overflow-hidden border-2 border-stone-200 shadow-sm active:scale-90 transition-transform">
+                    {userProfile?.avatarBase64 ? <img src={userProfile.avatarBase64} alt="Profile" className="w-full h-full object-cover" /> : <User size={28} className="text-stone-400 m-auto mt-2" />}
                 </button>
             </header>
 
             {isMenuOpen && (
                 <>
-                    <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-sm z-50 animate-in fade-in" onClick={() => setIsMenuOpen(false)} />
-                    <aside className="fixed top-0 left-0 h-full w-3/4 max-w-xs bg-white z-[60] shadow-2xl p-6 animate-in slide-in-from-left flex flex-col">
-                        <div className="flex justify-between items-center mb-8"><span className="text-xs font-bold text-stone-400 uppercase tracking-widest">Menu Principal</span><button onClick={() => setIsMenuOpen(false)} className="p-2 text-stone-400 hover:bg-stone-100 rounded-full"><X size={20} /></button></div>
-                        <div className="flex items-center gap-4 mb-8 bg-stone-50 p-4 rounded-2xl border border-stone-100">
-                            <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center border-2 border-amber-100 text-amber-500 overflow-hidden shadow-inner">
-                                {userProfile?.avatarBase64 ? <img src={userProfile.avatarBase64} alt="Avatar" className="w-full h-full object-cover"/> : <User size={24} />}
+                    <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm z-50 animate-in fade-in" onClick={() => setIsMenuOpen(false)} />
+                    <aside className="fixed top-0 left-0 h-full w-4/5 max-w-xs bg-white z-[60] shadow-2xl p-8 animate-in slide-in-from-left flex flex-col pt-[env(safe-area-inset-top,24px)]">
+                        <div className="flex justify-between items-center mb-10"><span className="text-xs font-black text-stone-400 uppercase tracking-widest">Menu Principal</span><button onClick={() => setIsMenuOpen(false)} className="p-3 text-stone-400 hover:bg-stone-50 rounded-full"><X size={28} /></button></div>
+                        <div className="flex items-center gap-4 mb-10 bg-stone-50 p-5 rounded-3xl border border-stone-100">
+                            <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center border-2 border-amber-100 text-amber-500 overflow-hidden shadow-inner">
+                                {userProfile?.avatarBase64 ? <img src={userProfile.avatarBase64} alt="Avatar" className="w-full h-full object-cover"/> : <User size={32} />}
                             </div>
-                            <div><div className="font-black text-stone-800 text-lg leading-none">{userProfile?.pseudo}</div><div className="text-xs text-stone-400 font-medium mt-1">v4.8.4 Soldat du Quai</div></div>
+                            <div><div className="font-black text-stone-800 text-xl leading-none">{userProfile?.pseudo}</div><div className="text-xs text-stone-400 font-bold mt-1.5 uppercase tracking-wide">Soldat du Quai</div></div>
                         </div>
-                        <nav className="space-y-2 flex-1">
-                            <button onClick={() => { setCurrentView('arsenal'); setIsMenuOpen(false); }} className="w-full flex items-center justify-between p-4 rounded-2xl text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-all font-bold group">
-                                <span className="flex items-center gap-3"><Anchor size={20} className="text-stone-400 group-hover:text-amber-500 transition-colors"/> Mon Arsenal</span><ChevronRight size={16} />
+                        <nav className="space-y-3 flex-1">
+                            <button onClick={() => { setCurrentView('arsenal'); setIsMenuOpen(false); }} className="w-full flex items-center justify-between p-5 rounded-2xl text-stone-600 hover:bg-amber-50 hover:text-amber-800 transition-all font-black text-xl group">
+                                <span className="flex items-center gap-4"><Anchor size={28} className="text-stone-400 group-hover:text-amber-500 transition-colors"/> Mon Arsenal</span><ChevronRight size={24} />
                             </button>
-                            <button onClick={() => navigateFromMenu('profile')} className="w-full flex items-center justify-between p-4 rounded-2xl text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-all font-bold group">
-                                <span className="flex items-center gap-3"><User size={20} className="text-stone-400 group-hover:text-amber-500 transition-colors"/> Mon Profil</span><ChevronRight size={16} />
+                            <button onClick={() => navigateFromMenu('profile')} className="w-full flex items-center justify-between p-5 rounded-2xl text-stone-600 hover:bg-amber-50 hover:text-amber-800 transition-all font-black text-xl group">
+                                <span className="flex items-center gap-4"><User size={28} className="text-stone-400 group-hover:text-amber-500 transition-colors"/> Mon Profil</span><ChevronRight size={24} />
                             </button>
                         </nav>
-                        <button onClick={handleLogout} className="mt-auto flex items-center gap-3 p-4 text-stone-400 hover:text-red-500 transition-colors font-bold border-t border-stone-100">
-                            <LogOut size={20} /> Déconnexion
+                        <button onClick={handleLogout} className="mt-auto flex items-center gap-4 p-5 text-stone-400 hover:text-red-500 transition-colors font-black text-xl border-t border-stone-100 pb-[env(safe-area-inset-bottom,20px)]">
+                            <LogOut size={28} /> Déconnexion
                         </button>
                     </aside>
                 </>
             )}
 
-            <main className="w-full max-w-[1400px] mx-auto px-2 sm:px-6 lg:px-8 transition-all duration-500">
+            <main className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 transition-all duration-500">
                 {renderContent()}
             </main>
 
-            <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-stone-200 bg-white pb-safe shadow-lg"> 
-                <div className="mx-auto flex max-w-lg items-center justify-around py-3">
-                    <button onClick={() => { setTargetLocationId(null); setCurrentView('dashboard'); }} className={`flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-amber-600' : 'text-stone-400'}`}><Home size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Live</span></button>
-                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('history'); }} className={`flex flex-col items-center gap-1 ${currentView === 'history' ? 'text-amber-600' : 'text-stone-400'}`}><ScrollText size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Journal</span></button>
-                    <div className="relative -top-6 flex items-center justify-center gap-3">
+            {/* BOTTOM NAV : Mise à jour Safe Area Bottom & Scaling */}
+            <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-stone-200 bg-white/95 backdrop-blur-md pb-[env(safe-area-inset-bottom,12px)] shadow-[0_-8px_30px_rgb(0,0,0,0.04)]"> 
+                <div className="mx-auto flex max-w-lg items-center justify-around py-4">
+                    <button onClick={() => { setTargetLocationId(null); setCurrentView('dashboard'); }} className={`flex flex-col items-center gap-1.5 transition-all active:scale-90 ${currentView === 'dashboard' ? 'text-amber-600' : 'text-stone-500 font-black'}`}><Home size={32} /><span className="text-[12px] font-black uppercase tracking-tighter">Live</span></button>
+                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('history'); }} className={`flex flex-col items-center gap-1.5 transition-all active:scale-90 ${currentView === 'history' ? 'text-amber-600' : 'text-stone-500 font-black'}`}><ScrollText size={32} /><span className="text-[12px] font-black uppercase tracking-tighter">Journal</span></button>
+                    
+                    <div className="relative -top-7 flex items-center justify-center gap-3">
                         <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('session'); }} 
-                                className="rounded-full border-4 border-[#FAF9F6] bg-stone-800 p-4 text-white shadow-2xl active:scale-95 transition-all">
-                            <PlusCircle size={32} />
+                                className="rounded-full border-4 border-[#FAF9F6] bg-stone-800 p-5 text-white shadow-2xl active:scale-90 transition-all transform hover:rotate-6">
+                            <PlusCircle size={40} />
                         </button>
                         <MagicScanButton 
                             userPseudo={userProfile?.pseudo || "Michael"}
@@ -577,8 +576,9 @@ const App: React.FC = () => {
                             userId={currentUserId}
                         />
                     </div>
-                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('coach'); }} className={`flex flex-col items-center gap-1 ${currentView === 'coach' ? 'text-emerald-600' : 'text-stone-400'}`}><Bot size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Coach</span></button>
-                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('locations'); }} className={`flex flex-col items-center gap-1 ${currentView === 'locations' ? 'text-indigo-600' : 'text-stone-400'}`}><MapPin size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Secteurs</span></button>
+                    
+                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('coach'); }} className={`flex flex-col items-center gap-1.5 transition-all active:scale-90 ${currentView === 'coach' ? 'text-emerald-600' : 'text-stone-500 font-black'}`}><Bot size={32} /><span className="text-[12px] font-black uppercase tracking-tighter">Coach</span></button>
+                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('locations'); }} className={`flex flex-col items-center gap-1.5 transition-all active:scale-90 ${currentView === 'locations' ? 'text-indigo-600' : 'text-stone-500 font-black'}`}><MapPin size={32} /><span className="text-[12px] font-black uppercase tracking-tighter">Secteurs</span></button>
                 </div>
             </nav>
         </div>
@@ -609,19 +609,19 @@ const LevelUpModal: React.FC<{ level: number, onClose: () => void, onConfirm: ()
                     <h2 className="text-3xl font-black text-stone-800 mb-2 uppercase italic tracking-tighter">
                         NIVEAU <span className="text-amber-500">{level}</span> !
                     </h2>
-                    <p className="text-stone-500 font-medium mb-8 leading-relaxed italic">
+                    <p className="text-stone-500 font-medium mb-8 leading-relaxed italic text-base">
                         "{getLevelUpMessage(level)}"
                     </p>
                     <div className="space-y-3">
                         <button 
                             onClick={onConfirm}
-                            className="w-full py-4 bg-stone-800 hover:bg-stone-900 text-white rounded-2xl font-black shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
+                            className="w-full py-5 bg-stone-800 hover:bg-stone-900 text-white rounded-2xl font-black shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 text-lg"
                         >
                             VOIR MON RANG <ChevronRight size={18} />
                         </button>
                         <button 
                             onClick={onClose}
-                            className="w-full py-3 text-stone-400 hover:text-stone-600 font-bold text-sm uppercase tracking-widest"
+                            className="w-full py-3 text-stone-400 hover:text-stone-600 font-black text-sm uppercase tracking-widest"
                         >
                             Plus tard
                         </button>

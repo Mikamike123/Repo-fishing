@@ -194,10 +194,10 @@ const OracleHero: React.FC<OracleHeroProps> = ({
     const effectiveLoading = isLoading || internalLoading;
 
     return (
-        <div className="mb-6 bg-white rounded-3xl p-1 shadow-sm border border-stone-100 overflow-hidden transition-all duration-300">
+        <div className="mb-4 bg-white rounded-2xl p-0.5 shadow-sm border border-stone-100 overflow-hidden transition-all duration-300">
             {/* HEADER CLIQUABLE */}
             <div 
-                className="p-4 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-transform"
+                className="p-3 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-transform"
                 onClick={() => setIsExpanded(!isExpanded)}
             >
                 <div className="flex items-center gap-4 flex-1">
@@ -254,7 +254,7 @@ const OracleHero: React.FC<OracleHeroProps> = ({
 
             {/* CONTENU DÉPLIABLE */}
             {isExpanded && (
-                <div className="px-4 pb-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="px-1 pb-2 animate-in fade-in slide-in-from-top-2 duration-300">
                     <div className="h-px w-full bg-gradient-to-r from-transparent via-stone-200 to-transparent my-2"></div>
                     
                     {/* CONTROLS (PILLS FIXES) */}
