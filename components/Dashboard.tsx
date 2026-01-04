@@ -1,12 +1,10 @@
-// components/Dashboard.tsx - Version 9.6 (Year-Filtered XP Badge)
+// components/Dashboard.tsx - Version 9.7 (Unified Sync)
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
     Activity, Target, ScrollText, MapPin, ChevronDown, Flame, Trophy 
 } from 'lucide-react';
-import { Session, RefLureType, RefColor, Location, WeatherSnapshot, AppData, UserProfile } from '../types';
+import { Session, RefLureType, RefColor, Location, WeatherSnapshot, AppData, UserProfile, OracleDataPoint } from '../types';
 import { buildUserHistory, getNextLevelCap } from '../lib/gamification';
-import { fetchUniversalWeather } from '../lib/universal-weather-service';
-import { OracleDataPoint } from '../lib/oracle-service'; 
 
 import { DashboardLiveTab } from './DashboardLiveTab';
 import { DashboardTacticsTab } from './DashboardTacticsTab';
@@ -38,6 +36,8 @@ interface DashboardProps {
     onLocationClick: () => void;
     onLocationSelect: (id: string) => void;
     arsenalData: AppData;
+    // Michael : Ajout de la prop pour recevoir la météo unifiée de App.tsx
+    displayedWeather: WeatherSnapshot | null;
 }
 
 const Dashboard: React.FC<DashboardProps> = (props) => {
@@ -46,7 +46,8 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
         sessions, currentUserId, locations, activeLocationId, setActiveLocationId, 
         oracleData, isOracleLoading, onDeleteSession, onEditSession,
         activeLocationLabel, onLocationClick, onLocationSelect, arsenalData,
-        onMagicDiscovery, userName 
+        onMagicDiscovery, userName,
+        displayedWeather // Michael : Récupération depuis les props
     } = props;
 
     const [activeTab, setActiveTab] = useState<DashboardTab>(propTab || 'live');
@@ -88,22 +89,8 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
 
     const targetLocation = useMemo(() => uniqueLocationsMap.get(activeLocationId) || defaultLocation || null, [uniqueLocationsMap, activeLocationId, defaultLocation]);
 
-    useEffect(() => {
-        const updateWeather = async () => {
-            if (!targetLocation || !targetLocation.coordinates) return;
-            setIsWeatherLoading(true);
-            try {
-                const customData = await fetchUniversalWeather(targetLocation.coordinates.lat, targetLocation.coordinates.lng);
-                setDisplayedWeather(customData);
-            } catch (e) { console.error("Weather error dashboard", e); }
-            finally { setIsWeatherLoading(false); }
-        };
-        updateWeather();
-    }, [activeLocationId, targetLocation]);
-
-    const [displayedWeather, setDisplayedWeather] = useState<WeatherSnapshot | null>(null);
-    const [isWeatherLoading, setIsWeatherLoading] = useState(false);
-    const isLoading = isWeatherLoading || isOracleLoading;
+    // Michael : Le calcul de isLoading est simplifié car isOracleLoading porte désormais les deux états de charge
+    const isLoading = isOracleLoading;
 
     return (
         <div className="space-y-4 animate-in fade-in duration-500 pb-20">
@@ -142,7 +129,6 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
 
                 {activeTab === 'experience' && (
                     <div className="space-y-6 animate-in slide-in-from-right duration-500">
-                        {/* [MODIF] Michael : Passage du lastXpYear pour le filtrage intelligent */}
                         <ProgressionHeader 
                             sessions={sessions} 
                             currentUserId={currentUserId} 
@@ -158,7 +144,6 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
     );
 };
 
-// [MODIF] Michael : Ajout de lastXpYear dans les props pour la comparaison
 const ProgressionHeader: React.FC<any> = ({ sessions, currentUserId, userName, lastXpGain, lastXpYear }) => {
     const currentYear = new Date().getFullYear();
     const stats = useMemo(() => {
@@ -166,7 +151,6 @@ const ProgressionHeader: React.FC<any> = ({ sessions, currentUserId, userName, l
         return buildUserHistory(userSessions)[currentYear] || { year: currentYear, levelReached: 1, xpTotal: 0, sessionCount: 0, fishCount: 0, weeksWithStreak: 0 };
     }, [sessions, currentUserId, currentYear]);
 
-    // [AJOUT] Michael : On ne montre le badge QUE si l'année concorde et si c'est un gain positif
     const isRelevantGain = lastXpYear === currentYear && lastXpGain > 0;
 
     return (
@@ -174,7 +158,7 @@ const ProgressionHeader: React.FC<any> = ({ sessions, currentUserId, userName, l
             <ExperienceBar 
                 xpTotal={stats.xpTotal} 
                 level={stats.levelReached} 
-                lastXpGain={isRelevantGain ? lastXpGain : 0} // [MODIF] : Badge masqué si incohérent
+                lastXpGain={isRelevantGain ? lastXpGain : 0} 
                 userName={userName}
                 variant="full" 
             />

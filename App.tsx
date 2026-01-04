@@ -1,6 +1,6 @@
-// App.tsx - Version 4.8.1 (Level-Up Notification Integrated)
+// App.tsx - Version 4.8.4 (Unified Environment, Cache & Offline Resilience)
 import React, { useState, useEffect, useMemo } from 'react'; 
-import { Home, PlusCircle, ScrollText, Fish, Bot, User, Menu, X, ChevronRight, MapPin, Anchor, ShieldAlert, LogOut, PartyPopper, Sparkles } from 'lucide-react';
+import { Home, PlusCircle, ScrollText, Fish, Bot, User, Menu, X, ChevronRight, MapPin, Anchor, ShieldAlert, LogOut, PartyPopper, Sparkles, WifiOff } from 'lucide-react';
 import { 
   onSnapshot, query, orderBy, 
   QuerySnapshot, DocumentData, 
@@ -17,12 +17,14 @@ import ProfileView from './components/ProfileView';
 import MagicScanButton from './components/MagicScanButton';
 import LocationsManager from './components/LocationsManager'; 
 
-import { Session, UserProfile, Catch, WeatherSnapshot, Location } from './types'; 
+// Michael : OracleDataPoint est désormais importé depuis types.ts pour la cohérence globale
+import { Session, UserProfile, Catch, WeatherSnapshot, Location, OracleDataPoint } from './types'; 
 import { db, sessionsCollection, auth, googleProvider } from './lib/firebase'; 
 import { getUserProfile, createUserProfile } from './lib/user-service';
 import { useArsenal } from './lib/useArsenal'; 
-import { fetchOracleChartData, OracleDataPoint } from './lib/oracle-service'; 
-import { fetchUniversalWeather } from './lib/universal-weather-service'; 
+
+// Michael : Import de la fonction avec cache (getOrFetchOracleData) et du ménage
+import { getOrFetchOracleData, cleanupOracleCache } from './lib/oracle-service'; 
 
 type View = 'dashboard' | 'session' | 'history' | 'arsenal' | 'coach' | 'profile' | 'locations';
 
@@ -38,7 +40,7 @@ const App: React.FC = () => {
     // --- ÉTATS D'ORIGINE V4.6 ---
     const [currentView, setCurrentView] = useState<View>('dashboard'); 
     const [sessions, setSessions] = useState<Session[]>([]); 
-    const [activeDashboardTab, setActiveDashboardTab] = useState<'live' | 'tactics' | 'activity' | 'experience'>('live'); // Michael : État pilotable
+    const [activeDashboardTab, setActiveDashboardTab] = useState<'live' | 'tactics' | 'activity' | 'experience'>('live');
     const [isLoading, setIsLoading] = useState(true); 
     const [editingSession, setEditingSession] = useState<Session | null>(null);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -53,12 +55,28 @@ const App: React.FC = () => {
     const [isWeatherLoading, setIsWeatherLoading] = useState(false);
     const [targetLocationId, setTargetLocationId] = useState<string | null>(null);
 
+    // Michael : État pour la résilience Offline (v4.8.4)
+    const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+    // --- LOGIQUE DE SURVEILLANCE RÉSEAU (v4.8.4) ---
+    useEffect(() => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
+
     // --- LOGIQUE DE SURVEILLANCE AUTH ---
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             setAuthLoading(true);
             if (firebaseUser && firebaseUser.email) {
-                // Vérification Whitelist dans Firestore
                 const whitelistDoc = await getDoc(doc(db, 'authorized_users', firebaseUser.email));
                 if (whitelistDoc.exists()) {
                     setUser(firebaseUser);
@@ -153,46 +171,83 @@ const App: React.FC = () => {
         return arsenalData.locations.find(l => l.id === activeLocationId);
     }, [arsenalData.locations, activeLocationId]);
 
-    // --- SYNC ORACLE ---
+    // --- SYNC ENVIRONNEMENT (UNIFIÉ & CACHÉ - v4.8.3) ---
+    // Michael : Ce bloc remplace les anciens syncOracle et updateWeather pour l'optimisation
     useEffect(() => {
-        const syncOracle = async () => {
+        const syncEnvironment = async () => {
             if (!activeLocation?.coordinates) return;
+            
             setIsOracleLoading(true);
+            setIsWeatherLoading(true);
+            
             try {
-                const points = await fetchOracleChartData(
+                // 1. Récupération des données via le Cache Tactique (30 min)
+                const points = await getOrFetchOracleData(
                     activeLocation.coordinates.lat, 
                     activeLocation.coordinates.lng, 
+                    activeLocation.id,
                     activeLocation.morphology
                 );
                 setOraclePoints(points);
-            } catch (err) { console.error("Oracle Sync Error:", err); }
-            finally { setIsOracleLoading(false); }
+
+                // 2. Mapping automatique du Live directement depuis les points Oracle
+                if (points.length > 0) {
+                    const nowTs = Date.now();
+                    const livePoint = points.reduce((prev, curr) => 
+                        Math.abs(curr.timestamp - nowTs) < Math.abs(prev.timestamp - nowTs) ? curr : prev
+                    );
+
+                    // Michael : On alimente displayedWeather avec les données brutes portées par l'Oracle
+                    setDisplayedWeather({
+                        temperature: livePoint.airTemp,
+                        pressure: livePoint.pressure,
+                        clouds: livePoint.clouds,
+                        windSpeed: livePoint.windSpeed,
+                        windDirection: livePoint.windDirection,
+                        precip: livePoint.precip,
+                        conditionCode: livePoint.conditionCode
+                    } as WeatherSnapshot);
+                }
+            } catch (err) { 
+                console.error("Sync Error Unified Michael :", err); 
+            } finally { 
+                setIsOracleLoading(false); 
+                setIsWeatherLoading(false); 
+            }
         };
-        syncOracle();
+
+        syncEnvironment();
+        
+        // Intervalle de 30 minutes aligné sur la granularité horaire d'Open-Meteo
+        const interval = setInterval(syncEnvironment, 30 * 60 * 1000);
+        return () => clearInterval(interval);
     }, [activeLocationId, activeLocation]);
+
+    // --- [NOUVEAU] PRE-FETCHING DES FAVORIS & MÉNAGE CACHE (v4.8.3) ---
+    useEffect(() => {
+        const prefetchFavorites = async () => {
+            // Michael : On lance le ménage des caches de +24h d'abord
+            if (cleanupOracleCache) cleanupOracleCache();
+
+            const favs = arsenalData.locations.filter(l => l.active && l.isFavorite);
+            console.log(`⚡ Pre-fetching de ${favs.length} secteurs favoris...`);
+            
+            // On charge les autres favoris en arrière-plan (chargement silencieux dans le localStorage)
+            favs.forEach(loc => {
+                if (loc.coordinates && loc.id !== activeLocationId) {
+                    getOrFetchOracleData(loc.coordinates.lat, loc.coordinates.lng, loc.id, loc.morphology);
+                }
+            });
+        };
+        
+        if (arsenalData.locations.length > 0) prefetchFavorites();
+    }, [arsenalData.locations]);
 
     const liveOraclePoint = useMemo(() => {
         if (!oraclePoints.length) return null;
         const nowTs = Date.now();
         return oraclePoints.reduce((prev, curr) => Math.abs(curr.timestamp - nowTs) < Math.abs(prev.timestamp - nowTs) ? curr : prev);
     }, [oraclePoints]);
-
-    // --- SYNC MÉTÉO ---
-    useEffect(() => {
-        const updateWeather = async () => {
-            if (activeLocation?.coordinates) {
-                setIsWeatherLoading(true);
-                try {
-                    const customData = await fetchUniversalWeather(activeLocation.coordinates.lat, activeLocation.coordinates.lng);
-                    setDisplayedWeather(customData);
-                } catch (e) { console.error("Weather Sync Error", e); }
-                finally { setIsWeatherLoading(false); }
-            }
-        };
-        updateWeather();
-        const interval = setInterval(updateWeather, 15 * 60 * 1000);
-        return () => clearInterval(interval);
-    }, [activeLocation]);
 
     // --- SNAPSHOT LIVE ---
     const currentLiveSnapshot = useMemo(() => {
@@ -223,14 +278,12 @@ const App: React.FC = () => {
         };
     }, [activeLocation, liveOraclePoint, displayedWeather, userProfile]);
 
-    // --- USER PROFILE (MODIFIÉ : ÉCOUTE TEMPS RÉEL) ---
+    // --- USER PROFILE (ÉCOUTE TEMPS RÉEL) ---
     useEffect(() => {
         if (!user) return;
         setIsProfileLoading(true);
-        // Michael : Utilisation d'onSnapshot pour capter le changement de niveau instantanément
         const unsubscribe = onSnapshot(doc(db, 'users', currentUserId), (docSnap) => {
             if (docSnap.exists()) {
-                // Michael : On fusionne les données avec l'ID du document pour le filtrage
                 setUserProfile({ ...docSnap.data(), id: docSnap.id } as UserProfile); 
             }
             setIsProfileLoading(false);
@@ -349,10 +402,8 @@ const App: React.FC = () => {
         try {
             await updateDoc(doc(db, 'users', currentUserId), { pendingLevelUp: false });
             if (goToExperience) {
-                setActiveDashboardTab('experience'); // On force l'onglet Expérience
+                setActiveDashboardTab('experience'); 
                 setCurrentView('dashboard');
-                // Note: La logique de switch d'onglet interne au Dashboard 
-                // devra être gérée via un paramètre ou un état lifté si nécessaire.
             }
         } catch (e) { console.error("Error resetting level notification:", e); }
     };
@@ -362,7 +413,30 @@ const App: React.FC = () => {
             case 'locations':
                 return <LocationsManager userId={currentUserId} initialOpenLocationId={targetLocationId} locations={arsenalData.locations} spots={arsenalData.spots} onAddLocation={(l: string, coords: any) => handleAddItem('locations', l, coords ? { coordinates: coords } : undefined)} onEditLocation={(id, l, extra) => handleEditItem('locations', id, l, extra)} onDeleteLocation={(id: string) => handleDeleteItem('locations', id)} onToggleFavorite={handleToggleLocationFavorite} onMoveLocation={(id: string, dir: 'up' | 'down') => handleMoveItem('locations', id, dir)} onAddSpot={(l: string, locId: string) => handleAddItem('zones', l, { locationId: locId })} onDeleteSpot={(id: string) => handleDeleteItem('zones', id)} onEditSpot={(id: string, l: string) => handleEditItem('zones', id, l)} onBack={() => { setTargetLocationId(null); setCurrentView('dashboard'); }} />;
             case 'dashboard': 
-                return <Dashboard userProfile={userProfile} activeTab={activeDashboardTab} onTabChange={setActiveDashboardTab} userName={userProfile?.pseudo || 'Pêcheur'} currentUserId={currentUserId} sessions={sessions} oracleData={oraclePoints} isOracleLoading={isOracleLoading || isWeatherLoading} activeLocationLabel={activeLocation?.label || "Sélectionner un secteur"} activeLocationId={activeLocationId} availableLocations={arsenalData.locations.filter(l => l.active && l.isFavorite)} onLocationClick={handleOpenLocation} onLocationSelect={setActiveLocationId} setActiveLocationId={setActiveLocationId} onEditSession={(s) => { setEditingSession(s); setCurrentView('session'); }} onDeleteSession={handleDeleteSession} onMagicDiscovery={handleMagicDiscovery} lureTypes={arsenalData.lureTypes} colors={arsenalData.colors} locations={arsenalData.locations} arsenalData={arsenalData} />;
+                return <Dashboard 
+                    userProfile={userProfile} 
+                    activeTab={activeDashboardTab} 
+                    onTabChange={setActiveDashboardTab} 
+                    userName={userProfile?.pseudo || 'Pêcheur'} 
+                    currentUserId={currentUserId} 
+                    sessions={sessions} 
+                    oracleData={oraclePoints} 
+                    isOracleLoading={isOracleLoading || isWeatherLoading} 
+                    activeLocationLabel={activeLocation?.label || "Sélectionner un secteur"} 
+                    activeLocationId={activeLocationId} 
+                    availableLocations={arsenalData.locations.filter(l => l.active && l.isFavorite)} 
+                    onLocationClick={handleOpenLocation} 
+                    onLocationSelect={setActiveLocationId} 
+                    setActiveLocationId={setActiveLocationId} 
+                    onEditSession={(s) => { setEditingSession(s); setCurrentView('session'); }} 
+                    onDeleteSession={handleDeleteSession} 
+                    onMagicDiscovery={handleMagicDiscovery} 
+                    lureTypes={arsenalData.lureTypes} 
+                    colors={arsenalData.colors} 
+                    locations={arsenalData.locations} 
+                    arsenalData={arsenalData}
+                    displayedWeather={displayedWeather} // Michael : Injection de la météo unifiée
+                />;
             case 'history':
                 return <HistoryView sessions={sessions} onDeleteSession={handleDeleteSession} onEditSession={handleEditRequest} currentUserId={currentUserId} />;
             case 'arsenal':
@@ -388,7 +462,7 @@ const App: React.FC = () => {
                     <h1 className="text-3xl font-black text-stone-800 mb-2 tracking-tighter uppercase italic">Seine<span className="text-amber-500">Oracle</span></h1>
                     <p className="text-stone-400 mb-10 text-sm font-medium leading-relaxed">Le carnet stratégique des soldats du quai. Accès restreint.</p>
                     <button onClick={handleLogin} className="w-full py-4 bg-stone-800 hover:bg-stone-900 text-white rounded-2xl font-black shadow-lg transition-all active:scale-95 flex items-center justify-center gap-3"><User size={20} /> Connexion Google</button>
-                    <p className="mt-6 text-[10px] text-stone-300 uppercase font-bold tracking-widest">Version Elite 4.8</p>
+                    <p className="mt-6 text-[10px] text-stone-300 uppercase font-bold tracking-widest">Version Elite 4.8.4</p>
                 </div>
             </div>
         );
@@ -397,7 +471,7 @@ const App: React.FC = () => {
     if (isWhitelisted === false) {
         return (
             <div className="flex h-screen flex-col items-center justify-center bg-red-50 p-6 text-center">
-                <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-red-100 max-w-sm w-full animate-in fade-in">
+                <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-red-100 max-sm w-full animate-in fade-in">
                     <ShieldAlert size={60} className="text-red-500 mx-auto mb-6" />
                     <h2 className="text-2xl font-black text-stone-800 mb-4 uppercase">Accès Refusé</h2>
                     <p className="text-stone-500 mb-8 text-sm leading-relaxed">L'email <span className="font-bold text-stone-800">{user.email}</span> n'est pas autorisé.<br/>Contacte l'administrateur.</p>
@@ -425,7 +499,6 @@ const App: React.FC = () => {
 
     return ( 
         <div className="min-h-screen bg-[#FAF9F6] pb-24 text-stone-600 relative">
-            {/* Michael : La Pop-in Level Up surgit ici au-dessus de tout */}
             {userProfile.pendingLevelUp && (
                 <LevelUpModal 
                     level={userProfile.levelReached || 1} 
@@ -434,7 +507,6 @@ const App: React.FC = () => {
                 />
             )}
 
-            {/* HEADER FIXE (D'ORIGINE) */}
             <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-stone-200 px-4 py-3 flex items-center justify-between shadow-sm">
                 <div className="flex items-center gap-2">
                     <button onClick={() => setIsMenuOpen(true)} className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-xl transition-colors">
@@ -444,13 +516,20 @@ const App: React.FC = () => {
                         <Fish className="text-white" size={20} />
                     </div>
                     <span className="font-black text-lg tracking-tighter text-stone-800 uppercase italic">Seine<span className="text-amber-500">Oracle</span></span>
+                    
+                    {/* Michael : Indicateur Offline (v4.8.4) */}
+                    {!isOnline && (
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-600 rounded-full border border-amber-100 animate-pulse">
+                            <WifiOff size={12} strokeWidth={3} />
+                            <span className="text-[10px] font-black uppercase tracking-widest">Secours Offline</span>
+                        </div>
+                    )}
                 </div>
                 <button onClick={() => setCurrentView('profile')} className="w-8 h-8 rounded-full bg-stone-100 overflow-hidden border border-stone-200">
                     {userProfile?.avatarBase64 ? <img src={userProfile.avatarBase64} alt="Profile" className="w-full h-full object-cover" /> : <User size={20} className="text-stone-400 m-auto mt-1" />}
                 </button>
             </header>
 
-            {/* BURGER MENU (D'ORIGINE) */}
             {isMenuOpen && (
                 <>
                     <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-sm z-50 animate-in fade-in" onClick={() => setIsMenuOpen(false)} />
@@ -460,7 +539,7 @@ const App: React.FC = () => {
                             <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center border-2 border-amber-100 text-amber-500 overflow-hidden shadow-inner">
                                 {userProfile?.avatarBase64 ? <img src={userProfile.avatarBase64} alt="Avatar" className="w-full h-full object-cover"/> : <User size={24} />}
                             </div>
-                            <div><div className="font-black text-stone-800 text-lg leading-none">{userProfile?.pseudo}</div><div className="text-xs text-stone-400 font-medium mt-1">v4.8 Soldat du Quai</div></div>
+                            <div><div className="font-black text-stone-800 text-lg leading-none">{userProfile?.pseudo}</div><div className="text-xs text-stone-400 font-medium mt-1">v4.8.4 Soldat du Quai</div></div>
                         </div>
                         <nav className="space-y-2 flex-1">
                             <button onClick={() => { setCurrentView('arsenal'); setIsMenuOpen(false); }} className="w-full flex items-center justify-between p-4 rounded-2xl text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-all font-bold group">
@@ -481,7 +560,6 @@ const App: React.FC = () => {
                 {renderContent()}
             </main>
 
-            {/* BOTTOM NAVIGATION (D'ORIGINE) */}
             <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-stone-200 bg-white pb-safe shadow-lg"> 
                 <div className="mx-auto flex max-w-lg items-center justify-around py-3">
                     <button onClick={() => { setTargetLocationId(null); setCurrentView('dashboard'); }} className={`flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-amber-600' : 'text-stone-400'}`}><Home size={24} /><span className="text-[10px] font-bold uppercase tracking-tighter">Live</span></button>
@@ -506,39 +584,34 @@ const App: React.FC = () => {
         </div>
     );
 }; 
-// Michael : Messages génériques et sardoniques pour l'évolution du soldat
+
 const getLevelUpMessage = (level: number) => {
     if (level <= 5) return "Pas mal. Tu as enfin compris de quel côté se tenait la canne.";
     if (level <= 10) return "Attention, les poissons commencent à reconnaître ton ombre à la surface.";
     if (level <= 20) return "Expert Oracle ? L'eau est ton jardin, mais reste vigilant sur la discrétion de tes montages.";
     return "Maître de l'Oracle. Les poissons te saluent... ou ils se moquent, c'est dur à dire.";
 };
-// Michael : Composant Pop-in "Fun" & Célébration
+
 const LevelUpModal: React.FC<{ level: number, onClose: () => void, onConfirm: () => void }> = ({ level, onClose, onConfirm }) => {
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300">
             <div className="absolute inset-0 bg-stone-900/60 backdrop-blur-md" onClick={onClose} />
             <div className="relative bg-white rounded-[2.5rem] shadow-2xl border-4 border-amber-400 p-8 max-w-sm w-full text-center overflow-hidden animate-in zoom-in duration-500">
-                {/* Effet Confettis Visuel */}
                 <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
                     <Sparkles className="absolute top-4 left-4 text-amber-500 animate-bounce" size={24} />
                     <Sparkles className="absolute top-10 right-10 text-orange-500 animate-pulse" size={20} />
                     <Sparkles className="absolute bottom-10 left-10 text-yellow-500 animate-ping" size={16} />
                 </div>
-
                 <div className="relative z-10">
                     <div className="w-24 h-24 bg-gradient-to-br from-amber-400 to-orange-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl rotate-6">
                         <PartyPopper size={48} className="text-white" />
                     </div>
-                    
                     <h2 className="text-3xl font-black text-stone-800 mb-2 uppercase italic tracking-tighter">
                         NIVEAU <span className="text-amber-500">{level}</span> !
                     </h2>
-                    
                     <p className="text-stone-500 font-medium mb-8 leading-relaxed italic">
                         "{getLevelUpMessage(level)}"
                     </p>
-
                     <div className="space-y-3">
                         <button 
                             onClick={onConfirm}
@@ -546,7 +619,6 @@ const LevelUpModal: React.FC<{ level: number, onClose: () => void, onConfirm: ()
                         >
                             VOIR MON RANG <ChevronRight size={18} />
                         </button>
-                        
                         <button 
                             onClick={onClose}
                             className="w-full py-3 text-stone-400 hover:text-stone-600 font-bold text-sm uppercase tracking-widest"

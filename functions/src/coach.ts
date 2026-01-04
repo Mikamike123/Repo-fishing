@@ -3,12 +3,22 @@ import { onCall, CallableRequest, HttpsError } from "firebase-functions/v2/https
 import { defineSecret } from "firebase-functions/params";
 import * as admin from "firebase-admin";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { z } from "zod"; // Michael : Import Zod pour la sécurisation MEP
 
 // Michael : Accès sécurisé à la clé via Google Secret Manager
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 
 const MODEL_NAME = "gemini-2.5-flash"; 
 const CONTEXT_READ_LIMIT = 15;
+
+// --- SCHÉMA DE VALIDATION Michael ---
+const CoachInputSchema = z.object({
+    userMessage: z.string().min(1),
+    narrativeContext: z.string(),
+    liveContext: z.string(),
+    userName: z.string(),
+    strategicContext: z.string()
+});
 
 /**
  * Charge l'historique depuis Firestore (côté Admin)
@@ -57,18 +67,24 @@ export const askFishingCoach = onCall({
         throw new HttpsError("unauthenticated", "Michael, l'Oracle ne parle pas aux inconnus.");
     }
 
+    // 2. VALIDATION Michael : Sécurisation du payload d'entrée
+    const validation = CoachInputSchema.safeParse(request.data);
+    if (!validation.success) {
+        throw new HttpsError("invalid-argument", "Le Coach a besoin d'un message et de contexte pour répondre.");
+    }
+
     const { 
         userMessage, 
         narrativeContext, 
         liveContext, 
         userName, 
         strategicContext 
-    } = request.data;
+    } = validation.data;
     const userId = request.auth.uid;
 
     try {
-        // Michael : Initialisation via le SDK Officiel corrigé
-        const apiKey = GEMINI_API_KEY.value().trim(); // Michael : On trim pour virer les espaces fantômes
+        // Michael : Initialisation via le SDK Officiel présent dans ton package.json
+        const apiKey = GEMINI_API_KEY.value().trim(); 
         
         const genAI = new GoogleGenerativeAI(apiKey);
         // Sauvegarde du message utilisateur

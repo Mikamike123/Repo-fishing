@@ -1,9 +1,16 @@
 // lib/firebase.ts
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, doc, getDocs, deleteDoc } from "firebase/firestore"; 
+import { 
+    getFirestore, 
+    collection, 
+    doc, 
+    getDocs, 
+    deleteDoc, 
+    enableMultiTabIndexedDbPersistence 
+} from "firebase/firestore"; 
 import { getFunctions } from "firebase/functions"; 
 import { getStorage } from "firebase/storage"; 
-import { getAuth, GoogleAuthProvider } from "firebase/auth"; // Michael : Authentification conservée
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 const getEnvVar = (key: string): string | undefined => {
     // @ts-ignore
@@ -18,11 +25,8 @@ const getEnvVar = (key: string): string | undefined => {
     return undefined;
 };
 
-// 1. Config Firebase
-// Michael : On utilise ici les clés publiques API. 
-// Le fichier serviceAccountKey.json ne doit être utilisé QUE dans le dossier functions/
 const firebaseConfig = {
-    apiKey: getEnvVar('VITE_FIREBASE_API_KEY'), // Remplace par ta clé API Firebase standard si besoin
+    apiKey: getEnvVar('VITE_FIREBASE_API_KEY'),
     authDomain: "mysupstack.firebaseapp.com",
     projectId: "mysupstack", 
     storageBucket: "mysupstack.firebasestorage.app"
@@ -32,12 +36,23 @@ const app = initializeApp(firebaseConfig);
 
 // 2. Initialisation des Services
 export const db = getFirestore(app);
+
+/**
+ * Michael : Activation du mode Offline First pour Firestore.
+ * Permet la consultation des sessions et secteurs sans réseau.
+ */
+enableMultiTabIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+        console.warn("La persistance échoue (multiples onglets ouverts)");
+    } else if (err.code === 'unimplemented') {
+        console.warn("Le navigateur actuel ne supporte pas la persistance");
+    }
+});
+
 export const storage = getStorage(app);
 export const auth = getAuth(app); 
 export const googleProvider = new GoogleAuthProvider(); 
 export const functions = getFunctions(app, "europe-west1");
-
-// --- Michael : Initialisation Gemini SUPPRIMÉE ICI (Migration Backend effectuée) ---
 
 // --- CHEMINS D'ACCÈS AUX COLLECTIONS (PRÉSERVÉS) ---
 export const sessionsCollection = collection(db, 'sessions'); 
@@ -47,16 +62,10 @@ export const techniquesCollection = collection(db, 'techniques');
 export const luresCollection = collection(db, 'lures');
 export const envLogsCollection = collection(db, 'environmental_logs');
 
-/**
- * Michael : Accès dynamique à l'historique par utilisateur.
- */
 export const getChatHistoryCollection = (userId: string) => {
     return collection(db, 'users', userId, 'coach_memoire');
 };
 
-/**
- * Nettoyage de l'historique IA (Conservé pour maintenance)
- */
 export const clearChatHistory = async (userId: string) => {
     const chatHistoryCol = getChatHistoryCollection(userId);
     const snapshot = await getDocs(chatHistoryCol);

@@ -35,7 +35,7 @@ export interface WeatherSnapshot {
 }
 
 export interface HydroSnapshot {
-  flowRaw: number;                  
+  flowRaw: number;                    
   waterTemp: number | null; 
   tFond?: number;            
   turbidityIdx?: number;
@@ -50,7 +50,37 @@ export interface BioScoreSnapshot {
   perche: number;           
   blackbass?: number;       
 }
+// [AJOUT] Michael : Interface pour les points du graphique et la météo unifiée
+export interface OracleDataPoint {
+  timestamp: number;
+  hourLabel: string;
+  isForecast: boolean;
+  
+  // Données Hydro simulées
+  waterTemp: number;
+  tFond: number;
+  turbidityNTU: number;
+  dissolvedOxygen: number;
+  waveHeight: number;
+  flowRaw: number;
+  flowStatus?: 'Montée' | 'Décrue' | 'Stable';
 
+  // [NOUVEAU] Données Météo brutes (pour alimenter le Live)
+  airTemp: number; 
+  pressure: number;
+  clouds: number;
+  windSpeed: number;
+  windDirection: number;
+  precip: number;
+  conditionCode: number;
+
+  // BioScores
+  sandre: number;
+  brochet: number;
+  perche: number;
+  blackbass: number;
+  bestScore: number;
+}
 export interface FullEnvironmentalSnapshot {
   weather: WeatherSnapshot;
   hydro: HydroSnapshot;

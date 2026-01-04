@@ -1,15 +1,42 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { VertexAI } from "@google-cloud/vertexai";
+import { z } from "zod"; // Import de Zod pour la validation
 
-// Initialisation Vertex AI - Correction pour Gemini 3 (v4.5)
-// Utilisation de us-central1 pour l'accès prioritaire à Gemini 2.5 Flash
+// Initialisation Vertex AI
 const vertexAI = new VertexAI({ project: 'mysupstack', location: 'us-central1' });
 
 const SPECIES_LIST = ['Sandre', 'Brochet', 'Perche', 'Silure', 'Chevesne', 'Black-Bass', 'Aspe', 'Truite', 'Bar'];
 
+// --- SCHÉMAS DE VALIDATION ZOD ---
+
+// Validation des données entrantes (Michael -> Firebase)
+const MagicScanInputSchema = z.object({
+  image: z.string().min(1, "L'image est absente."),
+  userPseudo: z.string().min(1),
+  referentials: z.object({
+    lureTypes: z.array(z.object({
+      id: z.string(),
+      label: z.string()
+    })),
+    colors: z.array(z.object({
+      id: z.string(),
+      label: z.string()
+    }))
+  })
+});
+
+// Validation des données sortantes (Gemini -> Michael)
+const MagicScanOutputSchema = z.object({
+  species: z.string(),
+  size: z.number().int().positive(),
+  lureTypeId: z.string(),
+  lureColorId: z.string(),
+  enthusiastic_message: z.string(),
+  confidence_score: z.number().min(0).max(1)
+});
+
 /**
  * ORACLE VISION 3.0 - Analyse de prise par IA (One-Click Logging)
- * Ce module traite l'image compressée pour extraire l'espèce, la taille et le matériel.
  */
 export const analyzeCatchImage = onCall({ 
     region: "europe-west1", 
@@ -17,24 +44,21 @@ export const analyzeCatchImage = onCall({
     maxInstances: 5 
 }, async (request) => {
   
-  // Note: Authentification commentée pour les tests locaux comme dans ton code source
-  // if (!request.auth) {
-  //   throw new HttpsError("unauthenticated", "Michael, l'Oracle ne répond qu'aux membres authentifiés.");
-  // }
-
-  const { image, userPseudo, referentials } = request.data;
-
-  if (!image) {
-    throw new HttpsError("invalid-argument", "L'image est absente de la requête.");
+  // 1. VALIDATION DU PAYLOAD D'ENTRÉE
+  const validatedInput = MagicScanInputSchema.safeParse(request.data);
+  
+  if (!validatedInput.success) {
+    console.error("Erreur de validation payload entrée:", validatedInput.error);
+    throw new HttpsError("invalid-argument", "Les données fournies au Magic Scan sont malformées.");
   }
+
+  const { image, userPseudo, referentials } = validatedInput.data;
 
   /**
    * NETTOYAGE IMAGE
-   * Retire le préfixe "data:image/jpeg;base64," si présent lors de l'envoi depuis le frontend
    */
   const cleanImage = image.includes(",") ? image.split(",")[1] : image;
 
-  // Instructions système optimisées pour les capacités spatiales de Gemini 2.5 Flash
   const systemInstructionContent = `
     Tu es "Oracle Vision 3.0", l'expert IA de ${userPseudo}, expert en biométrie halieutique.
     
@@ -66,7 +90,6 @@ export const analyzeCatchImage = onCall({
     }
   `;
 
-  // PASSAGE À GEMINI 2.5 FLASH (Mise à jour v4.5)
   const model = vertexAI.getGenerativeModel({
     model: 'gemini-2.5-flash', 
     systemInstruction: {
@@ -75,7 +98,7 @@ export const analyzeCatchImage = onCall({
     },
     generationConfig: {
       responseMimeType: "application/json",
-      temperature: 0.1, // Basse température pour garantir la cohérence du mapping d'IDs
+      temperature: 0.1, 
     },
   });
 
@@ -96,10 +119,18 @@ export const analyzeCatchImage = onCall({
 
     const jsonResponse = JSON.parse(responseText);
     
-    // Log de succès pour console Firebase (Michael)
-    console.log(`[Oracle Vision] Prise analysée pour ${userPseudo}: ${jsonResponse.species} (${jsonResponse.size}cm)`);
+    // 2. VALIDATION DE LA RÉPONSE DE L'IA (Anti-Hallucination)
+    const validatedOutput = MagicScanOutputSchema.safeParse(jsonResponse);
     
-    return jsonResponse;
+    if (!validatedOutput.success) {
+        console.error("Gemini a produit un JSON invalide:", validatedOutput.error);
+        throw new Error("L'IA a produit des données non conformes.");
+    }
+
+    // Log de succès pour console Firebase (Michael)
+    console.log(`[Oracle Vision] Prise analysée pour ${userPseudo}: ${validatedOutput.data.species} (${validatedOutput.data.size}cm)`);
+    
+    return validatedOutput.data;
 
   } catch (error: any) {
     console.error("Erreur Oracle Vision 3.0:", error);

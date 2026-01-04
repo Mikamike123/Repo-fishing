@@ -6,7 +6,7 @@ import {
 } from './DashboardWidgets';
 import { WEATHER_METADATA, HYDRO_METADATA } from '../constants/indicators';
 import { ChevronDown, MapPin } from 'lucide-react';
-import { OracleDataPoint } from '../lib/oracle-service'; 
+import { OracleDataPoint } from '../types'; 
 
 const SPECIES_CONFIG: Record<string, { label: string; key: string; hexColor: string }> = {
     'Sandre': { label: 'Sandre', key: 'sandre', hexColor: '#f59e0b' },

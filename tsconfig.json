@@ -12,7 +12,8 @@
     "skipLibCheck": true,
     "types": [
       "node",
-      "vite/client"
+      "vite/client",
+      "vite-plugin-pwa/client"
     ],
     "moduleResolution": "bundler",
     "isolatedModules": true,
@@ -30,6 +31,7 @@
   "include": [
     "src", 
     "lib",
+    "index.tsx",
     "vite-env.d.ts"
   ]
 }
