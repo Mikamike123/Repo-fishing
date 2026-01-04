@@ -1,8 +1,8 @@
-// components/SessionFormUI.tsx
+// components/SessionFormUI.tsx - Version 4.8.14 (Ultra-Slim Toggle & Tutoiement)
 import React, { useState } from 'react';
 import { 
     Save, Loader2, Fish, AlertOctagon, X, Copy, 
-    Cloud, Sun, CloudSun, CloudRain, Wind
+    Cloud, Sun, CloudSun, CloudRain, Wind, ZapOff
 } from 'lucide-react';
 import { 
     Session, Zone, Setup, Technique, Catch, Miss, Lure, 
@@ -12,20 +12,6 @@ import CatchDialog from './CatchDialog';
 import MissDialog from './MissDialog';
 import DeleteConfirmDialog from './DeleteConfirmDialog';
 import { CATCH_DELETION_MESSAGES, MISS_DELETION_MESSAGES } from '../constants/deletionMessages';
-import { WEATHER_METADATA, HYDRO_METADATA } from '../constants/indicators';
-
-const getWindDir = (deg?: number) => {
-    if (deg === undefined) return '';
-    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
-    return directions[Math.round(deg / 45) % 8];
-};
-
-const getWeatherIcon = (clouds: number) => {
-    if (clouds < 20) return <Sun size={14} className="text-amber-500" />;
-    if (clouds < 60) return <CloudSun size={14} className="text-stone-400" />;
-    if (clouds < 90) return <Cloud size={14} className="text-stone-500" />;
-    return <CloudRain size={14} className="text-stone-600" />;
-};
 
 interface SessionFormUIProps {
     initialData?: Session | null;
@@ -61,6 +47,7 @@ interface SessionFormUIProps {
     handleSaveCatch: (data: any) => void;
     handleSaveMiss: (data: any) => void;
     handleSubmit: (e: React.FormEvent) => void;
+    onCancel?: () => void;
 }
 
 const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
@@ -71,12 +58,11 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
         feelingScore, setFeelingScore, notes, setNotes, catches, misses, envSnapshot,
         isLoadingEnv, envStatus, isCatchModalOpen, setIsCatchModalOpen, isMissModalOpen, setIsMissModalOpen,
         editingCatch, setEditingCatch, editingMiss, setEditingMiss,
-        handleDeleteCatch, handleDeleteMiss, handleSaveCatch, handleSaveMiss, handleSubmit, zones, userId
+        handleDeleteCatch, handleDeleteMiss, handleSaveCatch, handleSaveMiss, handleSubmit, zones, userId, onCancel
     } = props;
 
-    // NETTOYAGE : Suppression des références au Golden Standard
-    // const GOLDEN_SECTOR_ID = import.meta.env.VITE_GOLDEN_SECTOR_ID;
-    // const isGolden = locationId === GOLDEN_SECTOR_ID;
+    // Michael : État pour le mode "Capot Express"
+    const [isCapotExpress, setIsCapotExpress] = useState(false);
 
     const [pendingDelete, setPendingDelete] = useState<{ id: string; type: 'catch' | 'miss' | null }>({
         id: '',
@@ -93,180 +79,125 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
         setPendingDelete({ id: '', type: null });
     };
 
-    // Helper pour extraire les valeurs du snapshot proprement
-    const getVal = (meta: any, type: 'weather' | 'hydro') => {
-        if (!envSnapshot) return '--';
-        const val = (envSnapshot as any)[type]?.[meta.dataKey];
-        if (val === undefined || val === null) return '--';
-        
-        // Formattage spécifique Michael
-        if (meta.dataKey === 'windSpeed') return `${Math.round(val)}km/h ${getWindDir(envSnapshot.weather.windDirection)}`;
-        if (meta.dataKey === 'flowLagged') return Math.round(val / 1000); 
-        if (typeof val === 'number') return val % 1 === 0 ? val : val.toFixed(1);
-        return val;
-    };
-
     return (
-        <div className="bg-white rounded-3xl p-6 shadow-xl pb-24">
+        <div className="bg-white rounded-3xl p-6 shadow-xl pb-24 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* HEADER : Tutoiement & Croix */}
             <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-black text-stone-800 flex items-center gap-2">
-                    {initialData ? <><AlertOctagon className="text-amber-500" /> Éditer Session</> : <><Fish className="text-emerald-500" /> Nouvelle Session</>}
+                <h2 className="text-2xl font-black text-stone-800 flex items-center gap-2 uppercase tracking-tighter italic">
+                    {initialData ? <><AlertOctagon className="text-amber-500" /> Modifie ta Session</> : <><Fish className="text-emerald-500" /> Nouvelle Session</>}
                 </h2>
-                {initialData && (
-                    <button type="button" onClick={() => props.handleSubmit({ preventDefault: () => {} } as any)} className="p-2 bg-stone-100 rounded-full hover:bg-stone-200">
-                        <X size={20} />
-                    </button>
-                )}
+                <button type="button" onClick={() => onCancel ? onCancel() : window.location.reload()} className="p-2.5 bg-stone-100 text-stone-500 rounded-full hover:bg-stone-200 transition-colors">
+                    <X size={22} strokeWidth={2.5} />
+                </button>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
+                {/* GRILLE DATE/HEURE : 4-4-4 pour éviter les minutes coupées */}
                 <div className="grid grid-cols-12 gap-2">
-                    <div className="col-span-6">
+                    <div className="col-span-4">
                         <label className="text-[9px] font-bold text-stone-400 uppercase tracking-widest mb-1 block">Date</label>
-                        <input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full p-3 bg-stone-50 rounded-xl font-bold text-stone-700 text-sm outline-none focus:ring-2 focus:ring-emerald-100 transition-all" />
+                        <input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full p-3 bg-stone-50 rounded-xl font-bold text-stone-700 text-xs outline-none border border-transparent focus:border-emerald-200 transition-all" />
                     </div>
-                    <div className="col-span-3">
+                    <div className="col-span-4">
                         <label className="text-[9px] font-bold text-stone-400 uppercase tracking-widest mb-1 block">Début</label>
-                        <input type="time" required value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full p-3 bg-stone-50 rounded-xl font-bold text-stone-700 text-sm outline-none focus:ring-2 focus:ring-emerald-100 transition-all" />
+                        <input type="time" required value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full p-3 bg-stone-50 rounded-xl font-bold text-stone-700 text-xs outline-none border border-transparent focus:border-emerald-200 transition-all" />
                     </div>
-                    <div className="col-span-3">
+                    <div className="col-span-4">
                         <label className="text-[9px] font-bold text-stone-400 uppercase tracking-widest mb-1 block">Fin</label>
-                        <input type="time" required value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full p-3 bg-stone-50 rounded-xl font-bold text-stone-700 text-sm outline-none focus:ring-2 focus:ring-emerald-100 transition-all" />
+                        <input type="time" required value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full p-3 bg-stone-50 rounded-xl font-bold text-stone-700 text-xs outline-none border border-transparent focus:border-emerald-200 transition-all" />
                     </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
                     <div>
                         <label className="text-[9px] font-bold text-stone-400 uppercase tracking-widest mb-1 block">Secteur</label>
-                        <select required value={locationId} onChange={e => setLocationId(e.target.value)} className="w-full p-3 bg-stone-50 rounded-xl font-bold text-stone-700 text-sm outline-none focus:ring-2 focus:ring-emerald-100 transition-all">
+                        <select required value={locationId} onChange={e => setLocationId(e.target.value)} className="w-full p-3 bg-stone-50 rounded-xl font-bold text-stone-700 text-sm outline-none border border-transparent focus:border-emerald-200 transition-all">
                             {locations.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}
                         </select>
                     </div>
                     <div>
                         <label className="text-[9px] font-bold text-stone-400 uppercase tracking-widest mb-1 block">Spot</label>
-                        <select required value={spotId} onChange={e => setSpotId(e.target.value)} className="w-full p-3 bg-stone-50 rounded-xl font-bold text-stone-700 text-sm outline-none focus:ring-2 focus:ring-emerald-100 transition-all" disabled={filteredSpots.length === 0}>
+                        <select required value={spotId} onChange={e => setSpotId(e.target.value)} className="w-full p-3 bg-stone-50 rounded-xl font-bold text-stone-700 text-sm outline-none border border-transparent focus:border-emerald-200 transition-all" disabled={filteredSpots.length === 0}>
                             {filteredSpots.map(z => <option key={z.id} value={z.id}>{z.label}</option>)}
                         </select>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-2">
-                    <label className="text-[9px] font-bold text-stone-400 uppercase tracking-widest mb-1 block">Setup Principal</label>
-                    <select required value={setupId} onChange={e => setSetupId(e.target.value)} className="w-full p-3 bg-stone-50 rounded-xl font-bold text-stone-700 text-sm outline-none focus:ring-2 focus:ring-emerald-100 transition-all">
+                    <label className="text-[9px] font-bold text-stone-400 uppercase tracking-widest mb-1 block">Combo utilisé</label>
+                    <select required value={setupId} onChange={e => setSetupId(e.target.value)} className="w-full p-3 bg-stone-50 rounded-xl font-bold text-stone-700 text-sm outline-none border border-transparent focus:border-emerald-200 transition-all">
                         {setups.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                     </select>
                 </div>
 
-                <div className="space-y-2 pt-2 border-t border-stone-100 mt-2">
-                    <div className="flex justify-between items-end px-1">
-                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-widest">
-                            {envStatus === 'simulated' ? 'Conditions Reconstituées (Est.)' : 'Conditions (Archives)'}
-                        </label>
-                        {isLoadingEnv ? (
-                             <span className="text-[9px] text-amber-500 font-bold flex items-center gap-1"><Loader2 size={10} className="animate-spin"/> Recherche...</span>
-                        ) : envStatus === 'found' ? (
-                             <span className="text-[9px] text-emerald-500 font-bold uppercase">Données Synchronisées</span>
-                        ) : envStatus === 'simulated' ? (
-                            <span className="text-[9px] text-blue-500 font-bold uppercase">Simulé (Universel)</span>
-                        ) : (
-                             <span className="text-[9px] text-stone-300 italic">Non disponible</span>
-                        )}
+                {/* Michael : Toggle Capot Express (Version Ultra-Slim) */}
+                <div className="flex items-center justify-between px-2 py-2 bg-stone-50 rounded-2xl border border-stone-100">
+                    <div className="flex items-center gap-2">
+                        <ZapOff size={14} className={isCapotExpress ? 'text-amber-500' : 'text-stone-300'} />
+                        <span className="text-[10px] font-black text-stone-500 uppercase tracking-widest">Session sans touche ?</span>
                     </div>
-                    
-                    <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide py-1">
-                        {/* Boucle Météo Michael */}
-                        {Object.entries(WEATHER_METADATA).map(([key, meta]) => {
-                            const val = getVal(meta, 'weather');
-                            const themes: any = {
-                                rose: "bg-rose-50 text-rose-900 border-rose-100",
-                                indigo: "bg-indigo-50 text-indigo-900 border-indigo-100",
-                                amber: "bg-amber-50 text-amber-900 border-amber-100",
-                                blue: "bg-blue-50 text-blue-900 border-blue-100"
-                            };
-                            return (
-                                <div key={key} className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border shrink-0 min-w-[70px] justify-center ${themes[meta.theme] || 'bg-stone-50'}`}>
-                                    {key === 'tempAir' && envSnapshot ? getWeatherIcon(envSnapshot.weather.clouds) : <meta.icon size={14} className="opacity-60" />}
-                                    <span className="text-xs font-bold">
-                                        {val}{val !== '--' ? (key === 'wind' ? '' : meta.unit) : ''}
+                    <button 
+                        type="button"
+                        onClick={() => setIsCapotExpress(!isCapotExpress)}
+                        className={`w-10 h-5 rounded-full relative transition-colors ${isCapotExpress ? 'bg-amber-500' : 'bg-stone-300'}`}
+                    >
+                        <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${isCapotExpress ? 'left-6' : 'left-1'}`} />
+                    </button>
+                </div>
+
+                {/* Michael : Événements conditionnels */}
+                {!isCapotExpress && (
+                    <div className="space-y-4 pt-1 animate-in fade-in duration-300">
+                        <div className="flex gap-3">
+                            <button type="button" onClick={() => setIsMissModalOpen(true)} className="flex-1 py-3.5 bg-rose-50 text-rose-600 rounded-2xl text-[11px] font-black border border-rose-100 shadow-sm active:scale-95 transition-all flex justify-center items-center gap-2">
+                                <AlertOctagon size={16}/> RATÉ
+                            </button>
+                            <button type="button" onClick={() => setIsCatchModalOpen(true)} className="flex-1 py-3.5 bg-emerald-50 text-emerald-600 rounded-2xl text-[11px] font-black border border-emerald-100 shadow-sm active:scale-95 transition-all flex justify-center items-center gap-2">
+                                <Fish size={16}/> PRISE
+                            </button>
+                        </div>
+
+                        <div className="space-y-2">
+                            {catches.map(c => (
+                                <div key={c.id} className="flex items-center justify-between p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl">
+                                    <span className="font-bold text-stone-800 text-sm flex items-center gap-2 truncate">
+                                        <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                                        {c.species} {c.size}cm
                                     </span>
+                                    <div className="flex gap-1 shrink-0">
+                                        <button type="button" onClick={() => { setEditingCatch(c); setIsCatchModalOpen(true); }} className="p-2 bg-white rounded-full text-stone-400 shadow-sm border border-stone-100 hover:text-emerald-600"><Copy size={12}/></button>
+                                        <button type="button" onClick={() => triggerDelete(c.id, 'catch')} className="p-2 bg-white rounded-full text-rose-400 shadow-sm border border-stone-100 hover:text-rose-600"><X size={12}/></button>
+                                    </div>
                                 </div>
-                            );
-                        })}
-
-                        {/* Boucle Hydro Michael - CORRIGÉE (Plus de filtre isGolden) */}
-                        {Object.entries(HYDRO_METADATA).map(([key, meta]) => {
-                            // NETTOYAGE : Suppression de la condition restrictive
-                            // if ((key === 'flow' || key === 'level') && !isGolden) return null;
-                            const val = getVal(meta, 'hydro');
-                            const themes: any = {
-                                orange: "bg-orange-50 text-orange-700 border-orange-100",
-                                emerald: "bg-emerald-50 text-emerald-800 border-emerald-100",
-                                purple: "bg-purple-50 text-purple-700 border-purple-100",
-                                indigo: "bg-indigo-50 text-indigo-700 border-indigo-100",
-                                blue: "bg-blue-50 text-blue-700 border-blue-100",
-                                cyan: "bg-cyan-50 text-cyan-700 border-cyan-100"
-                            };
-
-                            return (
-                                <div key={key} className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border shrink-0 min-w-[70px] justify-center ${themes[meta.theme] || 'bg-stone-50'}`}>
-                                    <meta.icon size={14} className="opacity-70" />
-                                    <span className="text-xs font-bold">{val}{val !== '--' ? meta.unit : ''}</span>
+                            ))}
+                            {misses.map(m => (
+                                <div key={m.id} className="flex items-center justify-between p-3 bg-rose-50/50 border border-rose-100 rounded-xl">
+                                    <span className="font-bold text-stone-800 text-sm flex items-center gap-2 truncate">
+                                        <div className="w-2 h-2 rounded-full bg-rose-500"></div>
+                                        {m.type}
+                                    </span>
+                                    <div className="flex gap-1 shrink-0">
+                                        <button type="button" onClick={() => { setEditingMiss(m); setIsMissModalOpen(true); }} className="p-2 bg-white rounded-full text-stone-400 shadow-sm border border-stone-100 hover:text-rose-600"><Copy size={12}/></button>
+                                        <button type="button" onClick={() => triggerDelete(m.id, 'miss')} className="p-2 bg-white rounded-full text-rose-400 shadow-sm border border-stone-100 hover:text-rose-600"><X size={12}/></button>
+                                    </div>
                                 </div>
-                            );
-                        })}
+                            ))}
+                        </div>
                     </div>
-                </div>
-
-                <div className="space-y-4 pt-2">
-                    <div className="flex gap-3">
-                        <button type="button" onClick={() => setIsMissModalOpen(true)} className="flex-1 py-3 bg-rose-50 text-rose-600 rounded-full text-xs font-black border border-rose-100 shadow-sm active:scale-95 transition-all flex justify-center items-center gap-2 hover:bg-rose-100">
-                            <AlertOctagon size={16}/> AJOUTER RATÉ
-                        </button>
-                        <button type="button" onClick={() => setIsCatchModalOpen(true)} className="flex-1 py-3 bg-emerald-50 text-emerald-600 rounded-full text-xs font-black border border-emerald-100 shadow-sm active:scale-95 transition-all flex justify-center items-center gap-2 hover:bg-emerald-100">
-                            <Fish size={16}/> AJOUTER PRISE
-                        </button>
-                    </div>
-
-                    <div className="space-y-2">
-                        {catches.map(c => (
-                            <div key={c.id} className="flex items-center justify-between p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl">
-                                <span className="font-bold text-stone-800 text-sm flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                                    {c.species} {c.size}cm
-                                </span>
-                                <div className="flex gap-1">
-                                    <button type="button" onClick={() => { setEditingCatch(c); setIsCatchModalOpen(true); }} className="p-2 bg-white rounded-full text-stone-400 shadow-sm border border-stone-100 hover:text-emerald-600"><Copy size={12}/></button>
-                                    <button type="button" onClick={() => triggerDelete(c.id, 'catch')} className="p-2 bg-white rounded-full text-rose-400 shadow-sm border border-stone-100 hover:text-rose-600"><X size={12}/></button>
-                                </div>
-                            </div>
-                        ))}
-                        {misses.map(m => (
-                            <div key={m.id} className="flex items-center justify-between p-3 bg-rose-50/50 border border-rose-100 rounded-xl">
-                                <span className="font-bold text-stone-800 text-sm flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full bg-rose-500"></div>
-                                    {m.type}
-                                </span>
-                                <div className="flex gap-1">
-                                    <button type="button" onClick={() => { setEditingMiss(m); setIsMissModalOpen(true); }} className="p-2 bg-white rounded-full text-stone-400 shadow-sm border border-stone-100 hover:text-rose-600"><Copy size={12}/></button>
-                                    <button type="button" onClick={() => triggerDelete(m.id, 'miss')} className="p-2 bg-white rounded-full text-rose-400 shadow-sm border border-stone-100 hover:text-rose-600"><X size={12}/></button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
+                )}
 
                 <div className="pt-2">
-                      <label className="text-[9px] font-bold text-stone-400 uppercase mb-2 flex justify-between">
-                        <span>Ressenti Global</span>
+                      <label className="text-[9px] font-bold text-stone-400 uppercase mb-2 flex justify-between tracking-widest">
+                        <span>Ton ressenti global</span>
                         <span className="text-amber-500 text-base font-black">{feelingScore}/10</span>
                       </label>
                       <input type="range" min="1" max="10" value={feelingScore} onChange={e => setFeelingScore(parseInt(e.target.value))} className="w-full h-2 bg-stone-100 rounded-lg appearance-none cursor-pointer accent-amber-500"/>
                 </div>
 
-                <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Observations rapides..." className="w-full p-3 bg-stone-50 rounded-2xl text-sm outline-none resize-none focus:ring-2 focus:ring-stone-200 transition-all" />
+                <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Tes observations rapides..." className="w-full p-4 bg-stone-50 rounded-2xl text-sm outline-none resize-none border border-transparent focus:border-stone-200 transition-all italic" />
 
-                <button type="submit" disabled={isLoadingEnv} className="w-full py-4 bg-stone-800 text-white rounded-2xl font-black shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2">
-                    {isLoadingEnv ? <Loader2 className="animate-spin" size={20} /> : <><Save size={20} /> {initialData ? 'Enregistrer les modifications' : 'Clôturer la session'}</>}
+                <button type="submit" disabled={isLoadingEnv} className="w-full py-5 bg-stone-800 text-white rounded-2xl font-black shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 text-lg uppercase tracking-tighter">
+                    {isLoadingEnv ? <Loader2 className="animate-spin" size={24} /> : <><Save size={24} /> {initialData ? 'Enregistre tes modifs' : 'Clôture ta session'}</>}
                 </button>
             </form>
 

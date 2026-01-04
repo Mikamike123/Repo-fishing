@@ -1,4 +1,4 @@
-// App.tsx - Version 4.8.6 (Scaling Mobile & Branding Fix)
+// App.tsx - Version 4.8.12 (Flat 6-Column Navigation & Full Proportionality)
 import React, { useState, useEffect, useMemo } from 'react'; 
 import { Home, PlusCircle, ScrollText, Fish, Bot, User, Menu, X, ChevronRight, MapPin, Anchor, ShieldAlert, LogOut, PartyPopper, Sparkles, WifiOff } from 'lucide-react';
 import { 
@@ -180,7 +180,6 @@ const App: React.FC = () => {
             setIsWeatherLoading(true);
             
             try {
-                // 1. Récupération des données via le Cache Tactique (30 min)
                 const points = await getOrFetchOracleData(
                     activeLocation.coordinates.lat, 
                     activeLocation.coordinates.lng, 
@@ -189,14 +188,12 @@ const App: React.FC = () => {
                 );
                 setOraclePoints(points);
 
-                // 2. Mapping automatique du Live directement depuis les points Oracle
                 if (points.length > 0) {
                     const nowTs = Date.now();
                     const livePoint = points.reduce((prev, curr) => 
                         Math.abs(curr.timestamp - nowTs) < Math.abs(prev.timestamp - nowTs) ? curr : prev
                     );
 
-                    // Michael : On alimente displayedWeather avec les données brutes portées par l'Oracle
                     setDisplayedWeather({
                         temperature: livePoint.airTemp,
                         pressure: livePoint.pressure,
@@ -216,26 +213,21 @@ const App: React.FC = () => {
         };
 
         syncEnvironment();
-        
         const interval = setInterval(syncEnvironment, 30 * 60 * 1000);
         return () => clearInterval(interval);
     }, [activeLocationId, activeLocation]);
 
-    // --- PRE-FETCHING DES FAVORIS & MÉNAGE CACHE (v4.8.3) ---
+    // --- PRE-FETCHING DES FAVORIS & MÉNAGE CACHE ---
     useEffect(() => {
         const prefetchFavorites = async () => {
             if (cleanupOracleCache) cleanupOracleCache();
-
             const favs = arsenalData.locations.filter(l => l.active && l.isFavorite);
-            console.log(`⚡ Pre-fetching de ${favs.length} secteurs favoris...`);
-            
             favs.forEach(loc => {
                 if (loc.coordinates && loc.id !== activeLocationId) {
                     getOrFetchOracleData(loc.coordinates.lat, loc.coordinates.lng, loc.id, loc.morphology);
                 }
             });
         };
-        
         if (arsenalData.locations.length > 0) prefetchFavorites();
     }, [arsenalData.locations]);
 
@@ -248,7 +240,6 @@ const App: React.FC = () => {
     // --- SNAPSHOT LIVE ---
     const currentLiveSnapshot = useMemo(() => {
         if (!activeLocation || !liveOraclePoint || !displayedWeather) return null;
-
         return {
             locationName: activeLocation.label,
             userName: userProfile?.pseudo || "Pêcheur",
@@ -259,9 +250,7 @@ const App: React.FC = () => {
                     dissolvedOxygen: liveOraclePoint.dissolvedOxygen,
                     waveHeight: liveOraclePoint.waveHeight,
                     flowRaw: liveOraclePoint.flowRaw, 
-                    level: 0, 
-                    flowLagged: 0,
-                    turbidityIdx: 0
+                    level: 0, flowLagged: 0, turbidityIdx: 0
                 },
                 weather: displayedWeather 
             },
@@ -274,7 +263,7 @@ const App: React.FC = () => {
         };
     }, [activeLocation, liveOraclePoint, displayedWeather, userProfile]);
 
-    // --- USER PROFILE (ÉCOUTE TEMPS RÉEL) ---
+    // --- USER PROFILE ---
     useEffect(() => {
         if (!user) return;
         setIsProfileLoading(true);
@@ -299,17 +288,14 @@ const App: React.FC = () => {
                 else if (typeof data.date === 'string') dateString = data.date;
 
                 return {
-                    id: doc.id, 
-                    date: dateString, 
+                    id: doc.id, date: dateString, 
                     startTime: data.startTime || '08:00',
                     endTime: data.endTime || '11:00',
                     durationMinutes: data.durationMinutes || 0,
                     locationId: data.locationId || '',
                     locationName: data.locationName || 'Secteur Inconnu',
-                    spotId: data.spotId || '', 
-                    spotName: data.spotName || 'Spot Inconnu',
-                    setupId: data.setupId || '', 
-                    setupName: data.setupName || 'Setup Inconnu',
+                    spotId: data.spotId || '', spotName: data.spotName || 'Spot Inconnu',
+                    setupId: data.setupId || '', setupName: data.setupName || 'Setup Inconnu',
                     feelingScore: data.feelingScore || 5,
                     catchCount: data.catchCount || 0,
                     notes: data.notes || '',
@@ -320,8 +306,7 @@ const App: React.FC = () => {
                     userId: data.userId || 'inconnu',
                     userPseudo: data.userPseudo || 'Inconnu',
                     userAvatar: data.userAvatar || null,
-                    active: true,
-                    displayOrder: data.displayOrder || 0
+                    active: true, displayOrder: data.displayOrder || 0
                 } as Session;
             });
             setSessions(fetchedSessions);
@@ -330,7 +315,7 @@ const App: React.FC = () => {
         return () => unsubscribeSessions();
     }, [user]); 
 
-    // --- HANDLERS D'ORIGINE ---
+    // --- HANDLERS ---
     const handleSaveSession = async (session: Session) => {
         if (session.id) {
             const { date, ...data } = session;
@@ -381,10 +366,7 @@ const App: React.FC = () => {
     };
 
     const navigateFromMenu = (view: View) => { 
-        setEditingSession(null); 
-        setMagicDraft(null); 
-        setCurrentView(view); 
-        setIsMenuOpen(false); 
+        setEditingSession(null); setMagicDraft(null); setCurrentView(view); setIsMenuOpen(false); 
     };
 
     const handleOpenLocation = () => {
@@ -392,14 +374,12 @@ const App: React.FC = () => {
         setCurrentView('locations');
     };
 
-    // --- GESTION NOTIFICATION LEVEL UP ---
     const handleConsumeLevelUp = async (goToExperience: boolean) => {
         if (!userProfile) return;
         try {
             await updateDoc(doc(db, 'users', currentUserId), { pendingLevelUp: false });
             if (goToExperience) {
-                setActiveDashboardTab('experience'); 
-                setCurrentView('dashboard');
+                setActiveDashboardTab('experience'); setCurrentView('dashboard');
             }
         } catch (e) { console.error("Error resetting level notification:", e); }
     };
@@ -414,23 +394,14 @@ const App: React.FC = () => {
                     activeTab={activeDashboardTab} 
                     onTabChange={setActiveDashboardTab} 
                     userName={userProfile?.pseudo || 'Pêcheur'} 
-                    currentUserId={currentUserId} 
-                    sessions={sessions} 
-                    oracleData={oraclePoints} 
-                    isOracleLoading={isOracleLoading || isWeatherLoading} 
+                    currentUserId={currentUserId} sessions={sessions} 
+                    oracleData={oraclePoints} isOracleLoading={isOracleLoading || isWeatherLoading} 
                     activeLocationLabel={activeLocation?.label || "Sélectionner un secteur"} 
-                    activeLocationId={activeLocationId} 
-                    availableLocations={arsenalData.locations.filter(l => l.active && l.isFavorite)} 
-                    onLocationClick={handleOpenLocation} 
-                    onLocationSelect={setActiveLocationId} 
-                    setActiveLocationId={setActiveLocationId} 
+                    activeLocationId={activeLocationId} availableLocations={arsenalData.locations.filter(l => l.active && l.isFavorite)} 
+                    onLocationClick={handleOpenLocation} onLocationSelect={setActiveLocationId} setActiveLocationId={setActiveLocationId} 
                     onEditSession={(s) => { setEditingSession(s); setCurrentView('session'); }} 
-                    onDeleteSession={handleDeleteSession} 
-                    onMagicDiscovery={handleMagicDiscovery} 
-                    lureTypes={arsenalData.lureTypes} 
-                    colors={arsenalData.colors} 
-                    locations={arsenalData.locations} 
-                    arsenalData={arsenalData}
+                    onDeleteSession={handleDeleteSession} onMagicDiscovery={handleMagicDiscovery} 
+                    lureTypes={arsenalData.lureTypes} colors={arsenalData.colors} locations={arsenalData.locations} arsenalData={arsenalData}
                     displayedWeather={displayedWeather} 
                 />;
             case 'history':
@@ -442,7 +413,12 @@ const App: React.FC = () => {
             case 'profile':
                 return <ProfileView userProfile={userProfile!} sessions={sessions} arsenalData={arsenalData} onUpdateProfile={setUserProfile} onLogout={handleLogout} />;
             case 'session':
-                return <SessionForm onAddSession={handleSaveSession} onUpdateSession={(id, data) => handleSaveSession({ ...data, id } as Session)} initialData={editingSession} initialDiscovery={magicDraft} zones={arsenalData.spots} setups={arsenalData.setups} techniques={arsenalData.techniques} lures={arsenalData.lures} lureTypes={arsenalData.lureTypes} colors={arsenalData.colors} sizes={arsenalData.sizes} weights={arsenalData.weights} locations={arsenalData.locations} defaultLocationId={activeLocationId} lastCatchDefaults={lastCatchDefaults} currentUserId={currentUserId} />;
+                return <SessionForm 
+                    onAddSession={handleSaveSession} onUpdateSession={(id, data) => handleSaveSession({ ...data, id } as Session)} 
+                    onCancel={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('dashboard'); }}
+                    initialData={editingSession} initialDiscovery={magicDraft} 
+                    zones={arsenalData.spots} setups={arsenalData.setups} techniques={arsenalData.techniques} lures={arsenalData.lures} lureTypes={arsenalData.lureTypes} colors={arsenalData.colors} sizes={arsenalData.sizes} weights={arsenalData.weights} locations={arsenalData.locations} defaultLocationId={activeLocationId} lastCatchDefaults={lastCatchDefaults} currentUserId={currentUserId} 
+                />;
             default: return null;
         }
     };
@@ -459,7 +435,7 @@ const App: React.FC = () => {
                     <h1 className="text-3xl font-black text-stone-800 mb-2 tracking-tighter uppercase italic">Oracle<span className="text-amber-500"> Fish</span></h1>
                     <p className="text-stone-400 mb-10 text-base font-medium leading-relaxed">Le carnet stratégique des soldats du quai. Accès restreint.</p>
                     <button onClick={handleLogin} className="w-full py-5 bg-stone-800 hover:bg-stone-900 text-white rounded-2xl font-black shadow-lg transition-all active:scale-95 flex items-center justify-center gap-3 text-lg"><User size={24} /> Connexion Google</button>
-                    <p className="mt-8 text-[11px] text-stone-300 uppercase font-black tracking-widest">Version Elite 4.8.5</p>
+                    <p className="mt-8 text-[11px] text-stone-300 uppercase font-black tracking-widest">Version Elite 4.8.12</p>
                 </div>
             </div>
         );
@@ -504,14 +480,14 @@ const App: React.FC = () => {
                 />
             )}
 
-            {/* HEADER : Mise à jour Safe Area Top (iPhone Notch) & Scaling */}
+            {/* HEADER : Logo corrigé et profil plus grand */}
             <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-lg border-b border-stone-200 px-5 pt-[env(safe-area-inset-top,16px)] pb-4 flex items-center justify-between shadow-sm">
                 <div className="flex items-center gap-3">
                     <button onClick={() => setIsMenuOpen(true)} className="p-2.5 text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-xl transition-colors">
                         <Menu size={32} strokeWidth={2.5} />
                     </button>
-                    <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center overflow-hidden p-1 border border-stone-100 shadow-sm">
-                        <img src="/logo192.png" alt="Logo" className="w-full h-full object-contain" />
+                    <div className="w-12 h-12 flex items-center justify-center overflow-hidden">
+                        <img src="/logo192.png" alt="Logo" className="w-full h-full object-contain rounded-2xl" />
                     </div>
                     <span className="font-black text-2xl tracking-tighter text-stone-800 uppercase italic">Oracle<span className="text-amber-500"> Fish</span></span>
                     
@@ -557,17 +533,30 @@ const App: React.FC = () => {
                 {renderContent()}
             </main>
 
-            {/* BOTTOM NAV : Mise à jour Safe Area Bottom & Scaling */}
+            {/* BOTTOM NAV : Alignement Grille 6 colonnes parfaites (V4.8.12) */}
             <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-stone-200 bg-white/95 backdrop-blur-md pb-[env(safe-area-inset-bottom,12px)] shadow-[0_-8px_30px_rgb(0,0,0,0.04)]"> 
-                <div className="mx-auto flex max-w-lg items-center justify-around py-4">
-                    <button onClick={() => { setTargetLocationId(null); setCurrentView('dashboard'); }} className={`flex flex-col items-center gap-1.5 transition-all active:scale-90 ${currentView === 'dashboard' ? 'text-amber-600' : 'text-stone-500 font-black'}`}><Home size={32} /><span className="text-[12px] font-black uppercase tracking-tighter">Live</span></button>
-                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('history'); }} className={`flex flex-col items-center gap-1.5 transition-all active:scale-90 ${currentView === 'history' ? 'text-amber-600' : 'text-stone-500 font-black'}`}><ScrollText size={32} /><span className="text-[12px] font-black uppercase tracking-tighter">Journal</span></button>
+                <div className="mx-auto grid grid-cols-6 max-w-lg items-center py-4 px-1">
+                    {/* COL 1: LIVE */}
+                    <button onClick={() => { setTargetLocationId(null); setCurrentView('dashboard'); }} className={`flex flex-col items-center gap-1.5 transition-all active:scale-90 ${currentView === 'dashboard' ? 'text-amber-600' : 'text-stone-500 font-black'}`}>
+                        <Home size={26} />
+                        <span className="text-[10px] font-black uppercase tracking-tighter">Live</span>
+                    </button>
                     
-                    <div className="relative -top-7 flex items-center justify-center gap-3">
-                        <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('session'); }} 
-                                className="rounded-full border-4 border-[#FAF9F6] bg-stone-800 p-5 text-white shadow-2xl active:scale-90 transition-all transform hover:rotate-6">
-                            <PlusCircle size={40} />
-                        </button>
+                    {/* COL 2: JOURNAL */}
+                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('history'); }} className={`flex flex-col items-center gap-1.5 transition-all active:scale-90 ${currentView === 'history' ? 'text-amber-600' : 'text-stone-500 font-black'}`}>
+                        <ScrollText size={26} />
+                        <span className="text-[10px] font-black uppercase tracking-tighter">Journal</span>
+                    </button>
+                    
+                    {/* COL 3: SESSION (+) */}
+                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('session'); }} 
+                            className={`flex flex-col items-center gap-1.5 transition-all active:scale-90 ${currentView === 'session' ? 'text-stone-900' : 'text-stone-500 font-black'}`}>
+                        <PlusCircle size={26} strokeWidth={3} />
+                        <span className="text-[10px] font-black uppercase tracking-tighter">Session</span>
+                    </button>
+
+                    {/* COL 4: MAGIC WAND */}
+                    <div className="flex flex-col items-center gap-1.5">
                         <MagicScanButton 
                             userPseudo={userProfile?.pseudo || "Michael"}
                             lureTypes={arsenalData.lureTypes}
@@ -575,10 +564,20 @@ const App: React.FC = () => {
                             onDiscoveryComplete={handleMagicDiscovery}
                             userId={currentUserId}
                         />
+                        <span className="text-[10px] font-black text-amber-600 uppercase tracking-tighter">Wand</span>
                     </div>
                     
-                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('coach'); }} className={`flex flex-col items-center gap-1.5 transition-all active:scale-90 ${currentView === 'coach' ? 'text-emerald-600' : 'text-stone-500 font-black'}`}><Bot size={32} /><span className="text-[12px] font-black uppercase tracking-tighter">Coach</span></button>
-                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('locations'); }} className={`flex flex-col items-center gap-1.5 transition-all active:scale-90 ${currentView === 'locations' ? 'text-indigo-600' : 'text-stone-500 font-black'}`}><MapPin size={32} /><span className="text-[12px] font-black uppercase tracking-tighter">Secteurs</span></button>
+                    {/* COL 5: COACH */}
+                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('coach'); }} className={`flex flex-col items-center gap-1.5 transition-all active:scale-90 ${currentView === 'coach' ? 'text-emerald-600' : 'text-stone-500 font-black'}`}>
+                        <Bot size={26} />
+                        <span className="text-[10px] font-black uppercase tracking-tighter">Coach</span>
+                    </button>
+                    
+                    {/* COL 6: SECTEURS */}
+                    <button onClick={() => { setEditingSession(null); setMagicDraft(null); setCurrentView('locations'); }} className={`flex flex-col items-center gap-1.5 transition-all active:scale-90 ${currentView === 'locations' ? 'text-indigo-600' : 'text-stone-500 font-black'}`}>
+                        <MapPin size={26} />
+                        <span className="text-[10px] font-black uppercase tracking-tighter">Secteurs</span>
+                    </button>
                 </div>
             </nav>
         </div>

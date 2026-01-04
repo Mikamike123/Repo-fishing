@@ -1,13 +1,11 @@
-// components/SessionForm.tsx
+// components/SessionForm.tsx - Version 4.8.10 (Form Ergonomics & Capot Express)
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Session, Zone, Setup, Technique, Catch, Miss, Lure, 
     RefLureType, RefColor, RefSize, RefWeight, FullEnvironmentalSnapshot, Location, BioScoreSnapshot 
 } from '../types';
-// NETTOYAGE : Suppression de doc, getDoc car on n'accède plus directement à environmental_logs
 import { getFunctions, httpsCallable } from 'firebase/functions'; 
 import { getApp } from 'firebase/app';
-// NETTOYAGE : Suppression de db car plus utilisé ici
 import { fetchHistoricalWeatherContext } from '../lib/universal-weather-service';
 
 import SessionFormUI from './SessionFormUI';
@@ -15,6 +13,7 @@ import SessionFormUI from './SessionFormUI';
 interface SessionFormProps {
     onAddSession: (session: Session) => void;
     onUpdateSession: (id: string, data: Partial<Session>) => void;
+    onCancel?: () => void; // Michael : Ajout de la prop d'annulation
     initialData?: Session | null;
     initialDiscovery?: { date: string, startTime: string, endTime: string, initialCatch: Catch } | null;
     zones: Zone[];
@@ -32,7 +31,7 @@ interface SessionFormProps {
 }
 
 const SessionForm: React.FC<SessionFormProps> = (props) => {
-    const { initialData, initialDiscovery, zones, setups, locations, defaultLocationId, onUpdateSession, onAddSession } = props;
+    const { initialData, initialDiscovery, zones, setups, locations, defaultLocationId, onUpdateSession, onAddSession, onCancel } = props;
 
     const [date, setDate] = useState(initialData?.date || initialDiscovery?.date || new Date().toISOString().split('T')[0]);
     const [startTime, setStartTime] = useState(initialData?.startTime || initialDiscovery?.startTime || "08:00");
@@ -63,7 +62,6 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
         return filteredSpots.length > 0 ? filteredSpots[0].id : '';
     });
 
-    // Michael : Synchronisation du spot quand le secteur change
     useEffect(() => {
         const isValid = zones.find(z => z.id === spotId && z.locationId === locationId);
         if (!isValid) {
@@ -71,36 +69,26 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
         }
     }, [locationId, filteredSpots, zones, spotId]);
 
-    // --- HELPER : Calcul du temps moyen de session (Precision ISO) ---
     const calculateSessionMidpoint = (dateStr: string, start: string, end: string): string => {
         try {
             const d = new Date(dateStr);
             const [h1, m1] = start.split(':').map(Number);
             const [h2, m2] = end.split(':').map(Number);
-            
-            // Conversion en minutes depuis minuit
             const startMin = h1 * 60 + m1;
             const endMin = h2 * 60 + m2;
-            
-            // Calcul du point médian (attention au passage de minuit non géré ici mais rare en session standard)
             const midMin = Math.round((startMin + endMin) / 2);
             const midH = Math.floor(midMin / 60);
             const midM = midMin % 60;
-            
-            // Mise à jour de l'heure
             d.setHours(midH, midM, 0, 0);
             return d.toISOString();
         } catch (e) {
-            console.warn("Erreur calcul heure médiane, fallback date brute", e);
             return new Date(dateStr).toISOString();
         }
     };
 
-    // --- LOGIQUE D'ACQUISITION ENVIRONNEMENTALE (UNIVERSELLE) ---
     useEffect(() => {
         if (!locationId || locations.length === 0) return;
 
-        // Michael : Si on a déjà les données dans initialData pour ces paramètres précis, on ne refetch pas
         if (initialData && initialData.envSnapshot && 
             date === initialData.date && startTime === initialData.startTime && locationId === initialData.locationId) {
             setEnvSnapshot(initialData.envSnapshot);
@@ -110,24 +98,17 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
 
         const fetchEnv = async () => {
             setIsLoadingEnv(true);
-            
             try {
-                // NETTOYAGE : Suppression complète de la logique GOLDEN_SECTOR / environmental_logs
-                // On passe tout le monde au régime "Zero-Hydro / Universel"
-
                 const currentLocation = locations.find(l => l.id === locationId);
                 if (!currentLocation?.coordinates?.lat || !currentLocation?.coordinates?.lng) {
                     setEnvStatus('not-found');
                     return;
                 }
-
-                // Calcul de l'heure précise (Moyenne de session) pour éviter le bug "Minuit"
                 const preciseIsoDate = calculateSessionMidpoint(date, startTime, endTime);
-
                 const weatherContext = await fetchHistoricalWeatherContext(
                     currentLocation.coordinates.lat,
                     currentLocation.coordinates.lng,
-                    preciseIsoDate // On passe l'ISO précis
+                    preciseIsoDate
                 );
 
                 if (!weatherContext) {
@@ -137,13 +118,11 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
 
                 const functionsInstance = getFunctions(getApp(), 'europe-west1');
                 const getHistoricalContext = httpsCallable(functionsInstance, 'getHistoricalContext');
-
-                // Appel Cloud Function avec la date précise
                 const result = await getHistoricalContext({
                     weather: weatherContext.snapshot,
                     weatherHistory: weatherContext.history,
                     location: currentLocation,
-                    dateStr: preciseIsoDate // Indispensable pour que le backend trouve le bon index horaire
+                    dateStr: preciseIsoDate
                 });
 
                 const cloudData = result.data as any;
@@ -151,9 +130,7 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
                 if (cloudData) {
                     const newSnapshot: FullEnvironmentalSnapshot = {
                         weather: { ...weatherContext.snapshot },
-                        hydro: {
-                            ...cloudData.hydro 
-                        },
+                        hydro: { ...cloudData.hydro },
                         scores: cloudData.scores,
                         metadata: {
                             ...cloudData.metadata,
@@ -165,7 +142,6 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
                 } else {
                     setEnvStatus('not-found');
                 }
-                
             } catch (error) {
                 console.error("Erreur environnement Michael :", error);
                 setEnvStatus('not-found');
@@ -178,7 +154,6 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
         return () => clearTimeout(timeoutId);
     }, [date, startTime, endTime, locationId, locations, initialData]);
 
-    // --- HANDLERS ---
     const handleDeleteCatch = (id: string) => {
             setCatches(prev => prev.filter(c => c.id !== id));
     };
@@ -219,10 +194,7 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
         if (filteredSnapshot && speciesIds.length > 0) {
             const cleanedScores: Partial<BioScoreSnapshot> = {};
             const speciesMap: Record<string, keyof BioScoreSnapshot> = {
-                'Sandre': 'sandre',
-                'Brochet': 'brochet',
-                'Perche': 'perche',
-                'Black-Bass': 'blackbass'
+                'Sandre': 'sandre', 'Brochet': 'brochet', 'Perche': 'perche', 'Black-Bass': 'blackbass'
             };
 
             speciesIds.forEach(speciesName => {
@@ -231,7 +203,6 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
                     (cleanedScores as any)[key] = envSnapshot.scores[key];
                 }
             });
-    
             filteredSnapshot.scores = cleanedScores as BioScoreSnapshot;
         }
 
@@ -282,6 +253,7 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
             handleSaveCatch={handleSaveCatch}
             handleSaveMiss={handleSaveMiss}
             handleSubmit={handleSubmit}
+            onCancel={onCancel} // Michael : Transmission de l'action d'annulation
             userId={props.currentUserId}
         />
     );

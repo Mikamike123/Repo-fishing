@@ -90,45 +90,46 @@ const SessionDetailModal: React.FC<SessionDetailModalProps> = ({ session, isOpen
         <div className="fixed inset-0 z-50 flex items-center justify-center p-2 bg-stone-900/80 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="w-full max-w-4xl bg-[#fdfbf7] rounded-[2rem] shadow-2xl max-h-[96vh] flex flex-col border border-stone-200 relative overflow-hidden">
                 
-                {/* HEADER OPTIMISÉ (PLUS COMPACT) */}
-                <div className="relative bg-stone-800 px-5 py-5 text-white shrink-0 border-b border-white/5">
-                    <button onClick={onClose} className="absolute top-4 right-4 z-50 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-all active:scale-90">
-                        <X size={20} />
-                    </button>
-                    
-                    <div className="flex flex-col gap-3">
-                        <div className="space-y-1.5 pr-8">
-                            <div className="flex items-center gap-2 mb-1">
-                                <span className="px-2 py-0.5 bg-amber-500 text-white text-[9px] font-black uppercase rounded-full">Archive Oracle</span>
-                                <span className="text-stone-400 text-[10px] font-bold flex items-center gap-1 uppercase tracking-tighter">
-                                    <Calendar size={12} /> {new Date(session.date).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
-                                </span>
-                            </div>
+                {/* HEADER ULTRA-SLIM (V9.8) */}
+                <div className="relative bg-stone-800 px-5 py-3 text-white shrink-0 border-b border-white/5">
+                    {/* Ligne 1 : Badge + Date + Fermeture */}
+                    <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 bg-amber-500 text-white text-[8px] font-black uppercase rounded-full">Oracle Fish</span>
+                            <span className="text-stone-400 text-[9px] font-bold uppercase tracking-widest">
+                                {new Date(session.date).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
+                            </span>
+                        </div>
+                        <button onClick={onClose} className="p-1.5 bg-white/10 hover:bg-white/20 rounded-full transition-all active:scale-90">
+                            <X size={16} />
+                        </button>
+                    </div>
 
-                            <div className="flex items-center gap-1.5 text-emerald-400 text-[10px] font-black uppercase tracking-widest">
-                                <MapPin size={12} />
-                                {session.locationName || "Secteur Inconnu"}
-                            </div>
+                    {/* Ligne 2 : Spot @ Secteur */}
+                    <h2 className="text-xl font-black tracking-tighter uppercase leading-tight mb-2 truncate pr-6">
+                        {session.spotName} <span className="text-emerald-400 opacity-40 ml-1">@ {session.locationName || "Secteur"}</span>
+                    </h2>
 
-                            <h2 className="text-2xl font-black tracking-tighter uppercase leading-tight">{session.spotName || 'Spot Inconnu'}</h2>
-                            
-                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-bold text-stone-300 uppercase tracking-wide">
-                                <div className="flex items-center gap-1"><Clock size={12} className="text-amber-400"/> {session.startTime}-{session.endTime}</div>
-                                <div className="flex items-center gap-1"><Anchor size={12} className="text-amber-400"/> {session.setupName}</div>
-                                <div className="flex items-center gap-1"><Activity size={12} className="text-emerald-400"/> {session.feelingScore}/10</div>
-                            </div>
+                    {/* Ligne 3 : Métadonnées Session + Scores en badges fins */}
+                    <div className="flex items-center justify-between">
+                        <div className="flex gap-3 text-[9px] font-black text-stone-400 uppercase tracking-wider">
+                            <div className="flex items-center gap-1"><Clock size={10} className="text-amber-400/60"/> {session.startTime}-{session.endTime}</div>
+                            <div className="flex items-center gap-1"><Activity size={10} className="text-emerald-400/60"/> FEELING {session.feelingScore}/10</div>
+                            <div className="hidden sm:flex items-center gap-1"><Anchor size={10} className="text-stone-500"/> {session.setupName}</div>
                         </div>
 
-                        {/* SCORES COMPACTÉS */}
-                        <div className="flex gap-1 bg-black/30 p-3 rounded-2xl border border-white/5 w-fit">
+                        {/* Scores ultra-compacts */}
+                        <div className="flex gap-3 bg-black/40 px-3 py-1 rounded-full border border-white/5">
                             {[
-                                { label: 'Sandre', val: env?.scores?.sandre },
-                                { label: 'Brochet', val: env?.scores?.brochet },
-                                { label: 'Perche', val: env?.scores?.perche }
-                            ].map(s => (
-                                <div key={s.label} className="flex flex-col items-center px-4 border-r last:border-0 border-white/10">
-                                    <span className="text-[7px] font-black text-stone-500 uppercase">{s.label}</span>
-                                    <span className={`text-base font-black ${getScoreColor(s.val || 0)}`}>{s.val?.toFixed(0) || '--'}</span>
+                                { k: 'sandre', l: 'S' },
+                                { k: 'brochet', l: 'B' },
+                                { k: 'perche', l: 'P' }
+                            ].map(sp => (
+                                <div key={sp.k} className="flex items-center gap-1.5">
+                                    <span className="text-[7px] font-black text-stone-500 uppercase">{sp.l}</span>
+                                    <span className={`text-xs font-black ${getScoreColor((env?.scores as any)?.[sp.k] || 0)}`}>
+                                        {(env?.scores as any)?.[sp.k]?.toFixed(0) || '--'}
+                                    </span>
                                 </div>
                             ))}
                         </div>
@@ -271,7 +272,7 @@ const SessionDetailModal: React.FC<SessionDetailModalProps> = ({ session, isOpen
                 
                 {/* FOOTER */}
                 <div className="p-3 bg-white border-t border-stone-100 text-center shrink-0">
-                    <span className="text-[7px] font-black text-stone-300 uppercase tracking-widest">Oracle Fish v4.8.6 • Precision Fisheries Archive</span>
+                    <span className="text-[7px] font-black text-stone-300 uppercase tracking-widest">Oracle Fish v4.8.8 • Precision Fisheries Archive</span>
                 </div>
             </div>
         </div>

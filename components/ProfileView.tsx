@@ -1,9 +1,9 @@
-// components/ProfileView.tsx - Version 9.6 (Strategic Foldable Logic)
+// components/ProfileView.tsx - Version 9.7 (Strategic Foldable Logic & Image Compression Fix)
 import React, { useState, useMemo, useRef } from 'react';
 import { 
     User, Camera, Calendar, Fish, 
     AlertOctagon, Anchor, PieChart, 
-    ChevronUp, ChevronDown, Trophy, Flame, LogOut, Info, Target // Michael : Ajout de Target pour le header
+    ChevronUp, ChevronDown, Trophy, Flame, LogOut, Info, Target 
 } from 'lucide-react';
 import { Session, UserProfile, AppData } from '../types';
 import { doc, updateDoc } from 'firebase/firestore'; 
@@ -17,7 +17,7 @@ import StrategicIntelligence from './StrategicIntelligence';
 interface ProfileViewProps {
   userProfile: UserProfile;
   sessions: Session[];
-  arsenalData: AppData;
+   arsenalData: AppData;
   onUpdateProfile: (newProfile: UserProfile) => void;
   onLogout: () => void;
 }
@@ -25,7 +25,7 @@ interface ProfileViewProps {
 const ProfileView: React.FC<ProfileViewProps> = ({ userProfile, sessions, arsenalData, onUpdateProfile, onLogout }) => {
   const [expandedYear, setExpandedYear] = useState<number | null>(new Date().getFullYear());
   const [showDonutYear, setShowDonutYear] = useState<number | null>(null);
-  const [showStrategic, setShowStrategic] = useState(true); // Michael : État pour le plier/déplier
+  const [showStrategic, setShowStrategic] = useState(true); 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // --- 1. FILTRAGE ÉTANCHE PAR UTILISATEUR ---
@@ -81,16 +81,39 @@ const ProfileView: React.FC<ProfileViewProps> = ({ userProfile, sessions, arsena
     return colors[species] || 'bg-blue-300';
   };
 
+  // Michael : Version optimisée avec compression Canvas pour garantir le stockage Firestore (v9.7)
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
-      if (!file || file.size > 2 * 1024 * 1024) return;
+      if (!file) return;
+
       const reader = new FileReader();
-      reader.onloadend = async () => {
-          const base64 = reader.result as string;
-          try {
-              await updateDoc(doc(db, "users", userProfile.id), { avatarBase64: base64 });
-              onUpdateProfile({ ...userProfile, avatarBase64: base64 });
-          } catch (e) { console.error(e); }
+      reader.onloadend = () => {
+          const img = new Image();
+          img.src = reader.result as string;
+          img.onload = async () => {
+              // Michael : Création d'un canvas pour réduire la taille de l'image
+              const canvas = document.createElement('canvas');
+              const MAX_WIDTH = 300; // Taille idéale pour un avatar sans alourdir le document
+              const scaleSize = MAX_WIDTH / img.width;
+              canvas.width = MAX_WIDTH;
+              canvas.height = img.height * scaleSize;
+
+              const ctx = canvas.getContext('2d');
+              ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+              // Conversion en JPEG avec qualité de 70% pour un poids plume
+              const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+              
+              try {
+                  const userDocRef = doc(db, "users", userProfile.id);
+                  await updateDoc(userDocRef, { avatarBase64: compressedBase64 });
+                  onUpdateProfile({ ...userProfile, avatarBase64: compressedBase64 });
+                  console.log("🚀 Avatar compressé et sauvegardé avec succès.");
+              } catch (e) { 
+                  console.error("Erreur sauvegarde avatar:", e);
+                  alert("La photo est trop lourde ou la connexion a échoué.");
+              }
+          };
       };
       reader.readAsDataURL(file);
   };
@@ -160,7 +183,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ userProfile, sessions, arsena
                         sessions={userSessions} 
                         userId={userProfile.id} 
                         arsenal={arsenalData} 
-                        hideHeader={true} // Michael : On cache le header interne car on utilise le nôtre au-dessus
+                        hideHeader={true} 
                     />
                 </div>
             )}
