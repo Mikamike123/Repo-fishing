@@ -1,0 +1,251 @@
+// hooks/useAppEngine.ts - Version 5.0.0 (Completed Brain)
+import { useState, useEffect, useMemo } from 'react';
+import { 
+    onSnapshot, query, orderBy, 
+    addDoc, deleteDoc, doc, Timestamp, updateDoc, collection, getDoc 
+} from 'firebase/firestore'; 
+import { onAuthStateChanged, signInWithPopup, signOut, User as FirebaseUser } from 'firebase/auth';
+import { db, sessionsCollection, auth, googleProvider, clearChatHistory } from '../lib/firebase'; 
+import { getUserProfile, createUserProfile } from '../lib/user-service';
+import { useArsenal } from '../lib/useArsenal'; 
+import { getOrFetchOracleData, cleanupOracleCache } from '../lib/oracle-service'; 
+import { Session, UserProfile, WeatherSnapshot, OracleDataPoint } from '../types';
+
+export const useAppEngine = () => {
+    // --- ÉTATS SYSTÈME & THEME ---
+    const [user, setUser] = useState<FirebaseUser | null>(null);
+    const [isWhitelisted, setIsWhitelisted] = useState<boolean | null>(null);
+    const [authLoading, setAuthLoading] = useState(true);
+    const [themeMode, setThemeMode] = useState<'light' | 'night' | 'auto'>('auto'); 
+    const [isActuallyNight, setIsActuallyNight] = useState(false);
+    const [lastSyncTimestamp, setLastSyncTimestamp] = useState<number>(Date.now());
+    const [lastCoachLocationId, setLastCoachLocationId] = useState<string>("");
+    const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+    // --- ÉTATS NAVIGATION ---
+    const [currentView, setCurrentView] = useState<any>('dashboard'); 
+    const [sessions, setSessions] = useState<Session[]>([]); 
+    const [activeDashboardTab, setActiveDashboardTab] = useState<'live' | 'tactics' | 'activity' | 'experience'>('live');
+    const [isLoading, setIsLoading] = useState(true); 
+    const [editingSession, setEditingSession] = useState<Session | null>(null);
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [magicDraft, setMagicDraft] = useState<any>(null);
+    const [targetLocationId, setTargetLocationId] = useState<string | null>(null);
+
+    // --- ÉTATS UTILISATEUR & SECTEURS ---
+    const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+    const [isProfileLoading, setIsProfileLoading] = useState(true);
+    const [activeLocationId, setActiveLocationId] = useState<string>("");
+    const [oraclePoints, setOraclePoints] = useState<OracleDataPoint[]>([]);
+    const [isOracleLoading, setIsOracleLoading] = useState(false);
+    const [displayedWeather, setDisplayedWeather] = useState<WeatherSnapshot | null>(null);
+    const [isWeatherLoading, setIsWeatherLoading] = useState(false);
+
+    const currentUserId = user?.uid || "guest"; 
+
+    // Michael : Feedback haptique pattern marqué pour validation physique
+    const triggerHaptic = (pattern = [30, 50, 30]) => {
+        if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(pattern);
+    };
+
+    // --- MOTEUR NIGHT OPS & RÉSEAU ---
+    useEffect(() => {
+        const checkTheme = () => {
+            if (themeMode === 'auto') {
+                const hour = new Date().getHours();
+                setIsActuallyNight(hour >= 19 || hour <= 7);
+            } else { setIsActuallyNight(themeMode === 'night'); }
+        };
+        checkTheme();
+        const interval = setInterval(checkTheme, 60000);
+        return () => clearInterval(interval);
+    }, [themeMode]);
+
+    useEffect(() => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
+
+    // --- LOGIQUE AUTH & FIREBASE ---
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+            setAuthLoading(true);
+            if (firebaseUser?.email) {
+                const whitelistDoc = await getDoc(doc(db, 'authorized_users', firebaseUser.email));
+                if (whitelistDoc.exists()) { setUser(firebaseUser); setIsWhitelisted(true); }
+                else { setIsWhitelisted(false); }
+            } else { setUser(null); setIsWhitelisted(null); }
+            setAuthLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const { arsenalData, handleAddItem, handleDeleteItem, handleEditItem, handleMoveItem, handleToggleLocationFavorite } = useArsenal(currentUserId);
+
+    // Michael : Reset des collections d'Arsenal
+    const handleResetCollection = async (collectionName: string, defaultItems: any[], currentItems: any[]) => {
+        try {
+            const deletePromises = currentItems.map(item => deleteDoc(doc(db, collectionName, item.id)));
+            await Promise.all(deletePromises);
+            for (const item of defaultItems) {
+                await addDoc(collection(db, collectionName), {
+                    label: item.label, displayOrder: item.displayOrder || 0,
+                    userId: currentUserId, active: true, createdAt: Timestamp.now()
+                });
+            }
+        } catch (e) { console.error(`Erreur Reset Michael :`, e); }
+    };
+
+    // --- CALCULS SESSIONS & LAST CATCH ---
+    const mySessions = useMemo(() => sessions.filter(s => s.userId === currentUserId), [sessions, currentUserId]);
+    const lastCatchDefaults = useMemo(() => (mySessions[0]?.catches?.length ? mySessions[0].catches[mySessions[0].catches.length - 1] : null), [mySessions]);
+
+    const defaultLocationId = useMemo(() => {
+        const fav = arsenalData.locations.find(l => l.isFavorite);
+        return fav ? fav.id : (arsenalData.locations[0]?.id || "");
+    }, [arsenalData.locations]);
+
+    useEffect(() => {
+        if (!activeLocationId && defaultLocationId) setActiveLocationId(defaultLocationId);
+    }, [defaultLocationId, activeLocationId]);
+
+    const activeLocation = useMemo(() => arsenalData.locations.find(l => l.id === activeLocationId), [arsenalData.locations, activeLocationId]);
+
+    // Michael : Identification du point Oracle live le plus proche
+    const liveOraclePoint = useMemo(() => {
+        if (!oraclePoints.length) return null;
+        const nowTs = Date.now();
+        return oraclePoints.reduce((prev, curr) => Math.abs(curr.timestamp - nowTs) < Math.abs(prev.timestamp - nowTs) ? curr : prev);
+    }, [oraclePoints]);
+
+    // Michael : Snapshot Live complet pour le Coach IA
+    const currentLiveSnapshot = useMemo(() => {
+        if (!activeLocation || !liveOraclePoint || !displayedWeather) return null;
+        return {
+            locationName: activeLocation.label, userName: userProfile?.pseudo || "Pêcheur",
+            coordinates: activeLocation.coordinates, 
+            env: {
+                hydro: { 
+                    waterTemp: liveOraclePoint.waterTemp, turbidityNTU: liveOraclePoint.turbidityNTU,
+                    dissolvedOxygen: liveOraclePoint.dissolvedOxygen, waveHeight: liveOraclePoint.waveHeight,
+                    flowRaw: liveOraclePoint.flowRaw, level: 0, flowLagged: 0, turbidityIdx: 0
+                },
+                weather: displayedWeather 
+            },
+            scores: {
+                sandre: liveOraclePoint.sandre, brochet: liveOraclePoint.brochet, perche: liveOraclePoint.perche, blackbass: liveOraclePoint.blackbass
+            }
+        };
+    }, [activeLocation, liveOraclePoint, displayedWeather, userProfile]);
+
+    // --- SYNCHRONISATION ORACLE & COACH RESET ---
+    useEffect(() => {
+        const syncEnvironment = async () => {
+            if (!activeLocation?.coordinates) return;
+            setIsOracleLoading(true); setIsWeatherLoading(true);
+            try {
+                const points = await getOrFetchOracleData(activeLocation.coordinates.lat, activeLocation.coordinates.lng, activeLocation.id, activeLocation.morphology);
+                setOraclePoints(points);
+                setLastSyncTimestamp(Date.now()); 
+                if (points.length > 0) {
+                    const nowTs = Date.now();
+                    const livePoint = points.reduce((prev, curr) => Math.abs(curr.timestamp - nowTs) < Math.abs(prev.timestamp - nowTs) ? curr : prev);
+                    setDisplayedWeather({
+                        temperature: livePoint.airTemp, pressure: livePoint.pressure, clouds: livePoint.clouds,
+                        windSpeed: livePoint.windSpeed, windDirection: livePoint.windDirection, precip: livePoint.precip, conditionCode: livePoint.conditionCode
+                    } as WeatherSnapshot);
+                }
+            } catch (err) { console.error("Sync Error:", err); } 
+            finally { setIsOracleLoading(false); setIsWeatherLoading(false); }
+        };
+        syncEnvironment();
+        const interval = setInterval(syncEnvironment, 30 * 60 * 1000);
+        return () => clearInterval(interval);
+    }, [activeLocationId, activeLocation]);
+
+    useEffect(() => {
+        if (activeLocationId && lastCoachLocationId && activeLocationId !== lastCoachLocationId) {
+            clearChatHistory(currentUserId);
+            setLastCoachLocationId(activeLocationId);
+        } else if (activeLocationId && !lastCoachLocationId) {
+            setLastCoachLocationId(activeLocationId);
+        }
+    }, [activeLocationId, lastCoachLocationId, currentUserId]);
+
+    // --- PROFIL & SESSIONS ---
+    useEffect(() => {
+        if (!user) return;
+        setIsProfileLoading(true);
+        const unsubscribe = onSnapshot(doc(db, 'users', currentUserId), (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data() as UserProfile;
+                setUserProfile({ ...data, id: docSnap.id }); 
+                if ((data as any).themePreference) setThemeMode((data as any).themePreference);
+            }
+            setIsProfileLoading(false);
+        });
+        return () => unsubscribe();
+    }, [currentUserId, user]);
+
+    useEffect(() => {
+        if (!user) return;
+        const q = query(sessionsCollection, orderBy('date', 'desc')); 
+        const unsubscribeSessions = onSnapshot(q, (snapshot) => {
+            const fetched = snapshot.docs.map(doc => {
+                const data = doc.data();
+                let dateString = data.date instanceof Timestamp ? data.date.toDate().toISOString().split('T')[0] : data.date;
+                return { id: doc.id, ...data, date: dateString } as Session;
+            });
+            setSessions(fetched); setIsLoading(false);
+        });
+        return () => unsubscribeSessions();
+    }, [user]);
+
+    // --- HANDLERS ---
+    const handleSaveSession = async (session: Session) => {
+        triggerHaptic();
+        if (session.id) {
+            const { date, id, ...data } = session;
+            await updateDoc(doc(db, 'sessions', id), { ...data, date: Timestamp.fromDate(new Date(date as string)) });
+            setEditingSession(null); setCurrentView('history');
+        } else {
+            const { id, date, ...dataToSave } = session;
+            await addDoc(collection(db, 'sessions'), { ...dataToSave, date: Timestamp.fromDate(new Date(date as string)), userId: currentUserId, userPseudo: userProfile?.pseudo || 'Inconnu', userAvatar: userProfile?.avatarBase64 || null, createdAt: Timestamp.now(), active: true });
+            setMagicDraft(null); setCurrentView('dashboard');
+        }
+    };
+
+    const handleConsumeLevelUp = async (goToExperience: boolean) => {
+        if (!userProfile) return;
+        try {
+            await updateDoc(doc(db, 'users', currentUserId), { pendingLevelUp: false });
+            if (goToExperience) { setActiveDashboardTab('experience'); setCurrentView('dashboard'); }
+        } catch (e) { console.error("Error level notification :", e); }
+    };
+
+    const navigateFromMenu = (view: any) => { 
+        triggerHaptic([10]);
+        setEditingSession(null); setMagicDraft(null); setCurrentView(view); setIsMenuOpen(false); 
+    };
+
+    return {
+        user, authLoading, isActuallyNight, themeMode, lastSyncTimestamp, currentUserId,
+        currentView, setCurrentView, sessions, activeDashboardTab, setActiveDashboardTab,
+        editingSession, setEditingSession, isMenuOpen, setIsMenuOpen, magicDraft, setMagicDraft,
+        userProfile, setUserProfile, activeLocationId, setActiveLocationId, oraclePoints,
+        isOracleLoading: isOracleLoading || isWeatherLoading, activeLocation, arsenalData, displayedWeather,
+        isOnline, triggerHaptic, handleLogin: () => signInWithPopup(auth, googleProvider),
+        handleLogout: () => { signOut(auth); setCurrentView('dashboard'); setIsMenuOpen(false); },
+        handleSaveSession, handleEditRequest: (s: Session) => { setEditingSession(s); setCurrentView('session'); },
+        handleDeleteSession: async (id: string) => { await deleteDoc(doc(db, 'sessions', id)); },
+        handleMagicDiscovery: (d: any) => { triggerHaptic([50, 20, 50]); setMagicDraft(d); setCurrentView('session'); },
+        handleAddItem, handleDeleteItem, handleEditItem, handleMoveItem, handleToggleLocationFavorite,
+        targetLocationId, setTargetLocationId, lastCatchDefaults, currentLiveSnapshot, handleConsumeLevelUp, navigateFromMenu, handleResetCollection
+    };
+};
