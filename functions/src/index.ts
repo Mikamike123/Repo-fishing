@@ -36,3 +36,5 @@ export * from "./maintenance";
 
 // 5. Gamification & Statistiques (Surcouche passive)
 export * from "./notations";
+
+export * from "./storageCleanup"
