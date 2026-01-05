@@ -1,4 +1,4 @@
-// App.tsx - Version 4.8.22 (Final Sync & Header Calibration)
+// App.tsx - Version 4.8.23 (Coach Persistence Logic & Multi-Prop Fix)
 import React, { useState, useEffect, useMemo } from 'react'; 
 import { Home, PlusCircle, ScrollText, Fish, Bot, User, Menu, X, ChevronRight, MapPin, Anchor, ShieldAlert, LogOut, PartyPopper, Sparkles, WifiOff, Moon, Sun } from 'lucide-react';
 import { 
@@ -17,26 +17,35 @@ import ProfileView from './components/ProfileView';
 import MagicScanButton from './components/MagicScanButton';
 import LocationsManager from './components/LocationsManager'; 
 
+// Michael : OracleDataPoint est désormais importé depuis types.ts pour la cohérence globale
 import { Session, UserProfile, Catch, WeatherSnapshot, Location, OracleDataPoint } from './types'; 
-import { db, sessionsCollection, auth, googleProvider } from './lib/firebase'; 
+// Michael : Import de clearChatHistory pour le reset intelligent
+import { db, sessionsCollection, auth, googleProvider, clearChatHistory } from './lib/firebase'; 
 import { getUserProfile, createUserProfile } from './lib/user-service';
 import { useArsenal } from './lib/useArsenal'; 
 
+// Michael : Import de la fonction avec cache (getOrFetchOracleData) et du ménage
 import { getOrFetchOracleData, cleanupOracleCache } from './lib/oracle-service'; 
 
 type View = 'dashboard' | 'session' | 'history' | 'arsenal' | 'coach' | 'profile' | 'locations';
-type ThemeMode = 'light' | 'night' | 'auto';
+type ThemeMode = 'light' | 'night' | 'auto'; // Michael : Pour le moteur Night Ops
 
 const App: React.FC = () => {
-    // --- ÉTATS SYSTÈME & THEME (Michael : Engine Night Ops) ---
+    // --- GESTION AUTHENTIFICATION & WHITELIST ---
     const [user, setUser] = useState<FirebaseUser | null>(null);
     const [isWhitelisted, setIsWhitelisted] = useState<boolean | null>(null);
     const [authLoading, setAuthLoading] = useState(true);
+
+    // Michael : L'ID utilisateur devient dynamique basé sur la session
+    const currentUserId = user?.uid || "guest"; 
+
+    // --- ÉTATS SYSTÈME & THEME (Michael : Engine Night Ops) ---
     const [themeMode, setThemeMode] = useState<ThemeMode>('auto'); 
     const [isActuallyNight, setIsActuallyNight] = useState(false);
     const [lastSyncTimestamp, setLastSyncTimestamp] = useState<number>(Date.now());
 
-    const currentUserId = user?.uid || "guest"; 
+    // Michael : Suivi du secteur pour le Coach (Reset intelligent)
+    const [lastCoachLocationId, setLastCoachLocationId] = useState<string>("");
 
     // Michael : Feedback haptique pattern marqué
     const triggerHaptic = (pattern = [30, 50, 30]) => {
@@ -190,6 +199,16 @@ const App: React.FC = () => {
         return () => clearInterval(interval);
     }, [activeLocationId, activeLocation]);
 
+    // Michael : Reset du chat uniquement si le secteur change sur le Live
+    useEffect(() => {
+        if (activeLocationId && lastCoachLocationId && activeLocationId !== lastCoachLocationId) {
+            clearChatHistory(currentUserId);
+            setLastCoachLocationId(activeLocationId);
+        } else if (activeLocationId && !lastCoachLocationId) {
+            setLastCoachLocationId(activeLocationId);
+        }
+    }, [activeLocationId, lastCoachLocationId, currentUserId]);
+
     // --- USER PROFILE & THEME SYNC ---
     useEffect(() => {
         if (!user) return;
@@ -284,7 +303,7 @@ const App: React.FC = () => {
         try {
             await updateDoc(doc(db, 'users', currentUserId), { pendingLevelUp: false });
             if (goToExperience) { setActiveDashboardTab('experience'); setCurrentView('dashboard'); }
-        } catch (e) { console.error("Error level notification Michael :", e); }
+        } catch (e) { console.error("Error level notification :", e); }
     };
 
     const liveOraclePoint = useMemo(() => {
@@ -297,6 +316,7 @@ const App: React.FC = () => {
         if (!activeLocation || !liveOraclePoint || !displayedWeather) return null;
         return {
             locationName: activeLocation.label, userName: userProfile?.pseudo || "Pêcheur",
+            coordinates: activeLocation.coordinates, // Michael : Transmission des coordonnées pour l'IA
             env: {
                 hydro: { 
                     waterTemp: liveOraclePoint.waterTemp, turbidityNTU: liveOraclePoint.turbidityNTU,
@@ -314,8 +334,23 @@ const App: React.FC = () => {
     const renderContent = () => { 
         switch (currentView) {
             case 'locations':
-                return <LocationsManager userId={currentUserId} initialOpenLocationId={targetLocationId} locations={arsenalData.locations} spots={arsenalData.spots} onAddLocation={(l: string, coords: any) => handleAddItem('locations', l, coords ? { coordinates: coords } : undefined)} onEditLocation={(id, l, extra) => handleEditItem('locations', id, l, extra)} onDeleteLocation={(id: string) => handleDeleteItem('locations', id)} onToggleFavorite={handleToggleLocationFavorite} onMoveLocation={(id: string, dir: 'up' | 'down') => handleMoveItem('locations', id, dir)} onAddSpot={(l: string, locId: string) => handleAddItem('zones', l, { locationId: locId })} onDeleteSpot={(id: string) => handleDeleteItem('zones', id)} onEditSpot={(id: string, l: string) => handleEditItem('zones', id, l)} onBack={() => { setTargetLocationId(null); setCurrentView('dashboard'); }} />;
-            case 'dashboard': 
+                return <LocationsManager 
+                        userId={currentUserId} 
+                        initialOpenLocationId={targetLocationId} 
+                        locations={arsenalData.locations} 
+                        spots={arsenalData.spots} 
+                        onAddLocation={(label: string, coords: any) => handleAddItem('locations', label, coords ? { coordinates: coords } : undefined)} 
+                        onEditLocation={(id: string, label: string, extra?: any) => handleEditItem('locations', id, label, extra)} 
+                        onDeleteLocation={(id: string) => handleDeleteItem('locations', id)} 
+                        onToggleFavorite={handleToggleLocationFavorite} 
+                        onMoveLocation={(id: string, dir: 'up' | 'down') => handleMoveItem('locations', id, dir)} 
+                        onAddSpot={(label: string, locId: string) => handleAddItem('zones', label, { locationId: locId })} 
+                        onDeleteSpot={(id: string) => handleDeleteItem('zones', id)} 
+                        onEditSpot={(id: string, label: string) => handleEditItem('zones', id, label)} 
+                        onBack={() => { setTargetLocationId(null); setCurrentView('dashboard'); }} 
+                    />;
+
+                case 'dashboard': 
                 return <Dashboard 
                     userProfile={userProfile} activeTab={activeDashboardTab} onTabChange={setActiveDashboardTab} userName={userProfile?.pseudo || 'Pêcheur'} 
                     currentUserId={currentUserId} sessions={sessions} oracleData={oraclePoints} isOracleLoading={isOracleLoading || isWeatherLoading} 
@@ -326,7 +361,7 @@ const App: React.FC = () => {
                     lastSyncTimestamp={lastSyncTimestamp} isActuallyNight={isActuallyNight}
                 />;
             case 'history': return <HistoryView sessions={sessions} onDeleteSession={handleDeleteSession} onEditSession={handleEditRequest} currentUserId={currentUserId} isActuallyNight={isActuallyNight} />;
-            case 'arsenal': return <ArsenalView currentUserId={currentUserId} setups={arsenalData.setups} onAddSetup={(l: string) => handleAddItem('setups', l)} onDeleteSetup={(id: string) => handleDeleteItem('setups', id)} onEditSetup={(id: string, l: string) => handleEditItem('setups', id, l)} onMoveSetup={(id: string, dir: 'up' | 'down') => handleMoveItem('setups', id, dir)} techniques={arsenalData.techniques} onAddTechnique={(l: string) => handleAddItem('techniques', l)} onDeleteTechnique={(id: string) => handleDeleteItem('techniques', id)} onEditTechnique={(id: string, l: string) => handleEditItem('techniques', id, l)} onMoveTechnique={(id: string, dir: 'up' | 'down') => handleMoveItem('techniques', id, dir)} lureTypes={arsenalData.lureTypes} onAddLureType={(l: string) => handleAddItem('ref_lure_types', l)} onDeleteLureType={(id: string) => handleDeleteItem('ref_lure_types', id)} onEditLureType={(id: string, l: string) => handleEditItem('ref_lure_types', id, l)} onMoveLureType={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_lure_types', id, dir)} colors={arsenalData.colors} onAddColor={(l: string) => handleAddItem('ref_colors', l)} onDeleteColor={(id: string) => handleDeleteItem('ref_colors', id)} onEditColor={(id: string, l: string) => handleEditItem('ref_colors', id, l)} onMoveColor={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_colors', id, dir)} sizes={arsenalData.sizes} onAddSize={(l: string) => handleAddItem('ref_sizes', l)} onDeleteSize={(id: string) => handleDeleteItem('ref_sizes', id)} onEditSize={(id: string, l: string) => handleEditItem('ref_sizes', id, l)} onMoveSize={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_sizes', id, dir)} weights={arsenalData.weights} onAddWeight={(l: string) => handleAddItem('ref_weights', l)} onDeleteWeight={(id: string) => handleDeleteItem('ref_weights', id)} onEditWeight={(id: string, l: string) => handleEditItem('ref_weights', id, l)} onMoveWeight={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_weights', id, dir)} onResetTechniques={(defaults) => handleResetCollection('techniques', defaults, arsenalData.techniques)} onResetLureTypes={(defaults) => handleResetCollection('ref_lure_types', defaults, arsenalData.lureTypes)} onResetColors={(defaults) => handleResetCollection('ref_colors', defaults, arsenalData.colors)} onResetSizes={(defaults) => handleResetCollection('ref_sizes', defaults, arsenalData.sizes)} onResetWeights={(defaults) => handleResetCollection('ref_weights', defaults, arsenalData.weights)} onResetSetups={(defaults) => handleResetCollection('setups', defaults, arsenalData.setups)} />;
+            case 'arsenal': return <ArsenalView currentUserId={currentUserId} setups={arsenalData.setups} onAddSetup={(l: string) => handleAddItem('setups', l)} onDeleteSetup={(id: string) => handleDeleteItem('setups', id)} onEditSetup={(id: string, l: string) => handleEditItem('setups', id, l)} onMoveSetup={(id: string, dir: 'up' | 'down') => handleMoveItem('setups', id, dir)} techniques={arsenalData.techniques} onAddTechnique={(l: string) => handleAddItem('techniques', l)} onDeleteTechnique={(id: string) => handleDeleteItem('techniques', id)} onEditTechnique={(id: string, l: string) => handleEditItem('techniques', id, l)} onMoveTechnique={(id: string, dir: 'up' | 'down') => handleMoveItem('techniques', id, dir)} lureTypes={arsenalData.lureTypes} onAddLureType={(l: string) => handleAddItem('ref_lure_types', l)} onDeleteLureType={(id: string) => handleDeleteItem('ref_lure_types', id)} onEditLureType={(id: string, label: string) => handleEditItem('ref_lure_types', id, label)} onMoveLureType={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_lure_types', id, dir)} colors={arsenalData.colors} onAddColor={(l: string) => handleAddItem('ref_colors', l)} onDeleteColor={(id: string) => handleDeleteItem('ref_colors', id)} onEditColor={(id: string, l: string) => handleEditItem('ref_colors', id, l)} onMoveColor={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_colors', id, dir)} sizes={arsenalData.sizes} onAddSize={(l: string) => handleAddItem('ref_sizes', l)} onDeleteSize={(id: string) => handleDeleteItem('ref_sizes', id)} onEditSize={(id: string, l: string) => handleEditItem('ref_sizes', id, l)} onMoveSize={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_sizes', id, dir)} weights={arsenalData.weights} onAddWeight={(l: string) => handleAddItem('ref_weights', l)} onDeleteWeight={(id: string) => handleDeleteItem('ref_weights', id)} onEditWeight={(id: string, l: string) => handleEditItem('ref_weights', id, l)} onMoveWeight={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_weights', id, dir)} onResetTechniques={(defaults) => handleResetCollection('techniques', defaults, arsenalData.techniques)} onResetLureTypes={(defaults) => handleResetCollection('ref_lure_types', defaults, arsenalData.lureTypes)} onResetColors={(defaults) => handleResetCollection('ref_colors', defaults, arsenalData.colors)} onResetSizes={(defaults) => handleResetCollection('ref_sizes', defaults, arsenalData.sizes)} onResetWeights={(defaults) => handleResetCollection('ref_weights', defaults, arsenalData.weights)} onResetSetups={(defaults) => handleResetCollection('setups', defaults, arsenalData.setups)} />;
             case 'coach': return <CoachView sessions={sessions} arsenalData={arsenalData} liveSnapshot={currentLiveSnapshot} currentUserId={currentUserId} userPseudo={userProfile?.pseudo || 'Pêcheur'} isActuallyNight={isActuallyNight} />;
             case 'profile': return <ProfileView userProfile={userProfile!} sessions={sessions} arsenalData={arsenalData} onUpdateProfile={setUserProfile} onLogout={handleLogout} themeMode={themeMode} isActuallyNight={isActuallyNight} />;
             case 'session': return <SessionForm onAddSession={handleSaveSession} onUpdateSession={(id, data) => handleSaveSession({ ...data, id } as Session)} onCancel={() => setCurrentView('dashboard')} initialData={editingSession} initialDiscovery={magicDraft} zones={arsenalData.spots} setups={arsenalData.setups} techniques={arsenalData.techniques} lures={arsenalData.lures} lureTypes={arsenalData.lureTypes} colors={arsenalData.colors} sizes={arsenalData.sizes} weights={arsenalData.weights} locations={arsenalData.locations} defaultLocationId={activeLocationId} lastCatchDefaults={lastCatchDefaults} currentUserId={currentUserId} isActuallyNight={isActuallyNight} />;
@@ -345,7 +380,7 @@ const App: React.FC = () => {
                     </div>
                     <h1 className="text-3xl font-black text-stone-800 mb-2 tracking-tighter uppercase italic">Oracle<span className="text-amber-500"> Fish</span></h1>
                     <button onClick={handleLogin} className="w-full py-5 bg-stone-800 hover:bg-stone-900 text-white rounded-2xl font-black shadow-lg transition-all active:scale-95 flex items-center justify-center gap-3 text-lg"><User size={24} /> Connexion Google</button>
-                    <p className="mt-8 text-[11px] text-stone-300 uppercase font-black tracking-widest">Version Elite 4.8.22</p>
+                    <p className="mt-8 text-[11px] text-stone-300 uppercase font-black tracking-widest">Version Elite 4.8.23</p>
                 </div>
             </div>
         );
@@ -357,7 +392,7 @@ const App: React.FC = () => {
                 <LevelUpModal level={userProfile.levelReached || 1} onClose={() => handleConsumeLevelUp(false)} onConfirm={() => handleConsumeLevelUp(true)} />
             )}
 
-            {/* HEADER : w-10 h-10 et pt-safe-area pour Pixel 9 (V4.8.22) */}
+            {/* HEADER : w-10 h-10 et pt-safe-area pour Pixel 9 (V4.8.23) */}
             <header className={`sticky top-0 z-30 ${isActuallyNight ? 'bg-[#292524]/90 border-stone-800' : 'bg-white/90 border-stone-200'} backdrop-blur-lg border-b px-5 pt-[calc(env(safe-area-inset-top)+14px)] pb-5 flex items-center justify-between shadow-sm transition-all duration-500`}>
                 <div className="flex items-center gap-3">
                     <button onClick={() => { triggerHaptic([10]); setIsMenuOpen(true); }} className={`p-2 transition-colors ${isActuallyNight ? 'text-stone-400 hover:text-amber-400' : 'text-stone-500 hover:text-stone-800'}`}>
@@ -381,7 +416,7 @@ const App: React.FC = () => {
                 </button>
             </header>
 
-            {/* NAVIGATION 6 COLONNES */}
+            {/* NAVIGATION 6 COLONNES "FLAT" */}
             <nav className={`fixed bottom-0 left-0 right-0 z-40 border-t ${isActuallyNight ? 'bg-[#292524]/95 border-stone-800' : 'bg-white/95 border-stone-200'} backdrop-blur-md pb-[env(safe-area-inset-bottom,12px)] shadow-[0_-8px_30px_rgb(0,0,0,0.04)]`}> 
                 <div className="mx-auto grid grid-cols-6 max-w-lg items-center py-4 px-1">
                     <button onClick={() => { triggerHaptic([5]); setCurrentView('dashboard'); }} className={`flex flex-col items-center gap-1.5 transition-all active:scale-90 ${currentView === 'dashboard' ? 'text-amber-600' : 'text-stone-500 font-black'}`}>

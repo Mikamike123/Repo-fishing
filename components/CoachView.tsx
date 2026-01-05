@@ -1,4 +1,4 @@
-// components/CoachView.tsx - Version 4.8.21 (Soft Night Ops & UI Sync)
+// components/CoachView.tsx - Version 4.8.25 (Species Filtering & Strategic Context)
 import React, { useState, useEffect, useRef } from 'react';
 import { Bot, Send, Loader, CornerDownLeft } from 'lucide-react';
 // Michael : Import des nouvelles fonctions dynamiques
@@ -25,6 +25,9 @@ const CoachView: React.FC<CoachViewProps> = ({
     const [messages, setMessages] = useState<any[]>([]);
     const [isCoachTyping, setIsCoachTyping] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    
+    // Michael : VERROU PHYSIQUE SYNCHRONE (Bloque le double-clic instantanément)
+    const isProcessingRef = useRef(false);
 
     // Michael : Rendu propre du Markdown (Gras et Puces) - Adapté au thème
     const formatMessage = (text: string) => {
@@ -54,16 +57,7 @@ const CoachView: React.FC<CoachViewProps> = ({
         });
     };
 
-    // --- Michael : RÉINITIALISATION DE LA MÉMOIRE AVEC USER_ID ---
-    useEffect(() => {
-        const resetAndLoad = async () => {
-            if (!currentUserId) return;
-            await clearChatHistory(currentUserId); 
-        };
-        resetAndLoad();
-    }, [currentUserId]); 
-
-    // --- Michael : SYNCHRONISATION DU CHAT DYNAMIQUE ---
+    // Michael : SYNCHRONISATION DU CHAT (On ne reset plus au mount pour garder l'historique)
     useEffect(() => {
         if (!currentUserId) return;
 
@@ -77,6 +71,7 @@ const CoachView: React.FC<CoachViewProps> = ({
                 timestamp: doc.data().timestamp?.toDate() || new Date()
             }));
 
+            // Si vide, on met le message d'accueil, sinon on affiche l'historique persistant
             setMessages(fetched.length ? fetched : [{ 
                 id: 'init', 
                 content: `Salut **${userPseudo || 'Pêcheur'}** ! Je suis branché sur ton secteur **${liveSnapshot?.locationName || 'en cours...'}**. Prêt pour l'analyse ?`, 
@@ -91,15 +86,41 @@ const CoachView: React.FC<CoachViewProps> = ({
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!input.trim() || isCoachTyping) return;
+        
+        // Michael : Double-Check de sécurité (State + Ref synchrone)
+        if (!input.trim() || isCoachTyping || isProcessingRef.current) return;
+
         const msg = input;
         setInput('');
+        
+        // Verrouillage immédiat
+        isProcessingRef.current = true;
         setIsCoachTyping(true);
+
         try {
+            // 1. Filtrage des données Michael
             const userSessions = sessions.filter(s => s.userId === currentUserId);
             const narrative = generateFishingNarrative(userSessions, arsenalData);
             const insights = calculateDeepKPIs(sessions, currentUserId, arsenalData);
+            
+            // 2. Michael : Identification des espèces autorisées pour ce secteur spécifique
+            const currentLocation = arsenalData.locations.find(l => l.label === liveSnapshot?.locationName);
+            const allowedSpecies = currentLocation?.speciesIds || []; // Liste ex: ["Sandre", "Perche", "Brochet"]
+
             const env = liveSnapshot?.env;
+            const scores = liveSnapshot?.scores || {};
+
+            // 3. Michael : Construction dynamique de la chaîne des scores filtrés
+            // On ne montre à l'IA que les scores des espèces affichées sur le Live
+            const filteredScoresText = allowedSpecies
+                .map(sp => {
+                    const key = sp.toLowerCase().replace('-', ''); // Normalisation des clés
+                    const score = scores[key];
+                    return score !== undefined ? `${sp}: ${score.toFixed(0)}` : null;
+                })
+                .filter(Boolean)
+                .join(', ');
+
             const liveText = `
                 --- SITUATION LIVE (PRÉSENT) ---
                 LIEU: ${liveSnapshot?.locationName || 'Inconnu'}
@@ -110,7 +131,13 @@ const CoachView: React.FC<CoachViewProps> = ({
                 
                 CONTEXTE: Tendance ${env?.metadata?.flowStatus || 'Stable'}, Morpho ${env?.metadata?.morphologyType || 'Inconnue'}
                 
-                BIOSCORES: Sandre ${liveSnapshot?.scores?.sandre?.toFixed(0) || '0'}, Perche ${liveSnapshot?.scores?.perche?.toFixed(0) || '0'}, Brochet ${liveSnapshot?.scores?.brochet?.toFixed(0) || '0'}${liveSnapshot?.scores?.blackbass ? `, Bass ${liveSnapshot?.scores?.blackbass.toFixed(0)}` : ''}
+                BIOSCORES ACTIFS (FILTRÉS): ${filteredScoresText || 'Aucun score disponible'}
+
+                --- CONSIGNES DE STYLE ET STRATÉGIE ---
+                1. FORMAT DES DATES : Interdiction d'utiliser YYYY-MM-DD. Utilise "le 12 novembre 2025".
+                2. FILTRE ESPÈCES : Tu n'as le droit de parler QUE des espèces suivantes : ${allowedSpecies.join(', ')}. 
+                3. INTERDICTION : Ne mentionne jamais le Black-Bass ou toute autre espèce absente de cette liste pour ce secteur, même en été.
+                4. TON : Direct et tactique.
             `;
 
             const locationCoords = liveSnapshot?.coordinates || { lat: 48.8566, lng: 2.3522 }; 
@@ -125,7 +152,9 @@ const CoachView: React.FC<CoachViewProps> = ({
                 currentUserId 
             );
         } finally {
+            // Libération des verrous
             setIsCoachTyping(false);
+            isProcessingRef.current = false;
         }
     };
 
