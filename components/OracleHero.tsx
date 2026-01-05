@@ -1,3 +1,4 @@
+// components/OracleHero.tsx - Version 10.0.0 (Night Ops & Prop Sync)
 import React, { useState, useEffect, useMemo } from 'react';
 import { ChevronDown, Zap, Calendar, MapPin, BarChart2, Target, Plus } from 'lucide-react';
 import OracleChart, { ChartMode, TargetSpecies } from './OracleChart';
@@ -12,6 +13,7 @@ interface OracleHeroProps {
     // Pilotage du secteur global
     activeLocationId?: string;
     onLocationChange?: (id: string) => void;
+    isActuallyNight?: boolean; // Michael : Raccordement au pilier V8.0
 }
 
 const OracleHero: React.FC<OracleHeroProps> = ({ 
@@ -19,7 +21,8 @@ const OracleHero: React.FC<OracleHeroProps> = ({
     dataPoints, 
     isLoading,
     activeLocationId,
-    onLocationChange
+    onLocationChange,
+    isActuallyNight // Michael : Activation du thème furtif
 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [internalLoading, setInternalLoading] = useState(false);
@@ -193,20 +196,31 @@ const OracleHero: React.FC<OracleHeroProps> = ({
 
     const effectiveLoading = isLoading || internalLoading;
 
+    // Styles dynamiques V8.0 Soft Night Ops
+    const containerBg = isActuallyNight ? "bg-[#1c1917] border-stone-800 shadow-none" : "bg-white border-stone-100 shadow-sm";
+    const titleColor = isActuallyNight ? "text-stone-100" : "text-stone-800";
+    const subTitleColor = isActuallyNight ? "text-stone-400" : "text-stone-500";
+    const pillBg = isActuallyNight ? "bg-stone-900 border-stone-800 text-stone-400" : "bg-white border-stone-100 text-stone-500";
+    const activePillBg = isActuallyNight ? "bg-indigo-900/40 text-indigo-300 border-indigo-800 shadow-none" : "bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-200";
+
     return (
-        <div className="mb-4 bg-white rounded-2xl p-0.5 shadow-sm border border-stone-100 overflow-hidden transition-all duration-300">
+        <div className={`mb-4 rounded-2xl p-0.5 border overflow-hidden transition-all duration-300 ${containerBg}`}>
             {/* HEADER CLIQUABLE */}
             <div 
                 className="p-3 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-transform"
                 onClick={() => setIsExpanded(!isExpanded)}
             >
                 <div className="flex items-center gap-4 flex-1">
-                    <div className={`p-3 rounded-2xl text-white shadow-lg shadow-indigo-100 transition-colors ${mode === 'compare' ? 'bg-gradient-to-br from-indigo-500 to-purple-600' : 'bg-indigo-600'}`}>
+                    <div className={`p-3 rounded-2xl text-white shadow-lg transition-colors ${
+                        mode === 'compare' 
+                            ? 'bg-gradient-to-br from-indigo-500 to-purple-600 shadow-indigo-200/20' 
+                            : 'bg-indigo-600 shadow-indigo-100/20'
+                    }`}>
                         {mode === 'compare' ? <BarChart2 size={24} /> : <Zap size={24} />}
                     </div>
                     <div>
                         <div className="flex items-center gap-2">
-                            <h2 className="text-lg font-black text-stone-800 leading-none tracking-tight">
+                            <h2 className={`text-lg font-black leading-none tracking-tight ${titleColor}`}>
                                 {mode === 'compare' ? 'COMPARATIF' : 'ORACLE 72H'}
                             </h2>
                             {isExpanded && favorites.length > 1 && (
@@ -215,7 +229,11 @@ const OracleHero: React.FC<OracleHeroProps> = ({
                                         e.stopPropagation();
                                         setMode(mode === 'single' ? 'compare' : 'single');
                                     }}
-                                    className="text-[10px] bg-stone-100 px-3 py-1 rounded-full font-bold text-stone-500 uppercase tracking-wide hover:bg-stone-200 transition-colors border border-stone-200"
+                                    className={`text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-wide transition-colors border ${
+                                        isActuallyNight 
+                                            ? 'bg-stone-800 border-stone-700 text-stone-400 hover:bg-stone-700' 
+                                            : 'bg-stone-100 border-stone-200 text-stone-500 hover:bg-stone-200'
+                                    }`}
                                 >
                                     {mode === 'single' ? 'Comparer' : 'Vue Secteur'}
                                 </button>
@@ -223,23 +241,25 @@ const OracleHero: React.FC<OracleHeroProps> = ({
                         </div>
                         
                         {effectiveLoading && !summaryInfo ? (
-                             <div className="h-3 w-24 bg-stone-100 rounded animate-pulse mt-2"></div>
+                             <div className={`h-3 w-24 rounded animate-pulse mt-2 ${isActuallyNight ? 'bg-stone-800' : 'bg-stone-100'}`}></div>
                         ) : (
-                            <div className="flex items-center gap-1 mt-1 text-sm text-stone-500 font-medium">
+                            <div className={`flex items-center gap-1 mt-1 text-sm font-medium ${subTitleColor}`}>
                                 {mode === 'single' ? (
                                     <>
-                                        <MapPin size={12} className="text-stone-400" />
+                                        <MapPin size={12} className="opacity-60" />
                                         <span className="truncate max-w-[150px]">{selectedLocName}</span>
                                         {summaryInfo && (
-                                            <span className="text-indigo-600 font-bold ml-1 bg-indigo-50 px-1.5 rounded text-xs">
+                                            <span className={`font-bold ml-1 px-1.5 rounded text-xs ${
+                                                isActuallyNight ? 'bg-indigo-950/30 text-indigo-300' : 'bg-indigo-50 text-indigo-600'
+                                            }`}>
                                                 {summaryInfo.name} {summaryInfo.score.toFixed(0)}%
                                             </span>
                                         )}
                                     </>
                                 ) : (
                                     <>
-                                        <Target size={12} className="text-stone-400" />
-                                        <span>Cible : <span className="uppercase text-stone-800 font-bold">{targetSpecies}</span></span>
+                                        <Target size={12} className="opacity-60" />
+                                        <span>Cible : <span className={`uppercase font-bold ${isActuallyNight ? 'text-stone-200' : 'text-stone-800'}`}>{targetSpecies}</span></span>
                                     </>
                                 )}
                             </div>
@@ -247,7 +267,9 @@ const OracleHero: React.FC<OracleHeroProps> = ({
                     </div>
                 </div>
 
-                <div className={`p-2 rounded-full bg-stone-50 text-stone-400 transition-transform duration-300 ${isExpanded ? 'rotate-180 bg-stone-100' : ''}`}>
+                <div className={`p-2 rounded-full transition-transform duration-300 ${
+                    isActuallyNight ? 'bg-stone-800 text-stone-500' : 'bg-stone-50 text-stone-400'
+                } ${isExpanded ? 'rotate-180' : ''}`}>
                     <ChevronDown size={20} />
                 </div>
             </div>
@@ -255,7 +277,9 @@ const OracleHero: React.FC<OracleHeroProps> = ({
             {/* CONTENU DÉPLIABLE */}
             {isExpanded && (
                 <div className="px-1 pb-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                    <div className="h-px w-full bg-gradient-to-r from-transparent via-stone-200 to-transparent my-2"></div>
+                    <div className={`h-px w-full bg-gradient-to-r from-transparent to-transparent my-2 ${
+                        isActuallyNight ? 'via-stone-800' : 'via-stone-200'
+                    }`}></div>
                     
                     {/* CONTROLS (PILLS FIXES) */}
                     {mode === 'single' && favorites.length > 1 && (
@@ -268,9 +292,7 @@ const OracleHero: React.FC<OracleHeroProps> = ({
                                         key={loc.id}
                                         onClick={() => onLocationChange && onLocationChange(loc.id)}
                                         className={`whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
-                                            isActive
-                                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-200' 
-                                            : 'bg-white text-stone-500 border-stone-100 hover:bg-stone-50'
+                                            isActive ? activePillBg : pillBg
                                         }`}
                                     >
                                         {pillLabel}
@@ -281,16 +303,17 @@ const OracleHero: React.FC<OracleHeroProps> = ({
                     )}
 
                     {mode === 'compare' && (
-                        <div className="flex gap-2 mb-4 justify-center bg-stone-50 p-1.5 rounded-xl border border-stone-100 w-fit mx-auto overflow-x-auto max-w-full">
-                            {/* Michael : On filtre aussi les boutons de comparaison si nécessaire */}
+                        <div className={`flex gap-2 mb-4 justify-center p-1.5 rounded-xl border w-fit mx-auto overflow-x-auto max-w-full ${
+                            isActuallyNight ? 'bg-stone-900 border-stone-800' : 'bg-stone-50 border-stone-100'
+                        }`}>
                             {(['sandre', 'brochet', 'perche', 'blackbass'] as TargetSpecies[]).map(species => (
                                 <button
                                     key={species}
                                     onClick={() => setTargetSpecies(species)}
                                     className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase transition-all whitespace-nowrap ${
                                         targetSpecies === species
-                                        ? 'bg-white text-stone-800 shadow-sm border border-stone-200 transform scale-105'
-                                        : 'text-stone-400 hover:text-stone-600'
+                                            ? (isActuallyNight ? 'bg-stone-800 text-stone-100 shadow-sm border-stone-700 transform scale-105' : 'bg-white text-stone-800 shadow-sm border border-stone-200 transform scale-105')
+                                            : (isActuallyNight ? 'text-stone-500 hover:text-stone-400' : 'text-stone-400 hover:text-stone-600')
                                     }`}
                                 >
                                     {species}
@@ -300,9 +323,9 @@ const OracleHero: React.FC<OracleHeroProps> = ({
                     )}
 
                     <div className="flex justify-between items-center px-1 mb-2">
-                        <span className="text-[10px] font-bold tracking-widest text-stone-400 uppercase">H -12h</span>
-                        <div className="h-px flex-1 bg-stone-100 mx-4"></div>
-                        <span className="text-[10px] font-bold tracking-widest text-indigo-500 uppercase flex items-center gap-1">
+                        <span className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">H -12h</span>
+                        <div className={`h-px flex-1 mx-4 ${isActuallyNight ? 'bg-stone-800' : 'bg-stone-100'}`}></div>
+                        <span className={`text-[10px] font-bold tracking-widest uppercase flex items-center gap-1 ${isActuallyNight ? 'text-indigo-400' : 'text-indigo-500'}`}>
                             <Calendar size={10} /> H +72h
                         </span>
                     </div>
@@ -315,6 +338,7 @@ const OracleHero: React.FC<OracleHeroProps> = ({
                             externalData={formattedChartData}
                             title={chartTitle}
                             subTitle={chartSubTitle}
+                            isActuallyNight={isActuallyNight} // Michael : On transmet la nuit au graphique final
                         />
                     </div>
                 </div>

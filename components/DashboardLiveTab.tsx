@@ -1,3 +1,4 @@
+// components/DashboardLiveTab.tsx - Version 10.0.0 (Night Ops Live Integration)
 import React, { useMemo } from 'react';
 import OracleHero from './OracleHero';
 import { 
@@ -19,7 +20,8 @@ const SPECIES_CONFIG: Record<string, { label: string; key: string; hexColor: str
 export const DashboardLiveTab: React.FC<any> = ({ 
     uniqueLocationsList, oracleData, isOracleLoading, activeLocationId, 
     onLocationSelect, displayLocations, targetLocation, displayedWeather, isLoading,
-    onLocationClick, activeLocationLabel 
+    onLocationClick, activeLocationLabel,
+    isActuallyNight // Michael : Injection du pilier V8.0 [cite: 14, 469]
 }) => {
     const liveOraclePoint = useMemo(() => {
         if (!oracleData || !oracleData.length) return null;
@@ -31,13 +33,11 @@ export const DashboardLiveTab: React.FC<any> = ({
 
     const isRiver = targetLocation?.morphology?.typeId === 'Z_RIVER';
     
-    // Michael : Logique d'affichage conditionnelle basée sur la configuration du secteur (Location)
-    // On regarde targetLocation.speciesIds (défini dans types.ts) avant de tomber sur le fallback par défaut
     const activeSpeciesList = useMemo(() => {
         if (targetLocation?.speciesIds && targetLocation.speciesIds.length > 0) {
             return targetLocation.speciesIds;
         }
-        return ['Sandre', 'Brochet', 'Perche']; // Fallback Michael
+        return ['Sandre', 'Brochet', 'Perche']; 
     }, [targetLocation]);
 
     const getVal = (key: string) => {
@@ -59,24 +59,47 @@ export const DashboardLiveTab: React.FC<any> = ({
 
     return (
         <div className="space-y-4 animate-in slide-in-from-left duration-500">
-            <OracleHero locations={uniqueLocationsList} dataPoints={oracleData} isLoading={isOracleLoading} activeLocationId={activeLocationId} onLocationChange={onLocationSelect} />
+            {/* Propagation du thème au Hero (Graphique 72h) */}
+            <OracleHero 
+                locations={uniqueLocationsList} 
+                dataPoints={oracleData} 
+                isLoading={isOracleLoading} 
+                activeLocationId={activeLocationId} 
+                onLocationChange={onLocationSelect}
+                isActuallyNight={isActuallyNight}
+            />
 
+            {/* Michael : Badge de secteur dynamique Night Ops */}
             <div onClick={onLocationClick} className="flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-transform z-10 relative py-1">
-                <div className="flex items-center gap-2 text-stone-400 font-bold uppercase tracking-widest text-[10px] bg-stone-50 px-3 py-1 rounded-full border border-stone-100 hover:bg-stone-100 transition-colors">
+                <div className={`flex items-center gap-2 font-bold uppercase tracking-widest text-[10px] px-3 py-1 rounded-full border transition-colors ${
+                    isActuallyNight 
+                        ? 'text-stone-400 bg-stone-900 border-stone-800 hover:bg-stone-800' 
+                        : 'text-stone-400 bg-stone-50 border-stone-100 hover:bg-stone-100'
+                }`}>
                     <MapPin size={12} /> {activeLocationLabel} <ChevronDown size={12} />
                 </div>
             </div>
 
-            <div className="bg-white rounded-[2rem] p-1 shadow-organic border border-stone-100 overflow-hidden relative mx-2">
+            {/* Michael : Carte principale - Standard V8.0 gris anthracite doux (#1c1917) [cite: 14, 106] */}
+            <div className={`rounded-[2rem] p-1 shadow-organic border overflow-hidden relative mx-2 transition-colors duration-500 ${
+                isActuallyNight ? 'bg-[#1c1917] border-stone-800 shadow-none' : 'bg-white border-stone-100'
+            }`}>
                 <div className="p-6 relative z-10">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-                        <h3 className="text-lg font-bold text-stone-800 flex items-center gap-2"><ActivityIcon /> Météo & Hydro Live</h3>
+                        <h3 className={`text-lg font-bold flex items-center gap-2 ${isActuallyNight ? 'text-stone-100' : 'text-stone-800'}`}>
+                            <ActivityIcon /> Météo & Hydro Live
+                        </h3>
                         
+                        {/* Sélecteur de secteur stylisé Night Ops */}
                         <div className="relative w-full sm:w-auto min-w-[180px]">
                             <select 
                                 value={activeLocationId} 
                                 onChange={(e) => onLocationSelect(e.target.value)} 
-                                className="appearance-none w-full bg-stone-50 border border-stone-200 text-stone-700 font-bold text-xs rounded-xl py-2.5 pl-9 pr-8 focus:outline-none cursor-pointer shadow-sm hover:bg-stone-100"
+                                className={`appearance-none w-full border font-bold text-xs rounded-xl py-2.5 pl-9 pr-8 focus:outline-none cursor-pointer shadow-sm transition-all ${
+                                    isActuallyNight 
+                                        ? 'bg-stone-900 border-stone-800 text-stone-200 hover:bg-stone-800' 
+                                        : 'bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100'
+                                }`}
                             >
                                 {displayLocations.map((loc: any) => (
                                     <option key={loc.id} value={loc.id}>{loc.label}</option>
@@ -90,7 +113,16 @@ export const DashboardLiveTab: React.FC<any> = ({
                     <SpeciesScoreGrid>
                         {activeSpeciesList.map((speciesId: string) => {
                             const config = SPECIES_CONFIG[speciesId] || { label: speciesId, key: speciesId.toLowerCase(), hexColor: '#a8a29e' };
-                            return <SpeciesScore key={speciesId} label={config.label} score={liveOraclePoint ? (liveOraclePoint as any)[config.key] : undefined} hexColor={config.hexColor} loading={isLoading} />;
+                            return (
+                                <SpeciesScore 
+                                    key={speciesId} 
+                                    label={config.label} 
+                                    score={liveOraclePoint ? (liveOraclePoint as any)[config.key] : undefined} 
+                                    hexColor={config.hexColor} 
+                                    loading={isLoading}
+                                    isActuallyNight={isActuallyNight} // Propagation Michael
+                                />
+                            );
                         })}
                     </SpeciesScoreGrid>
 
@@ -98,7 +130,19 @@ export const DashboardLiveTab: React.FC<any> = ({
                         {Object.entries(WEATHER_METADATA).map(([key, meta]) => {
                             let unit = meta.unit;
                             if (key === 'wind' && displayedWeather) unit = ` km/h ${getWindDir(displayedWeather.windDirection)}`;
-                            return <DataTile key={key} label={meta.label} value={getVal(key)} unit={unit} icon={key === 'tempAir' && displayedWeather ? getWeatherIcon(displayedWeather.clouds) : <meta.icon size={16} />} color={getTileTheme(meta.theme)} loading={isLoading} description={meta.description} />;
+                            return (
+                                <DataTile 
+                                    key={key} 
+                                    label={meta.label} 
+                                    value={getVal(key)} 
+                                    unit={unit} 
+                                    icon={key === 'tempAir' && displayedWeather ? getWeatherIcon(displayedWeather.clouds) : <meta.icon size={16} />} 
+                                    color={getTileTheme(meta.theme, isActuallyNight)} // Thème dynamique Michael
+                                    loading={isLoading} 
+                                    description={meta.description}
+                                    isActuallyNight={isActuallyNight}
+                                />
+                            );
                         })}
                         {Object.entries(HYDRO_METADATA).map(([key, meta]) => {
                             const val = getVal(key);
@@ -108,7 +152,19 @@ export const DashboardLiveTab: React.FC<any> = ({
                                 const status = (liveOraclePoint as any)?.flowStatus || (liveOraclePoint as any)?.metadata?.flowStatus;
                                 if (status) displayUnit = `% (${status})`;
                             }
-                            return <DataTile key={key} label={meta.label} value={val} unit={displayUnit} icon={<meta.icon size={16} />} color={getTileTheme(meta.theme)} loading={isLoading} description={meta.description} />;
+                            return (
+                                <DataTile 
+                                    key={key} 
+                                    label={meta.label} 
+                                    value={val} 
+                                    unit={displayUnit} 
+                                    icon={<meta.icon size={16} />} 
+                                    color={getTileTheme(meta.theme, isActuallyNight)} // Thème dynamique Michael
+                                    loading={isLoading} 
+                                    description={meta.description} 
+                                    isActuallyNight={isActuallyNight}
+                                />
+                            );
                         })}
                     </div>
                 </div>

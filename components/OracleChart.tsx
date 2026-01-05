@@ -1,3 +1,4 @@
+// components/OracleChart.tsx - Version 10.0.0 (Night Ops Visualization Engine)
 import React, { useMemo, useState } from 'react';
 import {
   ResponsiveContainer,
@@ -58,9 +59,14 @@ interface OracleChartProps {
   lat?: number; lng?: number; date: Date; externalData?: any[]; 
   title?: string; subTitle?: string; mode?: ChartMode; targetSpecies?: TargetSpecies;
   isComparisonMode?: boolean;
+  isActuallyNight?: boolean; // Michael : Raccordement final pilier V8.0
 }
 
-const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData, title, subTitle, isComparisonMode: propsIsComparisonMode }) => {
+const OracleChart: React.FC<OracleChartProps> = ({ 
+    lat, lng, date, externalData, title, subTitle, 
+    isComparisonMode: propsIsComparisonMode,
+    isActuallyNight // Michael : Activation du mode furtif
+}) => {
   const { data: historyData, loading } = useHistoricalWeather(lat, lng, date, { enabled: !externalData || externalData.length === 0 });
   const [zoomRange, setZoomRange] = useState<{ start: number, end: number, label: string } | null>(null);
   
@@ -139,7 +145,7 @@ const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData,
     };
   }, [chartData, nowTimestamp]);
 
-  if (!rawData && loading) return <div className="h-64 flex items-center justify-center animate-pulse text-stone-400 font-medium">Analyse...</div>;
+  if (!rawData && loading) return <div className={`h-64 flex items-center justify-center animate-pulse font-medium ${isActuallyNight ? 'text-stone-600' : 'text-stone-400'}`}>Analyse...</div>;
 
   // FIX DOUBLONS #1 : Utilisation d'un Set pour garantir l'unicité des clés
   const finalKeys = useMemo(() => {
@@ -158,19 +164,23 @@ const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData,
   const isComparisonMode = propsIsComparisonMode ?? finalKeys.some(k => !SPECIES_CONFIG[k.toLowerCase()]);
 
   return (
-    <div className="w-full bg-white rounded-xl border border-stone-50 mt-2 overflow-hidden shadow-sm h-[420px]">
+    <div className={`w-full rounded-xl border mt-2 overflow-hidden transition-colors duration-300 h-[420px] ${
+        isActuallyNight ? 'bg-[#1c1917] border-stone-800 shadow-none' : 'bg-white border-stone-50 shadow-sm'
+    }`}>
       <div className="p-2 h-full flex flex-col">
-        <div className="flex justify-between items-start mb-2 border-b border-stone-50 pb-3">
+        <div className={`flex justify-between items-start mb-2 border-b pb-3 ${isActuallyNight ? 'border-stone-800' : 'border-stone-50'}`}>
             <div>
-                <h3 className="text-[11px] font-black text-stone-800 uppercase italic tracking-tight leading-none">
+                <h3 className={`text-[11px] font-black uppercase italic tracking-tight leading-none ${isActuallyNight ? 'text-stone-100' : 'text-stone-800'}`}>
                   {title || (isComparisonMode ? 'COMPARATIF SECTEURS' : 'ORACLE : ANALYSE')}
                 </h3>
                 <div className="flex items-center gap-2 mt-3">
-                    <p className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">
+                    <p className={`text-[10px] font-bold uppercase tracking-wider ${isActuallyNight ? 'text-stone-500' : 'text-stone-400'}`}>
                       {zoomRange ? 'Zoom Temporel' : 'Vue 72 Heures'}
                     </p>
                     {zoomRange && (
-                      <span className="px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[9px] font-black uppercase tracking-widest border border-indigo-100">
+                      <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${
+                          isActuallyNight ? 'bg-indigo-900/40 text-indigo-400 border-indigo-800' : 'bg-indigo-50 text-indigo-600 border-indigo-100'
+                      }`}>
                         {zoomRange.label}
                       </span>
                     )}
@@ -179,7 +189,9 @@ const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData,
             {zoomRange && (
                 <button 
                   onClick={() => setZoomRange(null)} 
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase bg-stone-50 text-stone-500 hover:bg-stone-100 transition-all border border-stone-100"
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all ${
+                      isActuallyNight ? 'bg-stone-900 text-stone-400 border-stone-800 hover:bg-stone-800' : 'bg-stone-50 text-stone-500 border-stone-100 hover:bg-stone-100'
+                  }`}
                 >
                     <Maximize2 size={11} /> Vue 72H
                 </button>
@@ -189,10 +201,16 @@ const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData,
         <div className="flex-1 min-h-0 relative -ml-6">
             <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} margin={{ top: 10, right: 5, left: 0, bottom: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f4" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isActuallyNight ? '#292524' : '#f5f5f4'} />
                 
                 {solarCycles.map((cycle, idx) => (
-                  <ReferenceArea key={`${cycle.type}-${idx}`} x1={cycle.start} x2={cycle.end} fill={cycle.type === 'night' ? '#f1f5f9' : 'transparent'} fillOpacity={0.5} stroke="none" 
+                  <ReferenceArea 
+                    key={`${cycle.type}-${idx}`} 
+                    x1={cycle.start} 
+                    x2={cycle.end} 
+                    fill={cycle.type === 'night' ? (isActuallyNight ? '#0c0a09' : '#f1f5f9') : 'transparent'} 
+                    fillOpacity={0.5} 
+                    stroke="none" 
                     label={({ viewBox }: any) => {
                         const { x, y, width } = viewBox;
                         if (width < 25) return null;
@@ -205,10 +223,10 @@ const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData,
                   />
                 ))}
 
-                <XAxis dataKey="time" type="number" domain={['dataMin', 'dataMax']} ticks={zoomRange ? [setHours(startOfDay(new Date(zoomRange.start)), 12).getTime()] : []} tickFormatter={() => "MIDI"} tick={zoomRange ? { fontSize: 9, fontWeight: 'bold', fill: '#a8a29e' } : false} axisLine={false} tickLine={false} />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#a8a29e' }} axisLine={false} tickLine={false} dx={-5} />
+                <XAxis dataKey="time" type="number" domain={['dataMin', 'dataMax']} ticks={zoomRange ? [setHours(startOfDay(new Date(zoomRange.start)), 12).getTime()] : []} tickFormatter={() => "MIDI"} tick={zoomRange ? { fontSize: 9, fontWeight: 'bold', fill: isActuallyNight ? '#57534e' : '#a8a29e' } : false} axisLine={false} tickLine={false} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: isActuallyNight ? '#57534e' : '#a8a29e' }} axisLine={false} tickLine={false} dx={-5} />
 
-                {/* MODIFICATION CRITIQUE : Glassmorphism + Neutralisation du wrapper Recharts */}
+                {/* MODIFICATION CRITIQUE : Glassmorphism adapté au mode nuit */}
                 <Tooltip 
                     contentStyle={{ backgroundColor: 'transparent', border: 'none', boxShadow: 'none' }}
                     wrapperStyle={{ outline: 'none' }}
@@ -225,34 +243,34 @@ const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData,
                             return (
                                 <div style={{ 
                                     borderRadius: '16px', 
-                                    border: '1px solid rgba(255, 255, 255, 0.3)', 
-                                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)', 
+                                    border: isActuallyNight ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(255, 255, 255, 0.3)', 
+                                    boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.3)', 
                                     padding: '12px', 
-                                    backgroundColor: 'rgba(255, 255, 255, 0.75)', // Opacité 75%
-                                    backdropFilter: 'blur(12px)',               // Flou arrière-plan
-                                    WebkitBackdropFilter: 'blur(12px)',          // Compatibilité iOS/Safari
+                                    backgroundColor: isActuallyNight ? 'rgba(28, 25, 23, 0.85)' : 'rgba(255, 255, 255, 0.75)',
+                                    backdropFilter: 'blur(12px)', 
+                                    WebkitBackdropFilter: 'blur(12px)',
                                 }}>
-                                    <p className="text-xs font-bold text-stone-800 mb-2 border-b border-stone-200/50 pb-1">
+                                    <p className={`text-xs font-bold mb-2 border-b pb-1 ${isActuallyNight ? 'text-stone-100 border-stone-700/50' : 'text-stone-800 border-stone-200/50'}`}>
                                         {format(dateLabel, 'EEEE d MMMM à HH:mm', { locale: fr })}
                                     </p>
                                     
                                     {(data.dissolvedOxygen !== undefined || data.turbidityNTU !== undefined) && (
-                                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-3 bg-stone-100/40 p-2 rounded-lg">
+                                        <div className={`grid grid-cols-2 gap-x-4 gap-y-2 mb-3 p-2 rounded-lg ${isActuallyNight ? 'bg-stone-900/60' : 'bg-stone-100/40'}`}>
                                             <div className="flex flex-col">
-                                                <span className="text-[9px] text-stone-400 uppercase font-bold">Oxygène</span>
-                                                <span className={`text-xs font-black ${data.dissolvedOxygen < 4 ? 'text-red-500' : 'text-stone-600'}`}>
+                                                <span className="text-[9px] text-stone-500 uppercase font-bold">Oxygène</span>
+                                                <span className={`text-xs font-black ${data.dissolvedOxygen < 4 ? 'text-red-500' : (isActuallyNight ? 'text-stone-300' : 'text-stone-600')}`}>
                                                     {data.dissolvedOxygen} <span className="text-[8px] font-normal">mg/L</span>
                                                 </span>
                                             </div>
                                             <div className="flex flex-col">
-                                                <span className="text-[9px] text-stone-400 uppercase font-bold">Turbidité</span>
-                                                <span className="text-xs font-black text-stone-600">
+                                                <span className="text-[9px] text-stone-500 uppercase font-bold">Turbidité</span>
+                                                <span className={`text-xs font-black ${isActuallyNight ? 'text-stone-300' : 'text-stone-600'}`}>
                                                     {data.turbidityNTU} <span className="text-[8px] font-normal">NTU</span>
                                                 </span>
                                             </div>
                                             <div className="flex flex-col">
-                                                <span className="text-[9px] text-stone-400 uppercase font-bold">Temp. Eau</span>
-                                                <span className="text-xs font-black text-stone-600">
+                                                <span className="text-[9px] text-stone-500 uppercase font-bold">Temp. Eau</span>
+                                                <span className={`text-xs font-black ${isActuallyNight ? 'text-stone-300' : 'text-stone-600'}`}>
                                                     {data.waterTemp || data.temperature_2m}°C
                                                 </span>
                                             </div>
@@ -260,16 +278,16 @@ const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData,
                                             {data.tFond !== undefined && (
                                                 <div className="flex flex-col">
                                                     <span className="text-[9px] text-indigo-400 uppercase font-bold">Temp. Fond</span>
-                                                    <span className="text-xs font-black text-indigo-600">
+                                                    <span className={`text-xs font-black ${isActuallyNight ? 'text-indigo-300' : 'text-indigo-600'}`}>
                                                         {data.tFond}°C
                                                     </span>
                                                 </div>
                                             )}
 
                                             {data.waveHeight !== undefined && (
-                                                <div className="flex flex-col col-span-2 border-t border-stone-200/50 pt-1 mt-1">
-                                                    <span className="text-[9px] text-stone-400 uppercase font-bold">Hauteur Vagues (Hs)</span>
-                                                    <span className="text-xs font-black text-stone-600">
+                                                <div className={`flex flex-col col-span-2 border-t pt-1 mt-1 ${isActuallyNight ? 'border-stone-800' : 'border-stone-200/50'}`}>
+                                                    <span className="text-[9px] text-stone-500 uppercase font-bold">Hauteur Vagues (Hs)</span>
+                                                    <span className={`text-xs font-black ${isActuallyNight ? 'text-stone-300' : 'text-stone-600'}`}>
                                                         {data.waveHeight} <span className="text-[8px] font-normal">cm</span>
                                                         {data.waveHeight > 15 && <span className="ml-2 text-[9px] text-amber-500 font-bold italic">"Walleye Chop"</span>}
                                                     </span>
@@ -283,7 +301,7 @@ const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData,
                                             <span style={{ color: p.stroke, fontSize: '10px', fontWeight: 800, textTransform: 'uppercase' }}>
                                                 {p.name}
                                             </span>
-                                            <span className="text-xs font-black text-stone-800">
+                                            <span className={`text-xs font-black ${isActuallyNight ? 'text-stone-100' : 'text-stone-800'}`}>
                                                 {Math.round(p.value)} %
                                             </span>
                                         </div>
@@ -295,13 +313,13 @@ const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData,
                     }}
                 />
                 
-                <Legend verticalAlign="bottom" align="center" iconType="circle" iconSize={8} wrapperStyle={{ position: 'relative', marginTop: '10px', fontSize: '10px', fontWeight: 800, color: '#a8a29e', textTransform: 'uppercase', letterSpacing: '0.05em' }} />
+                <Legend verticalAlign="bottom" align="center" iconType="circle" iconSize={8} wrapperStyle={{ position: 'relative', marginTop: '10px', fontSize: '10px', fontWeight: 800, color: isActuallyNight ? '#57534e' : '#a8a29e', textTransform: 'uppercase', letterSpacing: '0.05em' }} />
                 
-                <ReferenceLine x={nowTimestamp} stroke="#d6d3d1" strokeDasharray="3 3" strokeWidth={1} label={{ position: 'insideTopLeft', value: 'LIVE', fill: '#a8a29e', fontSize: 9, fontWeight: 'bold', offset: 5 }} />
-                {zoomRange && <ReferenceLine x={setHours(startOfDay(new Date(zoomRange.start)), 12).getTime()} stroke="#e2e8f0" strokeDasharray="3 3" />}
+                <ReferenceLine x={nowTimestamp} stroke={isActuallyNight ? '#44403c' : '#d6d3d1'} strokeDasharray="3 3" strokeWidth={1} label={{ position: 'insideTopLeft', value: 'LIVE', fill: isActuallyNight ? '#78716c' : '#a8a29e', fontSize: 9, fontWeight: 'bold', offset: 5 }} />
+                {zoomRange && <ReferenceLine x={setHours(startOfDay(new Date(zoomRange.start)), 12).getTime()} stroke={isActuallyNight ? '#292524' : '#e2e8f0'} strokeDasharray="3 3" />}
 
                 {!zoomRange && dayTransitions.map((dt, idx) => (
-                    <ReferenceLine key={`line-${idx}`} x={dt.midnight} stroke="#e2e8f0" strokeWidth={1} />
+                    <ReferenceLine key={`line-${idx}`} x={dt.midnight} stroke={isActuallyNight ? '#292524' : '#e2e8f0'} strokeWidth={1} />
                 ))}
 
                 {!zoomRange && dayTransitions.map((dt, idx) => (
@@ -313,9 +331,9 @@ const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData,
                             const { x, y, height } = viewBox;
                             return (
                                 <g transform={`translate(${x},${y + height + 15})`} onClick={() => setZoomRange({ start: dt.start, end: dt.end, label: dt.label })} style={{ cursor: 'pointer' }}>
-                                    <rect x="-40" y="-12" width="80" height="20" rx="6" fill="white" stroke="#f1f5f9" strokeWidth="1" className="hover:stroke-indigo-200 transition-colors" />
-                                    <text x="-4" y="2" textAnchor="middle" fill="#6366f1" fontSize="8" fontWeight="900" className="uppercase tracking-tighter">{dt.label}</text>
-                                    <foreignObject x="25" y="-7" width="10" height="10"><Search size={9} className="text-indigo-200" /></foreignObject>
+                                    <rect x="-40" y="-12" width="80" height="20" rx="6" fill={isActuallyNight ? '#1c1917' : 'white'} stroke={isActuallyNight ? '#44403c' : '#f1f5f9'} strokeWidth="1" className="hover:stroke-indigo-400 transition-colors" />
+                                    <text x="-4" y="2" textAnchor="middle" fill={isActuallyNight ? '#818cf8' : '#6366f1'} fontSize="8" fontWeight="900" className="uppercase tracking-tighter">{dt.label}</text>
+                                    <foreignObject x="25" y="-7" width="10" height="10"><Search size={9} className={isActuallyNight ? 'text-indigo-400/50' : 'text-indigo-200'} /></foreignObject>
                                 </g>
                             );
                         }} 
@@ -326,7 +344,7 @@ const OracleChart: React.FC<OracleChartProps> = ({ lat, lng, date, externalData,
                     const style = getStyle(key, index, isComparisonMode);
                     return (
                         <React.Fragment key={key}>
-                            <Area type="monotone" dataKey={key} stroke="none" fill={style.fill} fillOpacity={0.25} tooltipType="none" legendType="none" />
+                            <Area type="monotone" dataKey={key} stroke="none" fill={style.fill} fillOpacity={isActuallyNight ? 0.15 : 0.25} tooltipType="none" legendType="none" />
                             <Line type="monotone" data={pastData} dataKey={key} name={style.label} stroke={style.color} strokeWidth={2.5} dot={false} activeDot={{ r: 4, strokeWidth: 2 }} />
                             <Line type="monotone" data={futureData} dataKey={key} stroke={style.color} strokeWidth={2.5} strokeDasharray="6 4" dot={false} tooltipType="none" legendType="none" />
                         </React.Fragment>

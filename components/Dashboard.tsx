@@ -1,4 +1,4 @@
-// components/Dashboard.tsx - Version 9.9 (Sync Status & Night Ops Integration)
+// components/Dashboard.tsx - Version 10.0.0 (Full Night Ops Propagation)
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
     Activity, Target, ScrollText, MapPin, ChevronDown, Flame, Trophy, RefreshCw
@@ -110,7 +110,7 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
 
     return (
         <div className="space-y-4 animate-in fade-in duration-500 pb-20">
-            {/* Michael : Sélecteur d'onglets calibré pour le mode Night Ops */}
+            {/* Michael : Sélecteur d'onglets calibré pour le mode Night Ops [cite: 14, 106] */}
             <div className={`flex p-1.5 rounded-[2rem] border mx-1 transition-all duration-500 ${
                 isActuallyNight ? 'bg-stone-900/50 border-stone-800' : 'bg-stone-200/50 border-stone-200'
             }`}>
@@ -136,6 +136,7 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
                             onLocationClick={onLocationClick}
                             activeLocationLabel={activeLocationLabel}
                             onMagicDiscovery={onMagicDiscovery}
+                            isActuallyNight={isActuallyNight}
                         />
                         
                         {/* Michael : Micro-mention de synchronisation Oracle (Sentiment tactique) */}
@@ -149,11 +150,22 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
                 )}
 
                 {activeTab === 'tactics' && (
-                    <DashboardTacticsTab sessions={sessions} currentUserId={currentUserId} arsenalData={arsenalData} />
+                    <DashboardTacticsTab 
+                        sessions={sessions} 
+                        currentUserId={currentUserId} 
+                        arsenalData={arsenalData} 
+                        isActuallyNight={isActuallyNight} 
+                    />
                 )}
 
                 {activeTab === 'activity' && (
-                    <DashboardActivityTab sessions={sessions} currentUserId={currentUserId} onDeleteSession={onDeleteSession} onEditSession={onEditSession} />
+                    <DashboardActivityTab 
+                        sessions={sessions} 
+                        currentUserId={currentUserId} 
+                        onDeleteSession={onDeleteSession} 
+                        onEditSession={onEditSession}
+                        isActuallyNight={isActuallyNight} 
+                    />
                 )}
 
                 {activeTab === 'experience' && (
@@ -208,7 +220,7 @@ const ProgressionHeader: React.FC<any> = ({ sessions, currentUserId, userName, l
 
 const TrophiesSection: React.FC<any> = ({ sessions, currentUserId, isActuallyNight }) => (
     <div className={`rounded-[2.5rem] p-8 border shadow-organic space-y-8 mx-1 transition-colors duration-500 ${
-        isActuallyNight ? 'bg-stone-900 border-stone-800' : 'bg-white border-stone-100'
+        isActuallyNight ? 'bg-[#1c1917] border-stone-800 shadow-none' : 'bg-white border-stone-100'
     }`}>
         <div className="flex items-center justify-between mb-2">
             <h3 className={`font-black flex items-center gap-2 ${isActuallyNight ? 'text-stone-100' : 'text-stone-800'}`}>
@@ -216,8 +228,17 @@ const TrophiesSection: React.FC<any> = ({ sessions, currentUserId, isActuallyNig
             </h3>
             <span className="text-[9px] font-black bg-stone-100/10 text-stone-400 px-2 py-1 rounded-full uppercase tracking-tighter">Performance</span>
         </div>
-        <RecordsGrid sessions={sessions.filter((s: any) => s.userId === currentUserId && new Date(s.date).getFullYear() === new Date().getFullYear())} title={`Saison ${new Date().getFullYear()}`} />
-        <RecordsGrid sessions={sessions.filter((s: any) => s.userId === currentUserId)} title="Hall of Fame" isGold={true} />
+        <RecordsGrid 
+            sessions={sessions.filter((s: any) => s.userId === currentUserId && new Date(s.date).getFullYear() === new Date().getFullYear())} 
+            title={`Saison ${new Date().getFullYear()}`} 
+            isActuallyNight={isActuallyNight}
+        />
+        <RecordsGrid 
+            sessions={sessions.filter((s: any) => s.userId === currentUserId)} 
+            title="Hall of Fame" 
+            isGold={true} 
+            isActuallyNight={isActuallyNight}
+        />
     </div>
 );
 

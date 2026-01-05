@@ -1,3 +1,4 @@
+// components/DashboardWidgets.tsx - Version 10.0.0 (Night Ops UI Engine)
 import React from 'react';
 import { 
     Activity, Cloud, Sun, CloudSun, CloudRain, 
@@ -17,7 +18,22 @@ export const getWeatherIcon = (clouds: number) => {
     return <CloudRain size={20} className="text-stone-600" />;
 };
 
-export const getTileTheme = (theme: string) => {
+// Michael : Moteur de thème étendu pour supporter le Soft Night Ops (#1c1917)
+export const getTileTheme = (theme: string, isActuallyNight?: boolean) => {
+    if (isActuallyNight) {
+        const themes: Record<string, string> = {
+            rose: "bg-rose-950/30 text-rose-300",
+            indigo: "bg-indigo-950/30 text-indigo-300",
+            amber: "bg-stone-900/50 text-stone-400",
+            orange: "bg-orange-950/30 text-orange-300",
+            cyan: "bg-cyan-950/30 text-cyan-300",
+            emerald: "bg-emerald-950/30 text-emerald-300",
+            purple: "bg-purple-950/30 text-purple-300",
+            blue: "bg-blue-950/30 text-blue-300"
+        };
+        return themes[theme] || "bg-stone-900/50 text-stone-400";
+    }
+
     const themes: Record<string, string> = {
         rose: "bg-rose-50 text-rose-900",
         indigo: "bg-indigo-50 text-indigo-900",
@@ -50,13 +66,15 @@ interface SpeciesScoreProps {
     score?: number;
     hexColor: string; 
     loading?: boolean;
+    isActuallyNight?: boolean; // Raccordement Michael
 }
 
 // Michael : Score compacté pour supporter 4 items sur une ligne mobile (min-w réduit)
-export const SpeciesScore: React.FC<SpeciesScoreProps> = ({ label, score, hexColor, loading }) => (
+export const SpeciesScore: React.FC<SpeciesScoreProps> = ({ label, score, hexColor, loading, isActuallyNight }) => (
     <div className="flex flex-col items-center flex-1 min-w-[65px] max-w-[90px]">
         <div className="relative w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center">
-            <div className="absolute inset-0 border-[4px] sm:border-[5px] border-stone-50 rounded-full"></div>
+            {/* Michael : Track de fond dynamique */}
+            <div className={`absolute inset-0 border-[4px] sm:border-[5px] rounded-full ${isActuallyNight ? 'border-stone-800' : 'border-stone-50'}`}></div>
             <div 
                 className="absolute inset-0 border-[4px] sm:border-[5px] rounded-full transition-all duration-1000 ease-out" 
                 style={{ 
@@ -69,7 +87,7 @@ export const SpeciesScore: React.FC<SpeciesScoreProps> = ({ label, score, hexCol
             ></div>
             <div className="text-center z-10">
                 {loading ? (
-                    <div className="h-4 w-5 bg-stone-100 rounded animate-pulse mx-auto"></div>
+                    <div className={`h-4 w-5 rounded animate-pulse mx-auto ${isActuallyNight ? 'bg-stone-800' : 'bg-stone-100'}`}></div>
                 ) : (
                     <span 
                         className="block text-base sm:text-xl font-black tracking-tighter"
@@ -80,7 +98,7 @@ export const SpeciesScore: React.FC<SpeciesScoreProps> = ({ label, score, hexCol
                 )}
             </div>
         </div>
-        <span className="text-[8px] sm:text-[9px] font-black text-stone-400 uppercase tracking-tighter mt-2 truncate w-full text-center leading-none">
+        <span className={`text-[8px] sm:text-[9px] font-black uppercase tracking-tighter mt-2 truncate w-full text-center leading-none ${isActuallyNight ? 'text-stone-500' : 'text-stone-400'}`}>
             {label}
         </span>
     </div>
@@ -94,22 +112,25 @@ interface DataTileProps {
     color: string;
     loading?: boolean;
     description?: string; 
+    isActuallyNight?: boolean; // Raccordement Michael
 }
 
-export const DataTile: React.FC<DataTileProps> = ({ label, value, unit, icon, color, loading, description }) => (
+export const DataTile: React.FC<DataTileProps> = ({ label, value, unit, icon, color, loading, description, isActuallyNight }) => (
     <div 
-        className={`flex flex-col items-center justify-center p-3 rounded-2xl border border-stone-50 ${color.split(' ')[0]} bg-opacity-30 relative group cursor-help`}
+        className={`flex flex-col items-center justify-center p-3 rounded-2xl border ${
+            isActuallyNight ? 'border-stone-800' : 'border-stone-50'
+        } ${color.split(' ')[0]} bg-opacity-30 relative group cursor-help`}
         title={description}
     >
         <div className={`mb-1 ${color.split(' ')[1]} transition-transform group-hover:scale-110`}>{icon}</div>
         {loading ? (
-            <div className="h-4 w-8 bg-stone-200/50 rounded animate-pulse my-1"></div>
+            <div className={`h-4 w-8 rounded animate-pulse my-1 ${isActuallyNight ? 'bg-stone-800/50' : 'bg-stone-200/50'}`}></div>
         ) : (
-            <div className="text-sm font-black text-stone-800 leading-tight text-center">
+            <div className={`text-sm font-black leading-tight text-center ${isActuallyNight ? 'text-stone-100' : 'text-stone-800'}`}>
                 {value !== undefined && value !== null ? value : '--'}
-                <span className="text-[10px] font-medium ml-0.5 text-stone-500">{unit}</span>
+                <span className={`text-[10px] font-medium ml-0.5 ${isActuallyNight ? 'text-stone-500' : 'text-stone-500'}`}>{unit}</span>
             </div>
         )}
-        <div className="text-[9px] font-bold uppercase text-stone-400 mt-0.5">{label}</div>
+        <div className={`text-[9px] font-bold uppercase mt-0.5 ${isActuallyNight ? 'text-stone-500' : 'text-stone-400'}`}>{label}</div>
     </div>
 );

@@ -1,4 +1,4 @@
-// components/HistoryView.tsx - Version 4.8.20 (Soft Night Ops & Full Tutoiement)
+// components/HistoryView.tsx - Version 8.0 (Soft Night Ops & Archivage Annuel)
 import React, { useState, useMemo } from 'react';
 import { ScrollText, Users, User, Search, Clock, Calendar, ChevronDown, ChevronUp, Fish } from 'lucide-react';
 import { Session } from '../types';
@@ -11,7 +11,7 @@ interface HistoryViewProps {
   onDeleteSession: (id: string) => void;
   onEditSession: (session: Session) => void;
   currentUserId: string;
-  isActuallyNight?: boolean; // Michael : Nouveau pour harmonisation Night Ops
+  isActuallyNight?: boolean; // Michael : Nouveau pour harmonisation Night Ops V8.0
 }
 
 const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, onEditSession, currentUserId, isActuallyNight }) => {
@@ -39,20 +39,25 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
     const filtered = sessions.filter(session => {
       const matchesUser = showOnlyMine ? session.userId === currentUserId : true;
       const searchLower = searchTerm.toLowerCase();
+      
+      // Michael : Ta logique de recherche originale, strictement préservée.
       const matchesSearch = 
           (session.locationName || "").toLowerCase().includes(searchLower) || 
           (session.spotName || "").toLowerCase().includes(searchLower) || 
           (session.notes || "").toLowerCase().includes(searchLower) ||
           (session.catches?.some(c => (c.species || "").toLowerCase().includes(searchLower) || (c.lureName || "").toLowerCase().includes(searchLower)) || false);
+      
       return matchesUser && matchesSearch;
     });
 
+    // Archivage Annuel : Groupement par année [cite: 181]
     const groups: Record<string, { sessions: Session[], totalCatches: number }> = {};
     filtered.forEach(s => {
       const ts = getTs(s.date);
       const year = new Date(ts).getFullYear().toString();
       if (!groups[year]) groups[year] = { sessions: [], totalCatches: 0 };
       groups[year].sessions.push(s);
+      // En-tête statistique : Total des prises de l'année [cite: 182]
       groups[year].totalCatches += (s.catchCount || 0);
     });
 
@@ -83,8 +88,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
     }
   };
 
-  // Styles dynamiques Michael
-  const cardClass = isActuallyNight ? "bg-[#292524] border-stone-800 shadow-none" : "bg-white border-stone-100 shadow-sm";
+  // Styles dynamiques Michael - Adoption du gris anthracite doux (#1c1917) 
+  const cardClass = isActuallyNight ? "bg-[#1c1917] border-stone-800 shadow-none" : "bg-white border-stone-100 shadow-sm";
   const textTitle = isActuallyNight ? "text-stone-100" : "text-stone-800";
   const inputBg = isActuallyNight ? "bg-stone-900 border-stone-800 text-stone-200" : "bg-stone-50 border-stone-100 text-stone-800";
 
@@ -132,7 +137,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
         </div>
       </div>
 
-      {/* LISTE GROUPÉE PAR ANNÉE */}
+      {/* LISTE GROUPÉE PAR ANNÉE AVEC ACCORDÉONS [cite: 180, 183] */}
       <div className="space-y-6">
         {sortedYears.length > 0 ? (
           sortedYears.map((year) => {
@@ -181,6 +186,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
                             onEdit={onEditSession}
                             onClick={(s) => { setSelectedSession(s); setIsDetailOpen(true); }}
                             currentUserId={currentUserId}
+                            isActuallyNight={isActuallyNight}
                         />
                       </div>
                     ))}
