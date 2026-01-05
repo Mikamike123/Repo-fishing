@@ -28,10 +28,11 @@ interface SessionFormProps {
     locations: Location[];
     defaultLocationId: string;
     currentUserId: string;
+    isActuallyNight?: boolean;
 }
 
 const SessionForm: React.FC<SessionFormProps> = (props) => {
-    const { initialData, initialDiscovery, zones, setups, locations, defaultLocationId, onUpdateSession, onAddSession, onCancel } = props;
+    const { initialData, initialDiscovery, zones, setups, locations, defaultLocationId, onUpdateSession, onAddSession, onCancel, isActuallyNight } = props;
 
     const [date, setDate] = useState(initialData?.date || initialDiscovery?.date || new Date().toISOString().split('T')[0]);
     const [startTime, setStartTime] = useState(initialData?.startTime || initialDiscovery?.startTime || "08:00");
@@ -255,6 +256,7 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
             handleSubmit={handleSubmit}
             onCancel={onCancel} // Michael : Transmission de l'action d'annulation
             userId={props.currentUserId}
+            isActuallyNight={isActuallyNight}
         />
     );
 };

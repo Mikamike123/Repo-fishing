@@ -1,4 +1,4 @@
-// components/CoachView.tsx
+// components/CoachView.tsx - Version 4.8.21 (Soft Night Ops & UI Sync)
 import React, { useState, useEffect, useRef } from 'react';
 import { Bot, Send, Loader, CornerDownLeft } from 'lucide-react';
 // Michael : Import des nouvelles fonctions dynamiques
@@ -9,45 +9,50 @@ import { Session, AppData } from '../types';
 import { generateFishingNarrative } from '../lib/fishingNarrativeService'; 
 import { calculateDeepKPIs } from '../lib/analytics-service'; 
 
-// Michael : Rendu propre du Markdown (Gras et Puces) - Conservé tel quel
-const formatMessage = (text: string) => {
-    return text.split('\n').map((line, i) => {
-        let content = line;
-        const isBullet = content.trim().startsWith('* ') || content.trim().startsWith('- ');
-        if (isBullet) content = content.trim().substring(2);
-
-        const parts = content.split(/(\*\*.*?\*\*)/g);
-        const renderedLine = parts.map((part, j) => {
-            if (part.startsWith('**') && part.endsWith('**')) {
-                return <strong key={j} className="font-extrabold text-stone-900">{part.slice(2, -2)}</strong>;
-            }
-            return part;
-        });
-
-        return (
-            <div key={i} className={`${isBullet ? 'flex gap-2 ml-2' : 'mb-1'}`}>
-                {isBullet && <span className="text-emerald-500">•</span>}
-                <span>{renderedLine}</span>
-            </div>
-        );
-    });
-};
-
 interface CoachViewProps {
     sessions: Session[];
     arsenalData: AppData;
     liveSnapshot: any; 
     currentUserId: string;
-    userPseudo: string; // MICHAEL : Ajout indispensable ici
+    userPseudo: string;
+    isActuallyNight?: boolean; // Michael : Nouveau pour Night Ops
 }
 
 const CoachView: React.FC<CoachViewProps> = ({ 
-    sessions, arsenalData, liveSnapshot, currentUserId, userPseudo // MICHAEL : Récupération ici
+    sessions, arsenalData, liveSnapshot, currentUserId, userPseudo, isActuallyNight
 }) => {
     const [input, setInput] = useState('');
     const [messages, setMessages] = useState<any[]>([]);
     const [isCoachTyping, setIsCoachTyping] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // Michael : Rendu propre du Markdown (Gras et Puces) - Adapté au thème
+    const formatMessage = (text: string) => {
+        return text.split('\n').map((line, i) => {
+            let content = line;
+            const isBullet = content.trim().startsWith('* ') || content.trim().startsWith('- ');
+            if (isBullet) content = content.trim().substring(2);
+
+            const parts = content.split(/(\*\*.*?\*\*)/g);
+            const renderedLine = parts.map((part, j) => {
+                if (part.startsWith('**') && part.endsWith('**')) {
+                    return (
+                        <strong key={j} className={`font-extrabold ${isActuallyNight ? 'text-amber-400' : 'text-stone-900'}`}>
+                            {part.slice(2, -2)}
+                        </strong>
+                    );
+                }
+                return part;
+            });
+
+            return (
+                <div key={i} className={`${isBullet ? 'flex gap-2 ml-2' : 'mb-1'}`}>
+                    {isBullet && <span className="text-emerald-500">•</span>}
+                    <span>{renderedLine}</span>
+                </div>
+            );
+        });
+    };
 
     // --- Michael : RÉINITIALISATION DE LA MÉMOIRE AVEC USER_ID ---
     useEffect(() => {
@@ -74,7 +79,7 @@ const CoachView: React.FC<CoachViewProps> = ({
 
             setMessages(fetched.length ? fetched : [{ 
                 id: 'init', 
-                content: `Salut **${userPseudo || 'Pêcheur'}** ! Je suis branché sur le secteur **${liveSnapshot?.locationName || 'en cours...'}**. Prêt pour l'analyse ?`, 
+                content: `Salut **${userPseudo || 'Pêcheur'}** ! Je suis branché sur ton secteur **${liveSnapshot?.locationName || 'en cours...'}**. Prêt pour l'analyse ?`, 
                 role: 'model', 
                 timestamp: new Date() 
             }]);
@@ -91,16 +96,9 @@ const CoachView: React.FC<CoachViewProps> = ({
         setInput('');
         setIsCoachTyping(true);
         try {
-            // Michael : Filtrage strict des sessions pour l'utilisateur actuel
             const userSessions = sessions.filter(s => s.userId === currentUserId);
-
-            // 1. Génération du narratif PASSÉ (RAG) filtré sur l'utilisateur
             const narrative = generateFishingNarrative(userSessions, arsenalData);
-
-            // 2. Michael : Calcul des KPIs stratégiques avec currentUserId
             const insights = calculateDeepKPIs(sessions, currentUserId, arsenalData);
-
-            // 3. Préparation du contexte LIVE enrichi
             const env = liveSnapshot?.env;
             const liveText = `
                 --- SITUATION LIVE (PRÉSENT) ---
@@ -115,16 +113,14 @@ const CoachView: React.FC<CoachViewProps> = ({
                 BIOSCORES: Sandre ${liveSnapshot?.scores?.sandre?.toFixed(0) || '0'}, Perche ${liveSnapshot?.scores?.perche?.toFixed(0) || '0'}, Brochet ${liveSnapshot?.scores?.brochet?.toFixed(0) || '0'}${liveSnapshot?.scores?.blackbass ? `, Bass ${liveSnapshot?.scores?.blackbass.toFixed(0)}` : ''}
             `;
 
-            // 4. Michael : Utilisation des coordonnées dynamiques du liveSnapshot
             const locationCoords = liveSnapshot?.coordinates || { lat: 48.8566, lng: 2.3522 }; 
 
-            // 5. Appel de l'IA avec signature V10.0
             await askFishingCoach(
                 msg, 
                 locationCoords, 
                 narrative, 
                 liveText, 
-                userPseudo, // MICHAEL : Transmis proprement maintenant
+                userPseudo, 
                 insights,
                 currentUserId 
             );
@@ -133,17 +129,24 @@ const CoachView: React.FC<CoachViewProps> = ({
         }
     };
 
+    // Michael : Styles pour mode Soft Night
+    const containerBg = isActuallyNight ? 'bg-[#1c1917] border-stone-800 shadow-none' : 'bg-stone-50 border-stone-100 shadow-inner';
+    const coachBubble = isActuallyNight ? 'bg-stone-800 border-stone-700 text-stone-200' : 'bg-white text-stone-700 border-stone-100';
+    const inputBg = isActuallyNight ? 'bg-[#292524] border-stone-800 text-stone-100' : 'bg-white border-stone-200 text-stone-900';
+
     return (
-        <div className="flex flex-col h-full max-h-[calc(100vh-140px)] animate-in fade-in duration-500">
-            <h2 className="text-2xl font-black text-stone-800 mb-6 flex items-center gap-3 tracking-tighter uppercase italic">
+        <div className="flex flex-col h-full max-h-[calc(100vh-160px)] animate-in fade-in duration-500">
+            <h2 className={`text-2xl font-black mb-6 flex items-center gap-3 tracking-tighter uppercase italic transition-colors ${isActuallyNight ? 'text-stone-100' : 'text-stone-800'}`}>
                  <Bot size={28} className="text-emerald-500"/> Coach Oracle
             </h2>
             
-            <div className="flex-grow overflow-y-auto space-y-4 p-4 bg-stone-50 rounded-[2rem] border border-stone-100 mb-4 shadow-inner">
+            <div className={`flex-grow overflow-y-auto space-y-4 p-4 rounded-[2rem] border mb-4 transition-colors duration-500 ${containerBg}`}>
                 {messages.map((msg) => (
                     <div key={msg.id} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[85%] px-5 py-3 rounded-2xl text-sm shadow-sm ${
-                            msg.role === 'user' ? 'bg-amber-600 text-white rounded-br-none' : 'bg-white text-stone-700 rounded-tl-none border border-stone-100'
+                        <div className={`max-w-[85%] px-5 py-3 rounded-2xl text-sm shadow-sm transition-colors ${
+                            msg.role === 'user' 
+                                ? 'bg-amber-600 text-white rounded-br-none' 
+                                : `rounded-tl-none border ${coachBubble}`
                         }`}>
                             {formatMessage(msg.content || msg.text || "")}
                         </div>
@@ -159,14 +162,14 @@ const CoachView: React.FC<CoachViewProps> = ({
                     onChange={(e) => setInput(e.target.value)}
                     placeholder="On analyse le spot ?"
                     disabled={isCoachTyping}
-                    className="w-full p-5 pr-16 bg-white border border-stone-200 rounded-2xl shadow-xl focus:ring-2 focus:ring-emerald-500/20 outline-none disabled:opacity-50"
+                    className={`w-full p-5 pr-16 rounded-2xl shadow-xl focus:ring-2 focus:ring-emerald-500/20 outline-none disabled:opacity-50 transition-all ${inputBg}`}
                 />
                 <button type="submit" disabled={!input.trim() || isCoachTyping} className="absolute right-3 top-1/2 -translate-y-1/2 p-3 bg-emerald-500 text-white rounded-xl shadow-lg transition-transform active:scale-95 disabled:bg-stone-300">
                     {isCoachTyping ? <Loader className="animate-spin" size={20} /> : <Send size={20} />}
                 </button>
             </form>
-            <div className="text-[10px] text-stone-400 mt-2 flex items-center gap-1.5 ml-2 font-bold uppercase tracking-widest">
-                <CornerDownLeft size={10} /> Oracle branché sur {liveSnapshot?.locationName || 'le secteur'}
+            <div className="text-[10px] text-stone-400 mt-2 flex items-center gap-1.5 ml-2 font-bold uppercase tracking-widest opacity-60">
+                <CornerDownLeft size={10} /> Ton Oracle est branché sur {liveSnapshot?.locationName || 'le secteur'}
             </div>
         </div>
     );

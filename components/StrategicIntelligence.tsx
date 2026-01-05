@@ -8,6 +8,7 @@ interface StrategicIntelligenceProps {
     userId: string;
     arsenal: AppData;
     hideHeader?: boolean; // Michael : Option pour éviter les doubles titres
+    isActuallyNight?: boolean;
 }
 
 const StrategicIntelligence: React.FC<StrategicIntelligenceProps> = ({ sessions, userId, arsenal, hideHeader = false }) => {

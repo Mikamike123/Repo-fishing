@@ -1,10 +1,10 @@
-// components/Dashboard.tsx - Version 9.8 (UI Optimization for PWA & Mobile Visibility)
+// components/Dashboard.tsx - Version 9.9 (Sync Status & Night Ops Integration)
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
-    Activity, Target, ScrollText, MapPin, ChevronDown, Flame, Trophy 
+    Activity, Target, ScrollText, MapPin, ChevronDown, Flame, Trophy, RefreshCw
 } from 'lucide-react';
 import { Session, RefLureType, RefColor, Location, WeatherSnapshot, AppData, UserProfile, OracleDataPoint } from '../types';
-import { buildUserHistory, getNextLevelCap } from '../lib/gamification';
+import { buildUserHistory } from '../lib/gamification';
 
 import { DashboardLiveTab } from './DashboardLiveTab';
 import { DashboardTacticsTab } from './DashboardTacticsTab';
@@ -36,8 +36,10 @@ interface DashboardProps {
     onLocationClick: () => void;
     onLocationSelect: (id: string) => void;
     arsenalData: AppData;
-    // Michael : Ajout de la prop pour recevoir la météo unifiée de App.tsx
     displayedWeather: WeatherSnapshot | null;
+    // Michael : Nouvelles props pour la fraîcheur et le thème (V4.8.18)
+    lastSyncTimestamp?: number;
+    isActuallyNight?: boolean;
 }
 
 const Dashboard: React.FC<DashboardProps> = (props) => {
@@ -47,10 +49,25 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
         oracleData, isOracleLoading, onDeleteSession, onEditSession,
         activeLocationLabel, onLocationClick, onLocationSelect, arsenalData,
         onMagicDiscovery, userName,
-        displayedWeather // Michael : Récupération depuis les props
+        displayedWeather,
+        lastSyncTimestamp,
+        isActuallyNight 
     } = props;
 
     const [activeTab, setActiveTab] = useState<DashboardTab>(propTab || 'live');
+    const [minutesAgo, setMinutesAgo] = useState<string>("à l'instant");
+
+    // Michael : Calcul dynamique de la fraîcheur des données de l'Oracle
+    useEffect(() => {
+        if (!lastSyncTimestamp) return;
+        const updateAgo = () => {
+            const diff = Math.floor((Date.now() - lastSyncTimestamp) / 60000);
+            setMinutesAgo(diff <= 0 ? "à l'instant" : `${diff} min`);
+        };
+        updateAgo();
+        const interval = setInterval(updateAgo, 30000); // Mise à jour toutes les 30 sec
+        return () => clearInterval(interval);
+    }, [lastSyncTimestamp]);
 
     useEffect(() => {
         if (propTab) setActiveTab(propTab);
@@ -89,35 +106,46 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
 
     const targetLocation = useMemo(() => uniqueLocationsMap.get(activeLocationId) || defaultLocation || null, [uniqueLocationsMap, activeLocationId, defaultLocation]);
 
-    // Michael : Le calcul de isLoading est simplifié car isOracleLoading porte désormais les deux états de charge
     const isLoading = isOracleLoading;
 
     return (
         <div className="space-y-4 animate-in fade-in duration-500 pb-20">
-            {/* Michael : Sélecteur d'onglets optimisé pour la visibilité PWA */}
-            <div className="flex bg-stone-200/50 p-1.5 rounded-[2rem] border border-stone-200 mx-1">
-                <TabButton active={activeTab === 'live'} onClick={() => handleTabChange('live')} icon={<Activity size={20} />} label="Live" color="amber" />
-                <TabButton active={activeTab === 'tactics'} onClick={() => handleTabChange('tactics')} icon={<Target size={20} />} label="Tactique" color="emerald" />
-                <TabButton active={activeTab === 'activity'} onClick={() => handleTabChange('activity')} icon={<ScrollText size={20} />} label="Actu" color="indigo" />
-                <TabButton active={activeTab === 'experience'} onClick={() => handleTabChange('experience')} icon={<Trophy size={20} />} label="Exp" color="rose" />
+            {/* Michael : Sélecteur d'onglets calibré pour le mode Night Ops */}
+            <div className={`flex p-1.5 rounded-[2rem] border mx-1 transition-all duration-500 ${
+                isActuallyNight ? 'bg-stone-900/50 border-stone-800' : 'bg-stone-200/50 border-stone-200'
+            }`}>
+                <TabButton active={activeTab === 'live'} onClick={() => handleTabChange('live')} icon={<Activity size={20} />} label="Live" color="amber" isActuallyNight={isActuallyNight} />
+                <TabButton active={activeTab === 'tactics'} onClick={() => handleTabChange('tactics')} icon={<Target size={20} />} label="Tactique" color="emerald" isActuallyNight={isActuallyNight} />
+                <TabButton active={activeTab === 'activity'} onClick={() => handleTabChange('activity')} icon={<ScrollText size={20} />} label="Actu" color="indigo" isActuallyNight={isActuallyNight} />
+                <TabButton active={activeTab === 'experience'} onClick={() => handleTabChange('experience')} icon={<Trophy size={20} />} label="Exp" color="rose" isActuallyNight={isActuallyNight} />
             </div>
 
             <main className="px-0">
                 {activeTab === 'live' && (
-                    <DashboardLiveTab 
-                        uniqueLocationsList={uniqueLocationsList}
-                        oracleData={oracleData}
-                        isOracleLoading={isOracleLoading}
-                        activeLocationId={activeLocationId}
-                        onLocationSelect={onLocationSelect}
-                        displayLocations={displayLocations}
-                        targetLocation={targetLocation}
-                        displayedWeather={displayedWeather}
-                        isLoading={isLoading}
-                        onLocationClick={onLocationClick}
-                        activeLocationLabel={activeLocationLabel}
-                        onMagicDiscovery={onMagicDiscovery}
-                    />
+                    <div className="space-y-6">
+                        <DashboardLiveTab 
+                            uniqueLocationsList={uniqueLocationsList}
+                            oracleData={oracleData}
+                            isOracleLoading={isOracleLoading}
+                            activeLocationId={activeLocationId}
+                            onLocationSelect={onLocationSelect}
+                            displayLocations={displayLocations}
+                            targetLocation={targetLocation}
+                            displayedWeather={displayedWeather}
+                            isLoading={isLoading}
+                            onLocationClick={onLocationClick}
+                            activeLocationLabel={activeLocationLabel}
+                            onMagicDiscovery={onMagicDiscovery}
+                        />
+                        
+                        {/* Michael : Micro-mention de synchronisation Oracle (Sentiment tactique) */}
+                        <div className="flex items-center justify-center gap-2 py-4 opacity-40">
+                            <RefreshCw size={10} className={isOracleLoading ? "animate-spin" : ""} />
+                            <span className="text-[10px] font-black uppercase tracking-[0.2em] italic">
+                                Données Oracle synchronisées il y a {minutesAgo}
+                            </span>
+                        </div>
+                    </div>
                 )}
 
                 {activeTab === 'tactics' && (
@@ -136,8 +164,9 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
                             userName={userName} 
                             lastXpGain={userProfile?.lastXpGain} 
                             lastXpYear={userProfile?.lastXpYear}
+                            isActuallyNight={isActuallyNight}
                         />
-                        <TrophiesSection sessions={sessions} currentUserId={currentUserId} />
+                        <TrophiesSection sessions={sessions} currentUserId={currentUserId} isActuallyNight={isActuallyNight} />
                     </div>
                 )}
             </main>
@@ -145,7 +174,7 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
     );
 };
 
-const ProgressionHeader: React.FC<any> = ({ sessions, currentUserId, userName, lastXpGain, lastXpYear }) => {
+const ProgressionHeader: React.FC<any> = ({ sessions, currentUserId, userName, lastXpGain, lastXpYear, isActuallyNight }) => {
     const currentYear = new Date().getFullYear();
     const stats = useMemo(() => {
         const userSessions = sessions.filter((s: any) => s.userId === currentUserId);
@@ -164,10 +193,12 @@ const ProgressionHeader: React.FC<any> = ({ sessions, currentUserId, userName, l
                 variant="full" 
             />
             
-            <div className="mt-4 bg-emerald-50/50 rounded-2xl p-4 border border-emerald-100 flex justify-between items-center">
+            <div className={`mt-4 rounded-2xl p-4 border flex justify-between items-center transition-colors duration-500 ${
+                isActuallyNight ? 'bg-emerald-950/20 border-emerald-900/50 text-emerald-400' : 'bg-emerald-50/50 border-emerald-100 text-emerald-800'
+            }`}>
                 <div>
                     <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest block">Assiduité Saison</span>
-                    <span className="text-xl font-black text-emerald-800">{stats.weeksWithStreak} Semaines</span>
+                    <span className="text-xl font-black">{stats.weeksWithStreak} Semaines</span>
                 </div>
                 <Flame size={24} className="text-emerald-500 fill-emerald-500/20" />
             </div>
@@ -175,29 +206,32 @@ const ProgressionHeader: React.FC<any> = ({ sessions, currentUserId, userName, l
     );
 };
 
-const TrophiesSection: React.FC<any> = ({ sessions, currentUserId }) => (
-    <div className="bg-white rounded-[2.5rem] p-8 border border-stone-100 shadow-organic space-y-8 mx-1">
+const TrophiesSection: React.FC<any> = ({ sessions, currentUserId, isActuallyNight }) => (
+    <div className={`rounded-[2.5rem] p-8 border shadow-organic space-y-8 mx-1 transition-colors duration-500 ${
+        isActuallyNight ? 'bg-stone-900 border-stone-800' : 'bg-white border-stone-100'
+    }`}>
         <div className="flex items-center justify-between mb-2">
-            <h3 className="font-black text-stone-800 flex items-center gap-2"><Trophy className="text-amber-500" size={20} /> Vos Trophées</h3>
-            <span className="text-[9px] font-black bg-stone-100 text-stone-400 px-2 py-1 rounded-full uppercase tracking-tighter">Performance</span>
+            <h3 className={`font-black flex items-center gap-2 ${isActuallyNight ? 'text-stone-100' : 'text-stone-800'}`}>
+                <Trophy className="text-amber-500" size={20} /> Tes Trophées
+            </h3>
+            <span className="text-[9px] font-black bg-stone-100/10 text-stone-400 px-2 py-1 rounded-full uppercase tracking-tighter">Performance</span>
         </div>
         <RecordsGrid sessions={sessions.filter((s: any) => s.userId === currentUserId && new Date(s.date).getFullYear() === new Date().getFullYear())} title={`Saison ${new Date().getFullYear()}`} />
         <RecordsGrid sessions={sessions.filter((s: any) => s.userId === currentUserId)} title="Hall of Fame" isGold={true} />
     </div>
 );
 
-const TabButton = ({ active, onClick, icon, label, color }: any) => {
+const TabButton = ({ active, onClick, icon, label, color, isActuallyNight }: any) => {
     const themes: any = {
-        // Michael : Couleurs plus vives et contrastées pour une lecture en extérieur
-        amber: active ? "bg-white text-amber-600 shadow-md scale-105" : "text-stone-500 hover:text-stone-700",
-        emerald: active ? "bg-white text-emerald-600 shadow-md scale-105" : "text-stone-500 hover:text-stone-700",
-        indigo: active ? "bg-white text-indigo-600 shadow-md scale-105" : "text-stone-500 hover:text-stone-700",
-        rose: active ? "bg-white text-rose-600 shadow-md scale-105" : "text-stone-500 hover:text-stone-700",
+        amber: active ? (isActuallyNight ? "bg-stone-800 text-amber-500 shadow-lg" : "bg-white text-amber-600 shadow-md") : (isActuallyNight ? "text-stone-500" : "text-stone-500"),
+        emerald: active ? (isActuallyNight ? "bg-stone-800 text-emerald-500 shadow-lg" : "bg-white text-emerald-600 shadow-md") : (isActuallyNight ? "text-stone-500" : "text-stone-500"),
+        indigo: active ? (isActuallyNight ? "bg-stone-800 text-indigo-400 shadow-lg" : "bg-white text-indigo-600 shadow-md") : (isActuallyNight ? "text-stone-500" : "text-stone-500"),
+        rose: active ? (isActuallyNight ? "bg-stone-800 text-rose-400 shadow-lg" : "bg-white text-rose-600 shadow-md") : (isActuallyNight ? "text-stone-500" : "text-stone-500"),
     };
     return (
         <button 
             onClick={onClick} 
-            className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl text-[11px] font-black uppercase tracking-tighter transition-all duration-300 ${themes[color]}`}
+            className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl text-[11px] font-black uppercase tracking-tighter transition-all duration-300 ${active ? 'scale-105' : 'hover:opacity-70'} ${themes[color]}`}
         >
             {icon} 
             <span className="text-[9px] font-black leading-none">{label}</span>

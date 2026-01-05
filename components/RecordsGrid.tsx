@@ -7,6 +7,7 @@ interface RecordsGridProps {
   sessions: Session[];
   title: string;
   isGold?: boolean; // Ajout crucial ici
+  isActuallyNight?: boolean;
 }
 
 export const RecordsGrid: React.FC<RecordsGridProps> = ({ sessions, title }) => {

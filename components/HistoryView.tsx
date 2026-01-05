@@ -1,3 +1,4 @@
+// components/HistoryView.tsx - Version 4.8.20 (Soft Night Ops & Full Tutoiement)
 import React, { useState, useMemo } from 'react';
 import { ScrollText, Users, User, Search, Clock, Calendar, ChevronDown, ChevronUp, Fish } from 'lucide-react';
 import { Session } from '../types';
@@ -10,9 +11,10 @@ interface HistoryViewProps {
   onDeleteSession: (id: string) => void;
   onEditSession: (session: Session) => void;
   currentUserId: string;
+  isActuallyNight?: boolean; // Michael : Nouveau pour harmonisation Night Ops
 }
 
-const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, onEditSession, currentUserId }) => {
+const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, onEditSession, currentUserId, isActuallyNight }) => {
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   
@@ -23,30 +25,20 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
   const [showOnlyMine, setShowOnlyMine] = useState(true); 
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Michael : État pour gérer l'ouverture des accordéons par année
   const [expandedYears, setExpandedYears] = useState<Record<string, boolean>>({});
 
   // --- LOGIQUE DE FILTRAGE & GROUPEMENT ---
-  
   const groupedSessions = useMemo(() => {
-    // Helper pour extraire un timestamp numérique peu importe le format d'entrée (String ou Object)
     const getTs = (dateVal: any): number => {
       if (!dateVal) return 0;
-      // Cas Firestore : objet avec seconds ou _seconds
-      if (typeof dateVal === 'object') {
-        return (dateVal.seconds || dateVal._seconds || 0) * 1000;
-      }
-      // Cas String : ISO date ou autre format parsable
+      if (typeof dateVal === 'object') return (dateVal.seconds || dateVal._seconds || 0) * 1000;
       const parsed = new Date(dateVal).getTime();
       return isNaN(parsed) ? 0 : parsed;
     };
 
-    // 1. Filtrage (Secteur ou Observation/Note seulement)
     const filtered = sessions.filter(session => {
       const matchesUser = showOnlyMine ? session.userId === currentUserId : true;
-      
       const searchLower = searchTerm.toLowerCase();
-      // Michael : Filtre restreint au Secteur (location/spot) ou aux Notes
       const matchesSearch = 
           (session.locationName || "").toLowerCase().includes(searchLower) || 
           (session.spotName || "").toLowerCase().includes(searchLower) || 
@@ -55,23 +47,15 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
       return matchesUser && matchesSearch;
     });
 
-    // 2. Groupement par année avec calcul du total des prises
     const groups: Record<string, { sessions: Session[], totalCatches: number }> = {};
-    
     filtered.forEach(s => {
       const ts = getTs(s.date);
       const year = new Date(ts).getFullYear().toString();
-      
-      if (!groups[year]) {
-        groups[year] = { sessions: [], totalCatches: 0 };
-      }
-      
+      if (!groups[year]) groups[year] = { sessions: [], totalCatches: 0 };
       groups[year].sessions.push(s);
-      // Michael : On additionne le catchCount de chaque session pour le total annuel
       groups[year].totalCatches += (s.catchCount || 0);
     });
 
-    // 3. Tri interne par date décroissante
     Object.keys(groups).forEach(y => {
       groups[y].sessions.sort((a, b) => getTs(b.date) - getTs(a.date));
     });
@@ -79,18 +63,12 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
     return groups;
   }, [sessions, showOnlyMine, currentUserId, searchTerm]);
 
-  // Michael : Liste des années triées (décroissant)
   const sortedYears = useMemo(() => 
     Object.keys(groupedSessions).sort((a, b) => Number(b) - Number(a))
   , [groupedSessions]);
 
   const toggleYear = (year: string) => {
     setExpandedYears(prev => ({ ...prev, [year]: !prev[year] }));
-  };
-
-  const handleDeleteRequest = (id: string) => {
-    setSessionIdToDelete(id);
-    setIsDeleteConfirmOpen(true);
   };
 
   const handleConfirmDelete = () => {
@@ -105,52 +83,56 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
     }
   };
 
+  // Styles dynamiques Michael
+  const cardClass = isActuallyNight ? "bg-[#292524] border-stone-800 shadow-none" : "bg-white border-stone-100 shadow-sm";
+  const textTitle = isActuallyNight ? "text-stone-100" : "text-stone-800";
+  const inputBg = isActuallyNight ? "bg-stone-900 border-stone-800 text-stone-200" : "bg-stone-50 border-stone-100 text-stone-800";
+
   return (
     <div className="space-y-6 pb-24 animate-in fade-in duration-500">
       
-      {/* HEADER & FILTRES */}
-      <div className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-stone-100 space-y-4">
+      {/* HEADER & FILTRES (Night Ops Ready) */}
+      <div className={`${cardClass} rounded-[2.5rem] p-6 space-y-4 transition-colors duration-500`}>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-black text-stone-800 uppercase tracking-tighter flex items-center gap-3 italic">
+            <h2 className={`text-2xl font-black uppercase tracking-tighter flex items-center gap-3 italic ${textTitle}`}>
               <ScrollText className="text-amber-500" size={28} />
-              Journal
+              Ton Journal
             </h2>
-            <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest mt-1 ml-1">
+            <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest mt-1 ml-1 opacity-60">
               Historique complet • Archivage annuel
             </p>
           </div>
 
-          <div className="flex bg-stone-100 p-1 rounded-xl border border-stone-200 shadow-inner self-start">
+          <div className={`flex p-1 rounded-xl border self-start shadow-inner ${isActuallyNight ? 'bg-stone-900 border-stone-800' : 'bg-stone-100 border-stone-200'}`}>
               <button 
                   onClick={() => setShowOnlyMine(false)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${!showOnlyMine ? 'bg-white text-stone-800 shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${!showOnlyMine ? (isActuallyNight ? 'bg-stone-800 text-stone-100' : 'bg-white text-stone-800 shadow-sm') : 'text-stone-400 hover:text-stone-500'}`}
               >
                   <Users size={14} /> Tous
               </button>
               <button 
                   onClick={() => setShowOnlyMine(true)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${showOnlyMine ? 'bg-white text-amber-600 shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${showOnlyMine ? (isActuallyNight ? 'bg-amber-900/40 text-amber-500 shadow-sm border border-amber-900/20' : 'bg-white text-amber-600 shadow-sm') : 'text-stone-400 hover:text-stone-500'}`}
               >
-                  {/* FIX Michael : size={14} au lieu de size(14) */}
                   <User size={14} /> Mes Sessions
               </button>
           </div>
         </div>
 
         <div className="relative group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-300 group-focus-within:text-amber-500 transition-colors" size={18} />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 group-focus-within:text-amber-500 transition-colors" size={18} />
           <input 
             type="text"
-            placeholder="Chercher un secteur, une espèce ou une observation..."
+            placeholder="Chercher un secteur, une espèce..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-12 pr-4 py-4 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-2 focus:ring-amber-500/20 transition-all text-sm font-medium shadow-inner"
+            className={`w-full pl-12 pr-4 py-4 rounded-2xl outline-none focus:ring-2 focus:ring-amber-500/20 transition-all text-sm font-medium shadow-inner border ${inputBg}`}
           />
         </div>
       </div>
 
-      {/* LISTE GROUPÉE PAR ANNÉE (ACCORDÉONS) */}
+      {/* LISTE GROUPÉE PAR ANNÉE */}
       <div className="space-y-6">
         {sortedYears.length > 0 ? (
           sortedYears.map((year) => {
@@ -159,29 +141,28 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
             
             return (
               <div key={year} className="space-y-3">
-                {/* HEADER DE L'ANNÉE */}
                 <button 
                     onClick={() => toggleYear(year)}
-                    className="w-full flex items-center justify-between px-6 py-3 bg-white border border-stone-100 rounded-2xl shadow-sm hover:bg-stone-50 transition-colors"
+                    className={`w-full flex items-center justify-between px-6 py-4 border rounded-2xl transition-colors ${
+                        isActuallyNight ? 'bg-stone-900/40 border-stone-800 hover:bg-stone-900/60' : 'bg-white border-stone-100 shadow-sm hover:bg-stone-50'
+                    }`}
                 >
                   <div className="flex items-center gap-3">
                     <Calendar size={18} className="text-amber-500/60" />
-                    <span className="text-sm font-black text-stone-700 tracking-widest">{year}</span>
+                    <span className={`text-sm font-black tracking-widest ${isActuallyNight ? 'text-stone-200' : 'text-stone-700'}`}>{year}</span>
                     <div className="flex items-center gap-2 ml-2">
-                        <span className="text-[10px] font-bold text-stone-400 bg-stone-50 px-2 py-0.5 rounded-full border border-stone-100">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${isActuallyNight ? 'bg-stone-800 border-stone-700 text-stone-400' : 'bg-stone-50 border-stone-100 text-stone-400'}`}>
                           {yearData.sessions.length} sessions
                         </span>
-                        {/* Michael : Badge pour le nombre de prises annuel */}
-                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 flex items-center gap-1">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${isActuallyNight ? 'bg-emerald-900/20 border-emerald-900/30 text-emerald-500' : 'bg-emerald-50 border-emerald-100 text-emerald-600'} flex items-center gap-1`}>
                           <Fish size={10} />
                           {yearData.totalCatches} prises
                         </span>
                     </div>
                   </div>
-                  {isExpanded ? <ChevronUp size={18} className="text-stone-300" /> : <ChevronDown size={18} className="text-stone-300" />}
+                  {isExpanded ? <ChevronUp size={18} className="text-stone-400" /> : <ChevronDown size={18} className="text-stone-400" />}
                 </button>
 
-                {/* SESSIONS CORRESPONDANTES */}
                 {isExpanded && (
                   <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
                     {yearData.sessions.map((session) => (
@@ -193,7 +174,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
                       >
                         <SessionCard 
                             session={session} 
-                            onDelete={handleDeleteRequest} 
+                            onDelete={(id) => {
+                                setSessionIdToDelete(id);
+                                setIsDeleteConfirmOpen(true);
+                            }} 
                             onEdit={onEditSession}
                             onClick={(s) => { setSelectedSession(s); setIsDetailOpen(true); }}
                             currentUserId={currentUserId}
@@ -206,11 +190,13 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
             );
           })
         ) : (
-          <div className="flex flex-col items-center justify-center py-20 px-4 text-center border border-dashed border-stone-200 rounded-[2.5rem] bg-white shadow-sm">
-             <div className="bg-stone-50 p-6 rounded-full mb-4">
-                <Clock className="text-stone-200" size={40} />
+          <div className={`flex flex-col items-center justify-center py-20 px-4 text-center border border-dashed rounded-[2.5rem] transition-colors ${
+              isActuallyNight ? 'bg-stone-900/20 border-stone-800' : 'bg-white border-stone-200 shadow-sm'
+          }`}>
+             <div className={`p-6 rounded-full mb-4 ${isActuallyNight ? 'bg-stone-800' : 'bg-stone-50'}`}>
+                <Clock className="text-stone-300 opacity-50" size={40} />
              </div>
-             <h3 className="text-stone-500 font-black uppercase tracking-tighter text-lg">Aucun résultat</h3>
+             <h3 className={`font-black uppercase tracking-tighter text-lg ${isActuallyNight ? 'text-stone-400' : 'text-stone-500'}`}>Aucun résultat</h3>
              <p className="text-stone-400 text-sm italic mt-1 max-w-xs font-medium">
                {searchTerm ? "Aucun secteur ou note ne correspond à cette recherche." : "Ton journal est vide."}
              </p>
