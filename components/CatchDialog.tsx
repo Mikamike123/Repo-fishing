@@ -1,4 +1,4 @@
-// components/CatchDialog.tsx
+// components/CatchDialog.tsx - Version 10.0.0 (Night Ops Vision Sync)
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
     X, Ruler, Sparkles, Edit2, Image as ImageIcon, Loader2, 
@@ -10,7 +10,6 @@ import {
 } from '../types';
 import { getFunctions, httpsCallable } from 'firebase/functions'; 
 import { getApp } from 'firebase/app';
-// NETTOYAGE : Suppression de USER_ID de l'import car il est désormais dynamique
 import { functions, storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { fetchHistoricalWeatherContext } from '../lib/universal-weather-service';
@@ -34,7 +33,8 @@ interface CatchDialogProps {
     weights: RefWeight[];
     lastCatchDefaults?: Catch | null;
     userPseudo?: string;
-    userId: string; // MICHAEL : Reçu de SessionFormUI
+    userId: string; 
+    isActuallyNight?: boolean; // MICHAEL : Pilier V8.0 raccordé
 }
 
 const SPECIES_CONFIG: Record<string, { max: number }> = {
@@ -78,7 +78,8 @@ const compressImageForAI = (file: File): Promise<{ blob: Blob, base64: string }>
 const CatchDialog: React.FC<CatchDialogProps> = ({ 
     isOpen, onClose, onSave, initialData, availableZones, locationId, locations, availableTechniques, 
     sessionStartTime, sessionEndTime, sessionDate, lureTypes, colors, sizes, weights,
-    lastCatchDefaults, userPseudo = "Michael", userId // MICHAEL : On utilise le userId des props
+    lastCatchDefaults, userPseudo = "Michael", userId,
+    isActuallyNight // MICHAEL : Activation du thème furtif
 }) => {
     const [species, setSpecies] = useState<SpeciesType>('Sandre');
     const [size, setSize] = useState<number>(45);
@@ -240,7 +241,6 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
             });
             
             const fileName = `catch_${Date.now()}_${file.name.replace(/\s/g, '_')}`;
-            // MICHAEL : Utilisation de l'UID réel pour le chemin Storage au lieu de la constante statique
             const storageRef = ref(storage, `catches/${userId}/${fileName}`);
             const uploadPromise = uploadBytes(storageRef, blob);
             
@@ -283,10 +283,20 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
         onClose();
     };
 
+    // MICHAEL : Styles dynamiques Standard V8.0
+    const inputBg = isActuallyNight ? 'bg-stone-800 border-stone-700 text-stone-100' : 'bg-white border-stone-200 text-stone-700';
+    const textTitle = isActuallyNight ? 'text-stone-100' : 'text-stone-800';
+    const textMuted = isActuallyNight ? 'text-stone-500' : 'text-stone-400';
+    const cardInner = isActuallyNight ? 'bg-stone-900 border-stone-800' : 'bg-white border-stone-100';
+
     const SelectField = ({ label, value, onChange, options, placeholder }: any) => (
         <div className="space-y-1">
-            <label className="text-[10px] font-black uppercase text-stone-400 ml-1">{label}</label>
-            <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full p-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-700 outline-none focus:ring-2 focus:ring-amber-200">
+            <label className={`text-[10px] font-black uppercase ml-1 ${textMuted}`}>{label}</label>
+            <select 
+                value={value} 
+                onChange={(e) => onChange(e.target.value)} 
+                className={`w-full p-2.5 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-amber-500/20 transition-all border ${inputBg}`}
+            >
                <option value="">{placeholder}</option>
                {options.map((o: any) => <option key={o.id} value={o.id}>{o.label}</option>)}
             </select>
@@ -296,11 +306,13 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-stone-900/40 backdrop-blur-sm animate-in fade-in duration-200 sm:items-center p-4">
-            <div className="w-full max-w-lg bg-[#FAF9F6] rounded-3xl shadow-2xl p-6 space-y-4 border border-white/50 max-h-[90vh] overflow-y-auto custom-scrollbar">
+        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 sm:items-center p-4">
+            <div className={`w-full max-w-lg rounded-3xl shadow-2xl p-6 space-y-4 border max-h-[90vh] overflow-y-auto custom-scrollbar transition-colors duration-500 ${
+                isActuallyNight ? 'bg-[#1c1917] border-stone-800' : 'bg-[#FAF9F6] border-white/50'
+            }`}>
                 
-                <div className="flex justify-between items-center border-b border-stone-100 pb-4">
-                    <h3 className="font-bold text-lg flex items-center gap-2 text-stone-800">
+                <div className={`flex justify-between items-center border-b pb-4 ${isActuallyNight ? 'border-stone-800' : 'border-stone-100'}`}>
+                    <h3 className={`font-bold text-lg flex items-center gap-2 ${textTitle}`}>
                         {initialData ? <><Edit2 className="text-amber-500" size={20}/> Modifier la Prise</> : <><Sparkles className="text-amber-500" size={20}/> Nouvelle Prise</>}
                     </h3>
                     <div className="flex items-center gap-3">
@@ -310,8 +322,8 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
                                 <Cloud className={envStatus === 'simulated' ? "text-blue-500" : "text-emerald-500"} size={16}/>
                                 <Check className={envStatus === 'simulated' ? "text-blue-500" : "text-emerald-500"} size={12}/>
                             </div>
-                          ) : <CloudOff className="text-stone-300" size={16}/>}
-                         <button type="button" onClick={onClose} className="p-2 text-stone-400 hover:bg-stone-100 rounded-full transition-colors"><X size={20}/></button>
+                          ) : <CloudOff className="text-stone-600" size={16}/>}
+                         <button type="button" onClick={onClose} className={`p-2 rounded-full transition-colors ${isActuallyNight ? 'bg-stone-800 text-stone-400 hover:text-stone-200' : 'text-stone-400 hover:bg-stone-100'}`}><X size={20}/></button>
                     </div>
                 </div>
 
@@ -320,7 +332,12 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
                     <div 
                         onClick={() => !isAnalyzing && !isUploading && fileInputRef.current?.click()}
                         className={`relative w-full aspect-video rounded-3xl border-2 border-dashed flex flex-col items-center justify-center overflow-hidden cursor-pointer transition-all
-                            ${previewUrl ? 'border-transparent bg-stone-900' : 'border-stone-200 bg-white hover:border-amber-400 hover:bg-amber-50/30'}`}
+                            ${previewUrl 
+                                ? 'border-transparent bg-stone-900 shadow-inner' 
+                                : (isActuallyNight 
+                                    ? 'border-stone-800 bg-stone-900/50 hover:border-amber-900/50 hover:bg-amber-950/10' 
+                                    : 'border-stone-200 bg-white hover:border-amber-400 hover:bg-amber-50/30'
+                                  )}`}
                     >
                         {previewUrl ? (
                             <>
@@ -333,77 +350,89 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
                                         </p>
                                     </div>
                                 )}
-                                <div className="absolute bottom-3 right-3 bg-white/90 p-2 rounded-full shadow-lg text-stone-600"><Camera size={18} /></div>
+                                <div className={`absolute bottom-3 right-3 p-2 rounded-full shadow-lg ${isActuallyNight ? 'bg-stone-800/90 text-stone-300' : 'bg-white/90 text-stone-600'}`}><Camera size={18} /></div>
                             </>
                         ) : (
                             <div className="text-center p-6">
-                                <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner"><UploadCloud size={32} /></div>
-                                <p className="text-stone-800 font-bold">Ajouter une Photo</p>
-                                <p className="text-stone-400 text-[10px] font-medium uppercase mt-1 tracking-wider">Analyse & Stockage IA</p>
+                                <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner ${isActuallyNight ? 'bg-amber-950/40 text-amber-500' : 'bg-amber-100 text-amber-600'}`}><UploadCloud size={32} /></div>
+                                <p className={`font-bold ${isActuallyNight ? 'text-stone-300' : 'text-stone-800'}`}>Ajouter une Photo</p>
+                                <p className={`${textMuted} text-[10px] font-medium uppercase mt-1 tracking-wider`}>Analyse & Stockage IA</p>
                             </div>
                         )}
                     </div>
                 </div>
 
                 {aiFeedback && (
-                    <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl flex items-start gap-3 animate-in zoom-in-95 duration-300">
+                    <div className={`border p-4 rounded-2xl flex items-start gap-3 animate-in zoom-in-95 duration-300 ${
+                        isActuallyNight ? 'bg-emerald-950/20 border-emerald-900/40' : 'bg-emerald-50 border-emerald-100'
+                    }`}>
                         <CheckCircle2 className="text-emerald-500 shrink-0 mt-0.5" size={18} />
                         <div>
-                            <p className="text-emerald-800 text-xs font-bold leading-tight">{aiFeedback.message}</p>
-                            <p className="text-[9px] text-emerald-600 font-black uppercase tracking-widest mt-1">Confiance : {Math.round(aiFeedback.confidence * 100)}%</p>
+                            <p className={`text-xs font-bold leading-tight ${isActuallyNight ? 'text-emerald-400' : 'text-emerald-800'}`}>{aiFeedback.message}</p>
+                            <p className={`text-[9px] font-black uppercase tracking-widest mt-1 ${isActuallyNight ? 'text-emerald-600/80' : 'text-emerald-600'}`}>Confiance : {Math.round(aiFeedback.confidence * 100)}%</p>
                         </div>
                     </div>
                 )}
 
-                {error && <div className="bg-rose-50 text-rose-600 p-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-rose-100"><AlertCircle size={16}/> {error}</div>}
+                {error && <div className="bg-rose-950/20 text-rose-500 p-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-rose-900/30">{error}</div>}
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase text-stone-400 ml-1">Espèce</label>
-                            <select value={species} onChange={(e) => setSpecies(e.target.value as SpeciesType)} className="w-full p-3 bg-white border border-stone-200 rounded-xl text-sm font-bold text-stone-700 outline-none focus:ring-2 focus:ring-amber-200">
+                            <label className={`text-[10px] font-black uppercase ml-1 ${textMuted}`}>Espèce</label>
+                            <select value={species} onChange={(e) => setSpecies(e.target.value as SpeciesType)} className={`w-full p-3 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-amber-500/20 transition-all border ${inputBg}`}>
                                 {Object.keys(SPECIES_CONFIG).map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
                         </div>
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase text-stone-400 ml-1">Heure</label>
-                            <input type="time" value={time} onChange={(e) => { setTime(e.target.value); setError(null); }} className="w-full p-3 bg-white border rounded-xl text-sm font-bold text-center outline-none focus:ring-2 focus:ring-amber-200"/>
+                            <label className={`text-[10px] font-black uppercase ml-1 ${textMuted}`}>Heure</label>
+                            <input type="time" value={time} onChange={(e) => { setTime(e.target.value); setError(null); }} className={`w-full p-3 border rounded-xl text-sm font-bold text-center outline-none focus:ring-2 focus:ring-amber-500/20 transition-all ${inputBg}`}/>
                         </div>
                     </div>
                     
                     <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase text-stone-400 ml-1">Technique</label>
-                        <select value={selectedTechId} onChange={(e) => setSelectedTechId(e.target.value)} className="w-full p-3 bg-white border border-stone-200 rounded-xl text-sm font-medium text-stone-700 outline-none focus:ring-2 focus:ring-amber-200">
+                        <label className={`text-[10px] font-black uppercase ml-1 ${textMuted}`}>Technique</label>
+                        <select value={selectedTechId} onChange={(e) => setSelectedTechId(e.target.value)} className={`w-full p-3 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-amber-500/20 transition-all border ${inputBg}`}>
                            {availableTechniques.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                         </select>
                     </div>
 
-                    <div className="bg-stone-100/50 p-3 rounded-2xl border border-stone-100 grid grid-cols-2 gap-3">
+                    <div className={`p-3 rounded-2xl border grid grid-cols-2 gap-3 transition-colors ${isActuallyNight ? 'bg-stone-900/40 border-stone-800' : 'bg-stone-100/50 border-stone-100'}`}>
                         <SelectField label="Type de Leurre" value={selectedLureTypeId} onChange={setSelectedLureTypeId} options={lureTypes} placeholder="Type..." />
                         <SelectField label="Couleur" value={selectedColorId} onChange={setSelectedColorId} options={colors} placeholder="Couleur..." />
                         <SelectField label="Taille" value={selectedSizeId} onChange={setSelectedSizeId} options={sizes} placeholder="Taille..." />
                         <SelectField label="Poids" value={selectedWeightId} onChange={setSelectedWeightId} options={weights} placeholder="Poids..." />
                     </div>
 
-                    <div className="bg-white p-4 rounded-2xl border border-stone-100 space-y-3 shadow-sm">
+                    <div className={`p-4 rounded-2xl border space-y-3 shadow-sm transition-colors ${cardInner}`}>
                         <div className="flex justify-between items-center">
-                            <label className="text-[10px] font-black uppercase text-stone-400 flex items-center gap-2"><Ruler size={14}/> Taille Prise</label>
-                            <span className="text-xl font-black text-stone-800">{size} <span className="text-xs text-stone-400">cm</span></span>
+                            <label className={`text-[10px] font-black uppercase flex items-center gap-2 ${textMuted}`}><Ruler size={14}/> Taille Prise</label>
+                            <span className={`text-xl font-black ${isActuallyNight ? 'text-stone-100' : 'text-stone-800'}`}>{size} <span className="text-xs text-stone-400">cm</span></span>
                         </div>
-                        <input type="range" min="10" max={SPECIES_CONFIG[species]?.max || 100} value={size} onChange={(e) => setSize(Number(e.target.value))} className="w-full h-2 bg-stone-100 rounded-lg appearance-none cursor-pointer accent-amber-500" />
+                        <input type="range" min="10" max={SPECIES_CONFIG[species]?.max || 100} value={size} onChange={(e) => setSize(Number(e.target.value))} className={`w-full h-2 rounded-lg appearance-none cursor-pointer accent-amber-500 ${isActuallyNight ? 'bg-stone-800' : 'bg-stone-100'}`} />
                     </div>
 
                     <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase text-stone-400 ml-1">Spot Précis du secteur</label>
-                        <select value={selectedZoneId} onChange={(e) => setSelectedZoneId(e.target.value)} className="w-full p-3 bg-white border border-stone-200 rounded-xl text-sm font-medium text-stone-700 outline-none focus:ring-2 focus:ring-amber-200" disabled={filteredSpots.length === 0}>
+                        <label className={`text-[10px] font-black uppercase ml-1 ${textMuted}`}>Spot Précis du secteur</label>
+                        <select value={selectedZoneId} onChange={(e) => setSelectedZoneId(e.target.value)} className={`w-full p-3 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-amber-500/20 transition-all border ${inputBg}`} disabled={filteredSpots.length === 0}>
                             {filteredSpots.map(z => <option key={z.id} value={z.id}>{z.label}</option>)}
                             {filteredSpots.length === 0 && <option value="">Aucun spot ici</option>}
                         </select>
                     </div>
 
-                    <input type="text" placeholder="Modèle précis du leurre..." value={lureName} onChange={(e) => setLureName(e.target.value)} className="w-full p-3 bg-white border border-stone-200 rounded-xl text-sm outline-none focus:border-amber-400"/>
+                    <input 
+                        type="text" 
+                        placeholder="Modèle précis du leurre..." 
+                        value={lureName} 
+                        onChange={(e) => setLureName(e.target.value)} 
+                        className={`w-full p-3 rounded-xl text-sm outline-none transition-all border ${isActuallyNight ? 'bg-stone-800 border-stone-700 text-stone-100 focus:border-amber-500/50' : 'bg-white border-stone-200 focus:border-amber-400'}`}
+                    />
                     
-                    <button type="submit" disabled={isLoadingEnv || isAnalyzing || isUploading} className="w-full bg-stone-800 text-white py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-transform disabled:bg-stone-300">
+                    <button type="submit" disabled={isLoadingEnv || isAnalyzing || isUploading} className={`w-full py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-all ${
+                        isActuallyNight 
+                            ? 'bg-stone-100 text-[#1c1917] hover:bg-white disabled:bg-stone-800 disabled:text-stone-600' 
+                            : 'bg-stone-800 text-white hover:bg-stone-950 disabled:bg-stone-300'
+                    }`}>
                         {isLoadingEnv || isAnalyzing || isUploading ? <Loader2 className="animate-spin mx-auto" /> : initialData ? 'Mettre à jour' : 'Valider la prise'}
                     </button>
                 </form>

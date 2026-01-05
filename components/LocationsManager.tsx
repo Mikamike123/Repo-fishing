@@ -1,3 +1,4 @@
+// components/LocationsManager.tsx - Version 10.0.0 (Full Night Ops Territory Management)
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
     MapPin, Star, Trash2, Plus, AlertCircle, ArrowLeft, 
@@ -7,7 +8,6 @@ import {
 import { Location, Spot, MorphologyID, DepthCategoryID, BassinType, SpeciesType } from '../types';
 import LocationPicker from './LocationPicker'; 
 import { getRandomDeletionMessage, LOCATION_DELETION_MESSAGES } from '../constants/deletionMessages';
-// IMPORT DU COMPOSANT STANDARDISÉ
 import DeleteConfirmDialog from './DeleteConfirmDialog'; 
 
 // --- CONFIGURATION CONSTANTES ---
@@ -52,13 +52,15 @@ interface LocationsManagerProps {
     onEditSpot: (id: string, label: string) => void;
     onBack: () => void;
     initialOpenLocationId?: string | null;
+    isActuallyNight?: boolean; // Michael : Pilier V8.0 raccordé [cite: 469]
 }
 
 const LocationsManager: React.FC<LocationsManagerProps> = ({ 
     locations, spots, userId,
     onAddLocation, onEditLocation, onDeleteLocation, onToggleFavorite, onMoveLocation,
     onAddSpot, onDeleteSpot, onEditSpot,
-    onBack, initialOpenLocationId
+    onBack, initialOpenLocationId,
+    isActuallyNight 
 }) => {
     // --- STATE NAVIGATION & DATA ---
     const [selectedLocation, setSelectedLocation] = useState<Location | null>(null); 
@@ -251,8 +253,6 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
         }, 800);
     };
 
-    // --- LOGIQUE SPOTS ---
-
     const handleAddSpotSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!spotInput.trim() || !selectedLocation) return;
@@ -264,8 +264,6 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
         }
         setSpotInput("");
     };
-
-    // --- LOGIQUE DE SUPPRESSION AVEC MODALE STANDARD ---
 
     const requestDelete = (type: 'location' | 'spot', id: string, label: string) => {
         setDeleteConfirm({ type, id, label });
@@ -287,6 +285,16 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
 
     // --- RENDERERS ---
 
+    // Michael : Styles Adaptatifs Soft Night Ops (#1c1917) 
+    const cardClass = isActuallyNight 
+        ? "bg-[#1c1917] border-stone-800 shadow-none" 
+        : "bg-white border-stone-100 shadow-sm";
+    
+    const textTitle = isActuallyNight ? "text-stone-100" : "text-stone-800";
+    const textMuted = isActuallyNight ? "text-stone-500" : "text-stone-400";
+    const inputBg = isActuallyNight ? "bg-stone-900 border-stone-800 text-stone-200" : "bg-stone-50 border-stone-200 text-stone-800";
+    const navBg = isActuallyNight ? "bg-stone-900 border-stone-800" : "bg-stone-100";
+
     if (selectedLocation) {
         const coords = getSafeCoords(selectedLocation);
 
@@ -301,56 +309,56 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
                     />
                 )}
 
-                {/* MODALE STANDARDISÉE */}
                 <DeleteConfirmDialog 
                     isOpen={!!deleteConfirm}
                     onClose={() => setDeleteConfirm(null)}
                     onConfirm={confirmDelete}
                     title={deleteConfirm?.type === 'location' ? `Supprimer "${deleteConfirm?.label}" ?` : `Supprimer le spot ?`}
-                    customMessages={LOCATION_DELETION_MESSAGES} // On passe la liste spécifique aux lieux
+                    customMessages={LOCATION_DELETION_MESSAGES} 
+                    isActuallyNight={isActuallyNight}
                 />
 
                 {/* HEADER FIXE */}
                 <div className="flex items-center gap-3 mb-4">
-                    <button onClick={() => { setSelectedLocation(null); setEditingSpotId(null); setSpotInput(""); }} className="p-2 bg-white rounded-full shadow-sm text-stone-400 hover:text-stone-800 transition-colors"><ArrowLeft size={20} /></button>
+                    <button onClick={() => { setSelectedLocation(null); setEditingSpotId(null); setSpotInput(""); }} className={`p-2 rounded-full shadow-sm transition-colors ${isActuallyNight ? 'bg-stone-800 text-stone-400' : 'bg-white text-stone-400 hover:text-stone-800'}`}><ArrowLeft size={20} /></button>
                     <div className="flex-1 min-w-0">
-                        <h2 className="text-xl font-black text-stone-800 tracking-tighter uppercase truncate">{selectedLocation.label}</h2>
-                        <div className="flex items-center gap-2 text-xs text-stone-500 font-medium">
-                            <span>{coords ? `${coords.lat.toFixed(3)}, ${coords.lng.toFixed(3)}` : 'Pas de GPS'}</span>
-                            <span>•</span>
-                            <span className={selectedLocation.isFavorite ? 'text-amber-500 font-bold' : ''}>{selectedLocation.isFavorite ? 'Favori' : 'Standard'}</span>
+                        <h2 className={`text-xl font-black uppercase truncate tracking-tighter ${textTitle}`}>{selectedLocation.label}</h2>
+                        <div className="flex items-center gap-2 text-xs font-medium">
+                            <span className={isActuallyNight ? 'text-stone-600' : 'text-stone-500'}>{coords ? `${coords.lat.toFixed(3)}, ${coords.lng.toFixed(3)}` : 'Pas de GPS'}</span>
+                            <span className="text-stone-300">•</span>
+                            <span className={selectedLocation.isFavorite ? 'text-amber-500 font-bold' : (isActuallyNight ? 'text-stone-600' : 'text-stone-500')}>{selectedLocation.isFavorite ? 'Favori' : 'Standard'}</span>
                         </div>
                     </div>
-                    <button onClick={() => { setPickerMode('edit'); setShowPicker(true); }} className="p-2 bg-stone-100 text-stone-500 rounded-xl hover:bg-emerald-50 hover:text-emerald-600 transition-colors">
+                    <button onClick={() => { setPickerMode('edit'); setShowPicker(true); }} className={`p-2 rounded-xl transition-colors ${isActuallyNight ? 'bg-stone-800 text-stone-500 hover:text-emerald-500' : 'bg-stone-100 text-stone-500 hover:bg-emerald-50 hover:text-emerald-600'}`}>
                         <MapIcon size={20} />
                     </button>
                 </div>
 
-                {notification && <div className="mb-4 bg-emerald-50 text-emerald-700 px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-2 animate-pulse"><Check size={16}/> {notification}</div>}
-                {error && <div className="mb-4 bg-rose-50 text-rose-700 px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-2"><AlertCircle size={16}/> {error}</div>}
+                {notification && <div className="mb-4 bg-emerald-900/20 text-emerald-500 border border-emerald-900/30 px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-2 animate-pulse"><Check size={16}/> {notification}</div>}
+                {error && <div className="mb-4 bg-rose-950/20 text-rose-500 border border-rose-900/30 px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-2"><AlertCircle size={16}/> {error}</div>}
 
                 {/* CARTE FIXE */}
                 {coords ? (
-                    <div className="mb-6 rounded-2xl overflow-hidden shadow-lg border-2 border-white relative h-32 group">
+                    <div className={`mb-6 rounded-2xl overflow-hidden shadow-lg border-2 relative h-32 group transition-colors ${isActuallyNight ? 'border-stone-800' : 'border-white'}`}>
                         <img src={getStaticMapUrl(coords.lat, coords.lng)} alt="Carte" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent pointer-events-none" />
                         <div className="absolute bottom-3 left-3 text-white font-bold text-sm flex items-center gap-1"><MapPin size={14}/> {coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}</div>
                     </div>
                 ) : (
-                        <div className="mb-6 h-24 bg-stone-100 rounded-2xl flex items-center justify-center border border-dashed border-stone-300 text-stone-400 text-xs px-4">
+                        <div className={`mb-6 h-24 rounded-2xl flex items-center justify-center border border-dashed text-xs px-4 transition-colors ${isActuallyNight ? 'bg-stone-900/40 border-stone-800 text-stone-600' : 'bg-stone-100 border-stone-300 text-stone-400'}`}>
                         GPS manquant. Utilisez l'icône carte en haut pour définir.
                         </div>
                 )}
 
                 {/* NAVIGATION ONGLETS */}
-                <div className="flex p-1 bg-stone-100 rounded-xl mb-6 shadow-inner">
-                    <button onClick={() => setActiveTab('bio')} className={`flex-1 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-1 sm:gap-2 transition-all ${activeTab === 'bio' ? 'bg-white text-emerald-600 shadow-sm' : 'text-stone-400'}`}>
+                <div className={`flex p-1 rounded-xl mb-6 shadow-inner transition-colors ${navBg}`}>
+                    <button onClick={() => setActiveTab('bio')} className={`flex-1 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-1 sm:gap-2 transition-all ${activeTab === 'bio' ? (isActuallyNight ? 'bg-stone-800 text-emerald-400 shadow-sm' : 'bg-white text-emerald-600 shadow-sm') : 'text-stone-500'}`}>
                         <Settings size={14} /> Profil & Bio
                     </button>
-                    <button onClick={() => setActiveTab('spots')} className={`flex-1 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-1 sm:gap-2 transition-all ${activeTab === 'spots' ? 'bg-white text-stone-800 shadow-sm' : 'text-stone-400'}`}>
+                    <button onClick={() => setActiveTab('spots')} className={`flex-1 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-1 sm:gap-2 transition-all ${activeTab === 'spots' ? (isActuallyNight ? 'bg-stone-800 text-stone-100 shadow-sm' : 'bg-white text-stone-800 shadow-sm') : 'text-stone-500'}`}>
                         <Anchor size={14} /> Spots
                     </button>
-                    <button onClick={() => setActiveTab('species')} className={`flex-1 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-1 sm:gap-2 transition-all ${activeTab === 'species' ? 'bg-white text-blue-600 shadow-sm' : 'text-stone-400'}`}>
+                    <button onClick={() => setActiveTab('species')} className={`flex-1 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-1 sm:gap-2 transition-all ${activeTab === 'species' ? (isActuallyNight ? 'bg-stone-800 text-blue-400 shadow-sm' : 'bg-white text-blue-600 shadow-sm') : 'text-stone-500'}`}>
                         <Activity size={14} /> Bioscores
                     </button>
                 </div>
@@ -358,75 +366,73 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
                 {/* CONTENU ONGLET 1: PROFIL & BIO */}
                 {activeTab === 'bio' && (
                     <div className="animate-in fade-in zoom-in-95 duration-200 space-y-4">
-                         <div className="bg-white rounded-[2rem] p-6 border border-stone-100 shadow-sm relative overflow-hidden">
-                            <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
+                         <div className={`${cardClass} rounded-[2.5rem] p-6 border relative overflow-hidden transition-colors duration-500`}>
+                            <div className={`absolute top-0 right-0 p-4 opacity-10 pointer-events-none ${isActuallyNight ? 'text-stone-700' : 'text-stone-200'}`}>
                                 <Settings size={100} />
                             </div>
                             
-                            <h3 className="font-bold text-stone-800 flex items-center gap-2 mb-6 relative z-10"><MapIcon size={18} className="text-emerald-500"/> Calibration Morphologique</h3>
+                            <h3 className={`font-bold flex items-center gap-2 mb-6 relative z-10 ${textTitle}`}><MapIcon size={18} className="text-emerald-500"/> Calibration Morphologique</h3>
                             
                             <div className="space-y-5 relative z-10">
                                 {/* Type de Milieu */}
                                 <div>
-                                    <label className="text-[10px] font-bold text-stone-400 uppercase ml-1 block mb-1">Type de milieu</label>
-                                    <select value={bioForm.typeId} onChange={(e) => setBioForm({...bioForm, typeId: e.target.value as MorphologyID})} className="w-full bg-stone-50 border border-stone-200 text-stone-800 text-sm font-bold rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-emerald-100">
+                                    <label className={`text-[10px] font-bold uppercase ml-1 block mb-1 ${textMuted}`}>Type de milieu</label>
+                                    <select value={bioForm.typeId} onChange={(e) => setBioForm({...bioForm, typeId: e.target.value as MorphologyID})} className={`w-full text-sm font-bold rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all ${inputBg}`}>
                                         {MORPHOLOGY_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                                     </select>
                                 </div>
                                 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="text-[10px] font-bold text-stone-400 uppercase ml-1 block mb-1">Profondeur</label>
-                                        <select value={bioForm.depthId} onChange={(e) => setBioForm({...bioForm, depthId: e.target.value as DepthCategoryID})} className="w-full bg-stone-50 border border-stone-200 text-stone-800 text-sm font-bold rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-emerald-100">
+                                        <label className={`text-[10px] font-bold uppercase ml-1 block mb-1 ${textMuted}`}>Profondeur</label>
+                                        <select value={bioForm.depthId} onChange={(e) => setBioForm({...bioForm, depthId: e.target.value as DepthCategoryID})} className={`w-full text-sm font-bold rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all ${inputBg}`}>
                                             {DEPTH_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="text-[10px] font-bold text-stone-400 uppercase ml-1 block mb-1">Bassin Versant</label>
-                                        <select value={bioForm.bassin} onChange={(e) => setBioForm({...bioForm, bassin: e.target.value as BassinType})} className="w-full bg-stone-50 border border-stone-200 text-stone-800 text-sm font-bold rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-emerald-100">
+                                        <label className={`text-[10px] font-bold uppercase ml-1 block mb-1 ${textMuted}`}>Bassin Versant</label>
+                                        <select value={bioForm.bassin} onChange={(e) => setBioForm({...bioForm, bassin: e.target.value as BassinType})} className={`w-full text-sm font-bold rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all ${inputBg}`}>
                                             {BASSIN_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                                         </select>
                                     </div>
                                 </div>
 
                                 {/* Paramètres Avancés */}
-                                <div className="p-4 bg-stone-50/80 rounded-2xl border border-stone-100 space-y-4">
+                                <div className={`p-4 rounded-2xl border space-y-4 transition-colors ${isActuallyNight ? 'bg-stone-900/40 border-stone-800' : 'bg-stone-50/80 border-stone-100'}`}>
                                     <div className="flex items-center gap-2 text-stone-500 mb-2">
                                         <Info size={14}/> <span className="text-[10px] font-bold uppercase tracking-wider">Paramètres Déterministes</span>
                                     </div>
                                     
                                     <div>
-                                        <label className="text-[9px] font-bold text-stone-400 uppercase ml-1">Profondeur Moyenne (m)</label>
+                                        <label className={`text-[9px] font-bold uppercase ml-1 ${textMuted}`}>Profondeur Moyenne (m)</label>
                                         <div className="flex items-center gap-3">
-                                            <input type="range" min="0.5" max="20" step="0.5" value={bioForm.meanDepth} onChange={(e) => setBioForm({...bioForm, meanDepth: parseFloat(e.target.value)})} className="flex-1 h-2 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-stone-800" />
-                                            <span className="w-12 text-right font-black text-stone-800 bg-white px-2 py-1 rounded border border-stone-200 text-xs">{bioForm.meanDepth}m</span>
+                                            <input type="range" min="0.5" max="20" step="0.5" value={bioForm.meanDepth} onChange={(e) => setBioForm({...bioForm, meanDepth: parseFloat(e.target.value)})} className={`flex-1 h-2 rounded-lg appearance-none cursor-pointer transition-all ${isActuallyNight ? 'bg-stone-800 accent-stone-200' : 'bg-stone-200 accent-stone-800'}`} />
+                                            <span className={`w-12 text-right font-black px-2 py-1 rounded border text-xs transition-colors ${isActuallyNight ? 'bg-stone-900 border-stone-700 text-stone-200' : 'bg-white border-stone-200 text-stone-800'}`}>{bioForm.meanDepth}m</span>
                                         </div>
                                     </div>
 
-                                    {/* Affichage Conditionnel */}
                                     {bioForm.typeId !== 'Z_RIVER' && bioForm.typeId !== 'Z_MED' && (
-                                        <div className="space-y-4 pt-4 border-t border-stone-200/50">
+                                        <div className={`space-y-4 pt-4 border-t ${isActuallyNight ? 'border-stone-800' : 'border-stone-200/50'}`}>
                                             <div>
-                                                <label className="text-[9px] font-bold text-stone-400 uppercase ml-1">Surface (Hectares)</label>
+                                                <label className={`text-[9px] font-bold uppercase ml-1 ${textMuted}`}>Surface (Hectares)</label>
                                                 <div className="flex items-center gap-2">
                                                     <input 
                                                         type="number" 
                                                         value={bioForm.surfaceArea / 10000} 
                                                         onChange={(e) => setBioForm({...bioForm, surfaceArea: Math.round(parseFloat(e.target.value) * 10000)})} 
-                                                        className="w-full bg-white border border-stone-200 text-stone-800 text-sm font-bold rounded-lg px-3 py-2" 
+                                                        className={`w-full text-sm font-bold rounded-lg px-3 py-2 transition-all ${inputBg}`} 
                                                     />
-                                                    <span className="text-xs font-bold text-stone-400">ha</span>
+                                                    <span className={`text-xs font-bold ${textMuted}`}>ha</span>
                                                 </div>
                                             </div>
                                             
                                             <div>
                                                 <div className="flex justify-between items-center mb-1">
-                                                    <label className="text-[9px] font-bold text-stone-400 uppercase ml-1">Facteur de forme (Vent)</label>
-                                                    <span className="text-[10px] font-black bg-blue-50 text-blue-600 px-2 rounded">{bioForm.shapeFactor.toFixed(1)}</span>
+                                                    <label className={`text-[9px] font-bold uppercase ml-1 ${textMuted}`}>Facteur de forme (Vent)</label>
+                                                    <span className={`text-[10px] font-black px-2 rounded ${isActuallyNight ? 'bg-blue-950/40 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>{bioForm.shapeFactor.toFixed(1)}</span>
                                                 </div>
                                                 
-                                                {/* Visualisation Dynamique du Facteur de Forme (Blob Élastique) */}
-                                                <div className="flex justify-center py-6 bg-white/50 rounded-xl mb-2 border border-stone-100">
+                                                <div className={`flex justify-center py-6 rounded-xl mb-2 border transition-colors ${isActuallyNight ? 'bg-stone-900/60 border-stone-800' : 'bg-white/50 border-stone-100'}`}>
                                                     <div 
                                                         className="bg-blue-400/80 border-4 border-blue-200 shadow-lg transition-all duration-300 rounded-full"
                                                         style={{
@@ -444,9 +450,9 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
                                                     step="0.1" 
                                                     value={bioForm.shapeFactor} 
                                                     onChange={(e) => setBioForm({...bioForm, shapeFactor: parseFloat(e.target.value)})} 
-                                                    className="w-full h-4 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                                    className={`w-full h-4 rounded-lg appearance-none cursor-pointer transition-all ${isActuallyNight ? 'bg-stone-800 accent-blue-400' : 'bg-stone-200 accent-blue-500'}`} 
                                                 />
-                                                <div className="flex justify-between mt-1 text-[8px] font-bold text-stone-300 uppercase">
+                                                <div className={`flex justify-between mt-1 text-[8px] font-bold uppercase ${textMuted}`}>
                                                     <span>Rond (Abrité)</span>
                                                     <span>Allongé (Vagues)</span>
                                                 </div>
@@ -457,7 +463,7 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
                             </div>
                         </div>
 
-                        <button onClick={handleSaveConfig} className="w-full bg-stone-800 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-transform">
+                        <button onClick={handleSaveConfig} className={`w-full font-bold py-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all ${isActuallyNight ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-stone-800 hover:bg-stone-900 text-white'}`}>
                             <Save size={20} /> Enregistrer la configuration
                         </button>
                     </div>
@@ -466,31 +472,31 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
                 {/* CONTENU ONGLET 2: SPOTS */}
                 {activeTab === 'spots' && (
                     <div className="animate-in fade-in zoom-in-95 duration-200 space-y-6">
-                        <div className="bg-white rounded-[2rem] p-5 border border-stone-100 shadow-sm">
+                        <div className={`${cardClass} rounded-[2.5rem] p-5 border transition-colors duration-500`}>
                             <form onSubmit={handleAddSpotSubmit} className="flex gap-2 mb-4">
-                                <input type="text" value={spotInput} onChange={(e) => setSpotInput(e.target.value)} placeholder={editingSpotId ? "Renommer le spot..." : "Ajouter un spot..."} className="flex-1 bg-stone-50 px-4 py-3 rounded-xl text-sm font-bold border border-stone-200 focus:ring-2 focus:ring-amber-200 outline-none transition-all" />
-                                <button type="submit" disabled={!spotInput.trim()} className="bg-stone-800 text-white p-3 rounded-xl shadow-lg active:scale-95 transition-transform">{editingSpotId ? <Check size={18} /> : <Plus size={18} />}</button>
+                                <input type="text" value={spotInput} onChange={(e) => setSpotInput(e.target.value)} placeholder={editingSpotId ? "Renommer le spot..." : "Ajouter un spot..."} className={`flex-1 px-4 py-3 rounded-xl text-sm font-bold outline-none transition-all ${inputBg} focus:ring-2 focus:ring-amber-500/20`} />
+                                <button type="submit" disabled={!spotInput.trim()} className={`p-3 rounded-xl shadow-lg active:scale-95 transition-all ${isActuallyNight ? 'bg-amber-600 hover:bg-amber-500 text-white' : 'bg-stone-800 hover:bg-stone-900 text-white'}`}>{editingSpotId ? <Check size={18} /> : <Plus size={18} />}</button>
                             </form>
                             <div className="space-y-2">
                                 {spots.filter(s => s.locationId === selectedLocation.id).length === 0 && (
-                                    <div className="text-center py-8 text-stone-400 text-xs italic">Aucun spot défini pour ce secteur.</div>
+                                    <div className="text-center py-8 text-stone-500 text-xs italic opacity-60">Aucun spot défini pour ce secteur.</div>
                                 )}
                                 {spots.filter(s => s.locationId === selectedLocation.id).map(spot => (
-                                    <div key={spot.id} className="flex justify-between items-center p-3 rounded-xl bg-stone-50 border border-stone-100 group hover:border-amber-200 transition-colors">
+                                    <div key={spot.id} className={`flex justify-between items-center p-3 rounded-xl border transition-all group ${isActuallyNight ? 'bg-stone-900 border-stone-800 hover:border-amber-500/50' : 'bg-stone-50 border-stone-100 hover:border-amber-200'}`}>
                                         <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-white border border-stone-200 flex items-center justify-center text-stone-400 font-bold text-xs">{spot.label.charAt(0)}</div>
-                                            <span className="text-sm font-bold text-stone-700">{spot.label}</span>
+                                            <div className={`w-8 h-8 rounded-full border flex items-center justify-center font-bold text-xs transition-colors ${isActuallyNight ? 'bg-stone-800 border-stone-700 text-stone-500' : 'bg-white border-stone-200 text-stone-400'}`}>{spot.label.charAt(0)}</div>
+                                            <span className={`text-sm font-bold transition-colors ${isActuallyNight ? 'text-stone-300' : 'text-stone-700'}`}>{spot.label}</span>
                                         </div>
                                         <div className="flex gap-1">
-                                            <button onClick={() => { setEditingSpotId(spot.id); setSpotInput(spot.label); }} className="p-2 text-stone-300 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"><Edit2 size={14} /></button>
-                                            <button onClick={() => requestDelete('spot', spot.id, spot.label)} className="p-2 text-stone-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"><Trash2 size={14} /></button>
+                                            <button onClick={() => { setEditingSpotId(spot.id); setSpotInput(spot.label); }} className="p-2 text-stone-500 hover:text-amber-500 rounded-lg transition-all"><Edit2 size={14} /></button>
+                                            <button onClick={() => requestDelete('spot', spot.id, spot.label)} className="p-2 text-stone-500 hover:text-rose-500 rounded-lg transition-all"><Trash2 size={14} /></button>
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         </div>
 
-                        <button onClick={handleSaveConfig} className="w-full bg-stone-800 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-transform">
+                        <button onClick={handleSaveConfig} className={`w-full font-bold py-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all ${isActuallyNight ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-stone-800 hover:bg-stone-900 text-white'}`}>
                             <Save size={20} /> Enregistrer les modifications
                         </button>
                     </div>
@@ -499,34 +505,34 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
                 {/* CONTENU ONGLET 3: BIOSCORES */}
                 {activeTab === 'species' && (
                     <div className="animate-in fade-in zoom-in-95 duration-200 space-y-6">
-                        <div className="bg-white rounded-[2rem] p-6 border border-stone-100 shadow-sm relative overflow-hidden">
-                             <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
+                        <div className={`${cardClass} rounded-[2.5rem] p-6 border relative overflow-hidden transition-colors duration-500`}>
+                             <div className={`absolute top-0 right-0 p-4 opacity-10 pointer-events-none ${isActuallyNight ? 'text-stone-700' : 'text-stone-200'}`}>
                                 <Fish size={100} />
                             </div>
 
-                            <h3 className="font-bold text-stone-800 flex items-center gap-2 mb-2 relative z-10"><Activity size={18} className="text-blue-500"/> Bioscores Attendus</h3>
-                            <p className="text-xs text-stone-400 mb-6 relative z-10">Sélectionne les espèces pour lesquelles tu souhaites voir le bioscore s'afficher.</p>
+                            <h3 className={`font-bold flex items-center gap-2 mb-2 relative z-10 ${textTitle}`}><Activity size={18} className="text-blue-500"/> Bioscores Attendus</h3>
+                            <p className={`text-xs mb-6 relative z-10 opacity-70 ${textTitle}`}>Sélectionne les espèces pour lesquelles tu souhaites voir le bioscore s'afficher.</p>
                             
                             <div className="grid grid-cols-2 gap-3 relative z-10">
                                 {TARGET_SPECIES.map(species => {
                                     const isSelected = bioForm.speciesIds.includes(species.id);
                                     return ( 
-                                        <button key={species.id} onClick={() => toggleSpecies(species.id)} className={`p-3 rounded-xl border text-sm font-bold flex items-center justify-between transition-all active:scale-95 ${isSelected ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm' : 'bg-stone-50 border-stone-100 text-stone-400 hover:bg-stone-100'}`}>
+                                        <button key={species.id} onClick={() => toggleSpecies(species.id)} className={`p-3 rounded-xl border text-sm font-bold flex items-center justify-between transition-all active:scale-95 ${isSelected ? (isActuallyNight ? 'bg-blue-950/40 border-blue-800 text-blue-400' : 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm') : (isActuallyNight ? 'bg-stone-900 border-stone-800 text-stone-500 hover:bg-stone-800' : 'bg-stone-50 border-stone-100 text-stone-400 hover:bg-stone-100')}`}>
                                             {species.label} 
-                                            {isSelected && <Check size={16} className="text-blue-600"/>}
+                                            {isSelected && <Check size={16} className="text-blue-500"/>}
                                         </button> 
                                     );
                                 })}
                             </div>
 
                             {bioForm.speciesIds.length === 0 && (
-                                <div className="mt-4 p-3 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-2 text-rose-600 text-xs font-bold animate-pulse">
+                                <div className="mt-4 p-3 bg-rose-950/20 border border-rose-900/30 rounded-xl flex items-center gap-2 text-rose-500 text-xs font-bold animate-pulse">
                                     <AlertCircle size={16}/> Sélectionner au moins une espèce.
                                 </div>
                             )}
                         </div>
 
-                        <button onClick={handleSaveConfig} className={`w-full font-bold py-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-transform ${bioForm.speciesIds.length > 0 ? 'bg-stone-800 text-white' : 'bg-stone-300 text-stone-500 cursor-not-allowed'}`} disabled={bioForm.speciesIds.length === 0}>
+                        <button onClick={handleSaveConfig} className={`w-full font-bold py-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all ${bioForm.speciesIds.length > 0 ? (isActuallyNight ? 'bg-emerald-600 text-white' : 'bg-stone-800 text-white') : 'bg-stone-300 text-stone-500 cursor-not-allowed'}`} disabled={bioForm.speciesIds.length === 0}>
                             <Save size={20} /> Enregistrer la configuration
                         </button>
                     </div>
@@ -547,62 +553,62 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
                 />
             )}
 
-            {/* MODALE STANDARDISÉE */}
             <DeleteConfirmDialog 
                 isOpen={!!deleteConfirm}
                 onClose={() => setDeleteConfirm(null)}
                 onConfirm={confirmDelete}
                 title={deleteConfirm?.type === 'location' ? `Supprimer "${deleteConfirm?.label}" ?` : `Supprimer le spot ?`}
                 customMessages={LOCATION_DELETION_MESSAGES} 
+                isActuallyNight={isActuallyNight}
             />
 
             {/* HEADER LISTE */}
             <div className="flex items-center gap-3 mb-8">
-                <button onClick={onBack} className="p-2 bg-white rounded-full shadow-sm text-stone-400 hover:text-stone-800 transition-colors"><ArrowLeft size={20} /></button>
+                <button onClick={onBack} className={`p-2 rounded-full shadow-sm transition-colors ${isActuallyNight ? 'bg-stone-800 text-stone-400' : 'bg-white text-stone-400 hover:text-stone-800'}`}><ArrowLeft size={20} /></button>
                 <div>
-                    <h2 className="text-2xl font-black text-stone-800 tracking-tighter uppercase flex items-center gap-2"><MapPin className="text-emerald-500" /> Mes Secteurs</h2>
-                    <p className="text-xs text-stone-500 font-medium">Gérez votre territoire de pêche.</p>
+                    <h2 className={`text-2xl font-black uppercase flex items-center gap-2 tracking-tighter italic ${textTitle}`}><MapPin className="text-emerald-500" /> Mes Secteurs</h2>
+                    <p className={`text-xs font-medium opacity-60 ${textTitle}`}>Gérez votre territoire de pêche.</p>
                 </div>
             </div>
 
-            {error && <div className="mb-6 bg-rose-50 border border-rose-100 text-rose-700 px-4 py-3 rounded-xl flex items-center gap-3"><AlertCircle size={20} /> <span className="text-xs font-bold">{error}</span></div>}
+            {error && <div className="mb-6 bg-rose-950/20 border border-rose-900/30 text-rose-500 px-4 py-3 rounded-xl flex items-center gap-3"><AlertCircle size={20} /> <span className="text-xs font-bold">{error}</span></div>}
 
             {/* JAUGE FAVORIS */}
-            <div className={`mb-8 p-4 rounded-2xl border flex items-center justify-between ${locations.filter(l => l.isFavorite).length >= 3 ? 'bg-amber-50 border-amber-200' : 'bg-white border-stone-100'}`}>
+            <div className={`mb-8 p-4 rounded-2xl border flex items-center justify-between transition-colors duration-500 ${locations.filter(l => l.isFavorite).length >= 3 ? (isActuallyNight ? 'bg-amber-950/20 border-amber-900/40' : 'bg-amber-50 border-amber-200') : (isActuallyNight ? 'bg-stone-900/40 border-stone-800' : 'bg-white border-stone-100')}`}>
                 <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-full ${locations.filter(l => l.isFavorite).length >= 3 ? 'bg-amber-100 text-amber-600' : 'bg-stone-100 text-stone-400'}`}>
+                    <div className={`p-2 rounded-full transition-colors ${locations.filter(l => l.isFavorite).length >= 3 ? (isActuallyNight ? 'bg-amber-900/40 text-amber-500' : 'bg-amber-100 text-amber-600') : 'bg-stone-100 text-stone-400'}`}>
                         <Star size={20} fill={locations.filter(l => l.isFavorite).length >= 3 ? "currentColor" : "none"} />
                     </div>
                     <div>
-                        <div className="font-black text-stone-800 text-sm uppercase tracking-wide">Favoris Actifs</div>
-                        <div className="text-[10px] text-stone-400 font-bold">Priorité Météo Dashboard</div>
+                        <div className={`font-black text-sm uppercase tracking-wide transition-colors ${textTitle}`}>Favoris Actifs</div>
+                        <div className="text-[10px] text-stone-500 font-bold">Priorité Météo Dashboard</div>
                     </div>
                 </div>
                 <div className="text-right">
-                    <span className={`text-2xl font-black ${locations.filter(l => l.isFavorite).length >= 3 ? 'text-amber-600' : 'text-stone-800'}`}>{locations.filter(l => l.isFavorite).length}</span>
+                    <span className={`text-2xl font-black transition-colors ${locations.filter(l => l.isFavorite).length >= 3 ? 'text-amber-500' : textTitle}`}>{locations.filter(l => l.isFavorite).length}</span>
                     <span className="text-sm font-bold text-stone-300">/3</span>
                 </div>
             </div>
 
             {/* ZONE CRÉATION (MAP FIRST) */}
             {!isCreating ? (
-                <button onClick={() => { setPickerMode('create'); startCreation(); setShowPicker(true); }} className="w-full mb-8 bg-stone-800 text-white p-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-transform">
+                <button onClick={() => { setPickerMode('create'); startCreation(); setShowPicker(true); }} className={`w-full mb-8 p-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all ${isActuallyNight ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-stone-800 hover:bg-stone-900 text-white'}`}>
                     <Plus size={20} /> Créer un nouveau secteur
                 </button>
             ) : (
-                <div className="mb-8 p-4 bg-white border border-stone-200 rounded-2xl shadow-lg animate-in slide-in-from-top-4">
+                <div className={`mb-8 p-4 rounded-2xl shadow-lg animate-in slide-in-from-top-4 border transition-colors ${isActuallyNight ? 'bg-[#1c1917] border-stone-800' : 'bg-white border-stone-200'}`}>
                     <div className="flex justify-between items-center mb-4">
-                        <span className="text-xs font-black uppercase text-stone-400">Nouveau Secteur</span>
-                        <button onClick={() => setIsCreating(false)} className="text-stone-300 hover:text-stone-800"><X size={16}/></button>
+                        <span className="text-xs font-black uppercase text-stone-500">Nouveau Secteur</span>
+                        <button onClick={() => setIsCreating(false)} className="text-stone-500 hover:text-stone-300"><X size={16}/></button>
                     </div>
                     
                     <div className="flex gap-2">
-                         <div className="aspect-square w-[58px] rounded-2xl flex items-center justify-center border bg-emerald-50 border-emerald-200 text-emerald-600 cursor-default">
+                         <div className={`aspect-square w-[58px] rounded-2xl flex items-center justify-center border cursor-default relative transition-colors ${isActuallyNight ? 'bg-emerald-950/20 border-emerald-800 text-emerald-400' : 'bg-emerald-50 border-emerald-200 text-emerald-600'}`}>
                              <MapIcon size={24} />
                              <div className="absolute top-2 right-2 w-2 h-2 bg-emerald-500 rounded-full border border-white"></div>
                          </div>
-                         <input type="text" value={newLocLabel} onChange={(e) => setNewLocLabel(e.target.value)} placeholder="Nom du secteur..." autoFocus className="flex-1 px-4 bg-stone-50 border border-stone-200 rounded-2xl font-bold text-stone-800 outline-none focus:ring-2 focus:ring-emerald-400" />
-                         <button onClick={finalizeCreation} disabled={!newLocLabel.trim()} className="aspect-square w-[58px] rounded-2xl flex items-center justify-center shadow-lg bg-emerald-500 text-white disabled:bg-stone-300 disabled:text-stone-500 transition-colors">
+                         <input type="text" value={newLocLabel} onChange={(e) => setNewLocLabel(e.target.value)} placeholder="Nom du secteur..." autoFocus className={`flex-1 px-4 rounded-2xl font-bold outline-none transition-all focus:ring-2 focus:ring-emerald-500/20 ${inputBg}`} />
+                         <button onClick={finalizeCreation} disabled={!newLocLabel.trim()} className="aspect-square w-[58px] rounded-2xl flex items-center justify-center shadow-lg bg-emerald-500 text-white disabled:bg-stone-800 disabled:text-stone-600 transition-all">
                              <Check size={24} />
                          </button>
                     </div>
@@ -614,51 +620,51 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
 
             {/* LISTE DES SECTEURS */}
             <div className="space-y-3">
-                {sortedLocations.length === 0 && <div className="text-center text-stone-400 py-10 italic">Aucun secteur. Commencez par en créer un !</div>}
+                {sortedLocations.length === 0 && <div className="text-center text-stone-500 py-10 italic opacity-60">Aucun secteur. Commencez par en créer un !</div>}
                 
                 {sortedLocations.map((loc, index) => {
                     const listSafeCoords = getSafeCoords(loc);
                     const isEditingLabel = editingLabelId === loc.id;
 
                     return (
-                        <div key={loc.id} onClick={() => !isEditingLabel && handleSelectLocation(loc)} className={`group p-4 rounded-2xl border shadow-sm flex items-center justify-between transition-all cursor-pointer hover:bg-stone-50 ${isEditingLabel ? 'bg-amber-50 border-amber-200 ring-2 ring-amber-100' : 'bg-white border-stone-100'}`}>
-                            <div className="flex items-center gap-4 flex-1">
-                                <div className="w-16 h-16 rounded-xl overflow-hidden bg-stone-200 shrink-0 border border-stone-200 relative">
+                        <div key={loc.id} onClick={() => !isEditingLabel && handleSelectLocation(loc)} className={`group p-4 rounded-2xl border shadow-sm flex items-center justify-between transition-all cursor-pointer ${isEditingLabel ? (isActuallyNight ? 'bg-amber-950/10 border-amber-500/50' : 'bg-amber-50 border-amber-200 ring-2 ring-amber-100') : (isActuallyNight ? 'bg-[#1c1917] border-stone-800 hover:border-stone-700' : 'bg-white border-stone-100 hover:bg-stone-50')}`}>
+                            <div className="flex items-center gap-4 flex-1 overflow-hidden">
+                                <div className={`w-16 h-16 rounded-xl overflow-hidden shrink-0 border relative transition-colors ${isActuallyNight ? 'bg-stone-900 border-stone-800' : 'bg-stone-200 border-stone-200'}`}>
                                     {listSafeCoords ? (
                                         <img src={getStaticMapUrl(listSafeCoords.lat, listSafeCoords.lng, 12, "100x100")} className="w-full h-full object-cover" alt="Mini" />
                                     ) : (
-                                        <MapIcon className="text-stone-300 m-auto mt-4" size={24} />
+                                        <MapIcon className="text-stone-600 m-auto mt-4" size={24} />
                                     )}
                                 </div>
-                                <div className="flex-1">
+                                <div className="flex-1 overflow-hidden">
                                     {isEditingLabel ? (
                                         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                                            <input type="text" value={tempLabel} onChange={(e) => setTempLabel(e.target.value)} className="w-full bg-white border border-amber-300 rounded px-2 py-1 font-bold text-stone-800 text-sm" autoFocus />
+                                            <input type="text" value={tempLabel} onChange={(e) => setTempLabel(e.target.value)} className={`w-full rounded px-2 py-1 font-bold text-sm outline-none ${isActuallyNight ? 'bg-stone-900 text-stone-100 border border-stone-700' : 'bg-white text-stone-800 border border-amber-300'}`} autoFocus />
                                             <button onClick={(e) => { e.stopPropagation(); onEditLocation(loc.id, tempLabel); setEditingLabelId(null); }} className="p-1 bg-amber-500 text-white rounded"><Check size={14}/></button>
                                         </div>
                                     ) : (
-                                        <div className="font-bold text-stone-700 text-lg flex items-center gap-2">
-                                            {loc.label} 
-                                            <button onClick={(e) => { e.stopPropagation(); handleToggleFavorite(loc); }} className={`${loc.isFavorite ? 'text-amber-500' : 'text-stone-200 hover:text-stone-400'}`}>
+                                        <div className={`font-bold text-lg flex items-center gap-2 transition-colors ${textTitle}`}>
+                                            <span className="truncate">{loc.label}</span>
+                                            <button onClick={(e) => { e.stopPropagation(); handleToggleFavorite(loc); }} className={`${loc.isFavorite ? 'text-amber-500' : 'text-stone-700 hover:text-stone-500'}`}>
                                                 <Star size={16} fill={loc.isFavorite ? "currentColor" : "none"} />
                                             </button>
                                         </div>
                                     )}
-                                    <div className="text-xs text-stone-400 font-medium mt-1 flex items-center gap-2">
-                                        <span>{spots.filter(s => s.locationId === loc.id).length} Spots</span>
-                                        {(!loc.speciesIds || loc.speciesIds.length === 0) && <span className="text-rose-400 flex items-center gap-1"><AlertCircle size={10}/> Config Bio manquante</span>}
+                                    <div className="text-xs font-medium mt-1 flex items-center gap-2 transition-colors opacity-70">
+                                        <span className={textTitle}>{spots.filter(s => s.locationId === loc.id).length} Spots</span>
+                                        {(!loc.speciesIds || loc.speciesIds.length === 0) && <span className="text-rose-500 flex items-center gap-1"><AlertCircle size={10}/> Config Bio manquante</span>}
                                     </div>
                                 </div>
                             </div>
                             
-                            <div className="flex items-center gap-1 pl-2 border-l border-stone-100 ml-2">
+                            <div className={`flex items-center gap-1 pl-2 border-l ml-2 transition-colors ${isActuallyNight ? 'border-stone-800' : 'border-stone-100'}`}>
                                 <div className="flex flex-col gap-1 mr-1">
-                                    {index > 0 && <button onClick={(e) => { e.stopPropagation(); onMoveLocation(loc.id, 'up'); }} className="p-1 hover:bg-stone-200 rounded text-stone-400"><ChevronUp size={12} /></button>}
-                                    {index < sortedLocations.length - 1 && <button onClick={(e) => { e.stopPropagation(); onMoveLocation(loc.id, 'down'); }} className="p-1 hover:bg-stone-200 rounded text-stone-400"><ChevronDown size={12} /></button>}
+                                    {index > 0 && <button onClick={(e) => { e.stopPropagation(); onMoveLocation(loc.id, 'up'); }} className="p-1 hover:bg-stone-800 rounded text-stone-600 transition-colors"><ChevronUp size={12} /></button>}
+                                    {index < sortedLocations.length - 1 && <button onClick={(e) => { e.stopPropagation(); onMoveLocation(loc.id, 'down'); }} className="p-1 hover:bg-stone-800 rounded text-stone-600 transition-colors"><ChevronDown size={12} /></button>}
                                 </div>
-                                <button onClick={(e) => { e.stopPropagation(); setEditingLabelId(loc.id); setTempLabel(loc.label); }} className="p-2 text-stone-300 hover:text-amber-600 transition-colors"><Edit2 size={16} /></button>
-                                <button onClick={(e) => { e.stopPropagation(); requestDelete('location', loc.id, loc.label); }} className="p-2 text-stone-300 hover:text-rose-500 transition-colors"><Trash2 size={16} /></button>
-                                {!isEditingLabel && <ChevronRight className="text-stone-300" size={20} />}
+                                <button onClick={(e) => { e.stopPropagation(); setEditingLabelId(loc.id); setTempLabel(loc.label); }} className="p-2 text-stone-600 hover:text-amber-500 transition-colors"><Edit2 size={16} /></button>
+                                <button onClick={(e) => { e.stopPropagation(); requestDelete('location', loc.id, loc.label); }} className="p-2 text-stone-600 hover:text-rose-500 transition-colors"><Trash2 size={16} /></button>
+                                {!isEditingLabel && <ChevronRight className="text-stone-700" size={20} />}
                             </div>
                         </div>
                     );

@@ -1,4 +1,4 @@
-// components/SessionFormUI.tsx - Version 4.8.17 (Night Ops UI & Haptic Feedback)
+// components/SessionFormUI.tsx - Version 4.8.18 (Night Ops Global Sync)
 import React, { useState } from 'react';
 import { 
     Save, Loader2, Fish, AlertOctagon, X, Copy, 
@@ -48,7 +48,7 @@ interface SessionFormUIProps {
     handleSaveMiss: (data: any) => void;
     handleSubmit: (e: React.FormEvent) => void;
     onCancel?: () => void;
-    isActuallyNight?: boolean; // Michael : Nouveau pour Night Ops
+    isActuallyNight?: boolean; // Michael : Pilier V8.0
 }
 
 const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
@@ -88,12 +88,12 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
         setPendingDelete({ id: '', type: null });
     };
 
-    // Styles dynamiques Michael pour Night Ops
+    // Styles dynamiques Michael pour Night Ops (#1c1917)
     const inputBg = isActuallyNight ? 'bg-stone-800 border-stone-700 text-stone-100' : 'bg-stone-50 border-transparent text-stone-700';
 
     return (
         <div className={`rounded-3xl p-6 shadow-2xl pb-24 animate-in fade-in slide-in-from-bottom-4 duration-500 transition-colors duration-500 ${
-            isActuallyNight ? 'bg-stone-900 shadow-black/40' : 'bg-white'
+            isActuallyNight ? 'bg-[#1c1917] shadow-black/40 border border-stone-800' : 'bg-white'
         }`}>
             {/* HEADER */}
             <div className="flex justify-between items-center mb-6">
@@ -214,14 +214,16 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
                         <span>Ton ressenti global</span>
                         <span className="text-amber-500 text-base font-black">{feelingScore}/10</span>
                       </label>
-                      <input type="range" min="1" max="10" value={feelingScore} onChange={e => setFeelingScore(parseInt(e.target.value))} className="w-full h-2 bg-stone-200/50 rounded-lg appearance-none cursor-pointer accent-amber-500"/>
+                      <input type="range" min="1" max="10" value={feelingScore} onChange={e => setFeelingScore(parseInt(e.target.value))} className={`w-full h-2 rounded-lg appearance-none cursor-pointer accent-amber-500 ${isActuallyNight ? 'bg-stone-800' : 'bg-stone-200/50'}`}/>
                 </div>
 
                 {/* OBSERVATIONS */}
                 <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Tes observations rapides..." className={`w-full p-4 rounded-2xl text-sm outline-none resize-none border transition-all italic ${inputBg}`} />
 
                 {/* VALIDATION HAPTIQUE */}
-                <button type="submit" disabled={isLoadingEnv} className="w-full py-5 bg-stone-800 text-white rounded-2xl font-black shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 text-lg uppercase tracking-tighter hover:bg-stone-950">
+                <button type="submit" disabled={isLoadingEnv} className={`w-full py-5 rounded-2xl font-black shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 text-lg uppercase tracking-tighter ${
+                    isActuallyNight ? 'bg-stone-100 text-[#1c1917] hover:bg-white' : 'bg-stone-800 text-white hover:bg-stone-950'
+                }`}>
                     {isLoadingEnv ? <Loader2 className="animate-spin" size={24} /> : <><Save size={24} /> {initialData ? 'Enregistre tes modifs' : 'Clôture ta session'}</>}
                 </button>
             </form>
@@ -231,18 +233,26 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
                 onSave={handleSaveCatch} initialData={editingCatch} availableZones={zones} locationId={locationId} locations={locations}   
                 availableTechniques={techniques} sessionStartTime={startTime} sessionEndTime={endTime} sessionDate={date} 
                 lureTypes={lureTypes} colors={colors} sizes={sizes} weights={weights} lastCatchDefaults={lastCatchDefaults} userId={userId}
+                isActuallyNight={isActuallyNight} // Michael : Propagation vers CatchDialog
             />
             
+            <button
+                type="button"
+                className="hidden" // Placeholder logic
+            />
+
             <MissDialog 
                 isOpen={isMissModalOpen} onClose={() => { setIsMissModalOpen(false); setEditingMiss(null); }} 
                 onSave={handleSaveMiss} initialData={editingMiss} availableZones={zones} locationId={locationId} locations={locations}   
                 sessionStartTime={startTime} sessionEndTime={endTime} sessionDate={date} lureTypes={lureTypes} colors={colors} sizes={sizes} weights={weights}
+                isActuallyNight={isActuallyNight} // Michael : Propagation vers MissDialog
             />
 
             <DeleteConfirmDialog
                 isOpen={pendingDelete.type !== null} onClose={() => setPendingDelete({ id: '', type: null })} onConfirm={confirmDeletion}
                 title={pendingDelete.type === 'catch' ? "Supprimer cette prise ?" : "Supprimer ce raté ?"}
                 customMessages={pendingDelete.type === 'catch' ? CATCH_DELETION_MESSAGES : MISS_DELETION_MESSAGES}
+                isActuallyNight={isActuallyNight} // Michael : Déjà géré dans les étapes précédentes
             />
         </div>
     );

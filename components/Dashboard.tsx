@@ -202,7 +202,8 @@ const ProgressionHeader: React.FC<any> = ({ sessions, currentUserId, userName, l
                 level={stats.levelReached} 
                 lastXpGain={isRelevantGain ? lastXpGain : 0} 
                 userName={userName}
-                variant="full" 
+                variant="full"
+                isActuallyNight={isActuallyNight} 
             />
             
             <div className={`mt-4 rounded-2xl p-4 border flex justify-between items-center transition-colors duration-500 ${

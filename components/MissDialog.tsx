@@ -1,4 +1,4 @@
-// components/MissDialog.tsx
+// components/MissDialog.tsx - Version 10.0.0 (Night Ops Miss Logging)
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, AlertOctagon, Edit2, Loader2, Cloud, CloudOff, Check } from 'lucide-react';
 import { 
@@ -7,7 +7,6 @@ import {
 } from '../types';
 import { getFunctions, httpsCallable } from 'firebase/functions'; 
 import { getApp } from 'firebase/app';
-// NETTOYAGE : Suppression de db, doc, getDoc car plus d'accès direct à environmental_logs
 import { fetchHistoricalWeatherContext } from '../lib/universal-weather-service';
 
 interface MissDialogProps {
@@ -25,11 +24,13 @@ interface MissDialogProps {
   colors: RefColor[];
   sizes: RefSize[];
   weights: RefWeight[];
+  isActuallyNight?: boolean; // Michael : Pilier V8.0 raccordé
 }
 
 const MissDialog: React.FC<MissDialogProps> = ({ 
   isOpen, onClose, onSave, initialData, availableZones, locationId, locations,
-  sessionStartTime, sessionEndTime, sessionDate, lureTypes, colors, sizes, weights 
+  sessionStartTime, sessionEndTime, sessionDate, lureTypes, colors, sizes, weights,
+  isActuallyNight // Michael : Activation du thème furtif
 }) => {
   const [type, setType] = useState<Miss['type']>('Décroché');
   const [time, setTime] = useState(sessionStartTime);
@@ -46,12 +47,10 @@ const MissDialog: React.FC<MissDialogProps> = ({
 
   const [error, setError] = useState<string | null>(null);
 
-  // --- 1. FILTRAGE DES SPOTS PAR SECTEUR ---
   const filteredSpots = useMemo(() => {
     return availableZones.filter(z => z.locationId === locationId);
   }, [availableZones, locationId]);
 
-  // --- 2. INITIALISATION DES DONNÉES ---
   useEffect(() => {
     if (isOpen) {
       setError(null);
@@ -87,16 +86,13 @@ const MissDialog: React.FC<MissDialogProps> = ({
     }
   }, [isOpen, initialData, sessionStartTime, filteredSpots]);
 
-  // --- 3. ACQUISITION ENVIRONNEMENTALE (MODÈLE UNIFIÉ) ---
   useEffect(() => {
     if (!isOpen || !time || !locationId) return;
 
     const fetchEnv = async () => {
       setIsLoadingEnv(true);
-      // NETTOYAGE : Suppression de GOLDEN_SECTOR_ID
       
       try {
-        // NETTOYAGE : Logique Universelle Uniquement
         const currentLocation = locations.find(l => l.id === locationId);
         
         if (currentLocation?.coordinates) {
@@ -173,10 +169,18 @@ const MissDialog: React.FC<MissDialogProps> = ({
     onClose();
   };
 
+  // Styles dynamiques V8.0
+  const inputBg = isActuallyNight ? 'bg-stone-800 border-stone-700 text-stone-100' : 'bg-white border-stone-200 text-stone-700';
+  const textMuted = isActuallyNight ? 'text-stone-500' : 'text-stone-400';
+
   const SelectField = ({ label, value, onChange, options, placeholder }: any) => (
     <div className="space-y-1">
-       <label className="text-[10px] font-black uppercase text-stone-400 ml-1">{label}</label>
-       <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full p-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium text-stone-700 outline-none focus:ring-2 focus:ring-rose-200">
+       <label className={`text-[10px] font-black uppercase ml-1 ${textMuted}`}>{label}</label>
+       <select 
+            value={value} 
+            onChange={(e) => onChange(e.target.value)} 
+            className={`w-full p-2.5 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-rose-500/20 transition-all border ${inputBg}`}
+        >
           <option value="">{placeholder}</option>
           {options.map((o: any) => <option key={o.id} value={o.id}>{o.label}</option>)}
        </select>
@@ -184,10 +188,12 @@ const MissDialog: React.FC<MissDialogProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-stone-900/40 backdrop-blur-sm animate-in fade-in duration-200 sm:items-center p-4">
-      <div className="w-full max-w-lg bg-[#FAF9F6] rounded-3xl shadow-2xl p-6 space-y-5 border border-white/50 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center border-b border-stone-100 pb-4">
-          <h3 className="font-bold text-lg text-rose-600 flex items-center gap-2">
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 sm:items-center p-4">
+      <div className={`w-full max-w-lg rounded-3xl shadow-2xl p-6 space-y-5 border max-h-[90vh] overflow-y-auto transition-colors duration-500 ${
+          isActuallyNight ? 'bg-[#1c1917] border-stone-800' : 'bg-[#FAF9F6] border-white/50'
+      }`}>
+        <div className={`flex justify-between items-center border-b pb-4 ${isActuallyNight ? 'border-stone-800' : 'border-stone-100'}`}>
+          <h3 className={`font-bold text-lg flex items-center gap-2 ${isActuallyNight ? 'text-rose-400' : 'text-rose-600'}`}>
             {initialData ? <><Edit2 size={20}/> Modifier le Raté</> : <><AlertOctagon size={20}/> Signaler un Raté</>}
           </h3>
           <div className="flex items-center gap-3">
@@ -197,18 +203,18 @@ const MissDialog: React.FC<MissDialogProps> = ({
                     <Cloud className={envStatus === 'simulated' ? "text-blue-500" : "text-emerald-500"} size={16}/>
                     <Check className={envStatus === 'simulated' ? "text-blue-500" : "text-emerald-500"} size={12}/>
                 </div>
-              ) : <CloudOff className="text-stone-300" size={16}/>}
-             <button onClick={onClose} className="p-2 text-stone-400 hover:bg-stone-100 rounded-full"><X size={20}/></button>
+              ) : <CloudOff className="text-stone-600" size={16}/>}
+             <button onClick={onClose} className={`p-2 rounded-full transition-colors ${isActuallyNight ? 'bg-stone-800 text-stone-400 hover:text-stone-200' : 'text-stone-400 hover:bg-stone-100'}`}><X size={20}/></button>
           </div>
         </div>
 
-        {error && <div className="bg-rose-50 text-rose-600 p-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-rose-100">{error}</div>}
+        {error && <div className="bg-rose-950/20 text-rose-500 p-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-rose-900/30">{error}</div>}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase text-stone-400 ml-1">Type d'échec</label>
-              <select value={type} onChange={(e) => setType(e.target.value as any)} className="w-full p-3 bg-white border border-stone-200 rounded-xl text-sm font-bold text-stone-700 outline-none focus:ring-2 focus:ring-rose-200">
+              <label className={`text-[10px] font-black uppercase ml-1 ${textMuted}`}>Type d'échec</label>
+              <select value={type} onChange={(e) => setType(e.target.value as any)} className={`w-full p-3 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-rose-500/20 transition-all border ${inputBg}`}>
                 <option value="Décroché">Décroché</option>
                 <option value="Casse">Casse</option>
                 <option value="Coupe">Coupe</option>
@@ -217,29 +223,37 @@ const MissDialog: React.FC<MissDialogProps> = ({
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase text-stone-400 ml-1">Heure</label>
-              <input type="time" value={time} onChange={(e) => { setTime(e.target.value); setError(null); }} className="w-full p-3 bg-white border rounded-xl text-sm font-bold text-center outline-none focus:ring-2 focus:ring-rose-200"/>
+              <label className={`text-[10px] font-black uppercase ml-1 ${textMuted}`}>Heure</label>
+              <input type="time" value={time} onChange={(e) => { setTime(e.target.value); setError(null); }} className={`w-full p-3 border rounded-xl text-sm font-bold text-center outline-none focus:ring-2 focus:ring-rose-500/20 transition-all ${inputBg}`}/>
             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-black uppercase text-stone-400 ml-1">Zone / Spot du secteur</label>
-            <select value={selectedZoneId} onChange={(e) => setSelectedZoneId(e.target.value)} className="w-full p-3 bg-white border border-stone-200 rounded-xl text-sm font-medium text-stone-700 outline-none focus:ring-2 focus:ring-rose-200" disabled={filteredSpots.length === 0}>
+            <label className={`text-[10px] font-black uppercase ml-1 ${textMuted}`}>Zone / Spot du secteur</label>
+            <select value={selectedZoneId} onChange={(e) => setSelectedZoneId(e.target.value)} className={`w-full p-3 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-rose-500/20 transition-all border ${inputBg}`} disabled={filteredSpots.length === 0}>
               {filteredSpots.map(z => <option key={z.id} value={z.id}>{z.label}</option>)}
               {filteredSpots.length === 0 && <option value="">Aucun spot pour ce secteur</option>}
             </select>
           </div>
 
-          <div className="bg-stone-100/50 p-3 rounded-2xl border border-stone-100 grid grid-cols-2 gap-3">
+          <div className={`p-3 rounded-2xl border grid grid-cols-2 gap-3 transition-colors ${isActuallyNight ? 'bg-stone-900/40 border-stone-800' : 'bg-stone-100/50 border-stone-100'}`}>
               <SelectField label="Type de Leurre" value={selectedLureTypeId} onChange={setSelectedLureTypeId} options={lureTypes} placeholder="Type..." />
               <SelectField label="Couleur" value={selectedColorId} onChange={setSelectedColorId} options={colors} placeholder="Couleur..." />
               <SelectField label="Taille" value={selectedSizeId} onChange={setSelectedSizeId} options={sizes} placeholder="Taille..." />
               <SelectField label="Poids" value={selectedWeightId} onChange={setSelectedWeightId} options={weights} placeholder="Poids..." />
           </div>
 
-          <input type="text" placeholder="Commentaire / Détail..." value={location} onChange={(e) => setLocation(e.target.value)} className="w-full p-3 bg-white border border-stone-200 rounded-xl text-sm outline-none focus:border-rose-300"/>
+          <input 
+            type="text" 
+            placeholder="Commentaire / Détail..." 
+            value={location} 
+            onChange={(e) => setLocation(e.target.value)} 
+            className={`w-full p-3 rounded-xl text-sm outline-none transition-all border ${isActuallyNight ? 'bg-stone-800 border-stone-700 text-stone-100 focus:border-rose-500/50' : 'bg-white border-stone-200 focus:border-rose-300'}`}
+          />
 
-          <button type="submit" disabled={isLoadingEnv} className="w-full bg-stone-800 text-white py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-transform">
+          <button type="submit" disabled={isLoadingEnv} className={`w-full py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-all ${
+              isActuallyNight ? 'bg-stone-100 text-[#1c1917] hover:bg-white' : 'bg-stone-800 text-white hover:bg-stone-950'
+          }`}>
             {isLoadingEnv ? <Loader2 className="animate-spin mx-auto" /> : initialData ? 'Mettre à jour' : 'Enregistrer le Raté'}
           </button>
         </form>

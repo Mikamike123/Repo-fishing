@@ -1,4 +1,4 @@
-// components/layout/ViewRouter.tsx - Version 5.0.0 (Routing & Logic Bridge)
+// components/layout/ViewRouter.tsx - Version 10.0.0 (Global Night Ops Routing)
 import React from 'react';
 import Dashboard from '../Dashboard';
 import HistoryView from '../HistoryView';
@@ -23,7 +23,11 @@ export const ViewRouter = ({ engine }: { engine: any }) => {
     switch (currentView) {
         case 'locations':
             return <LocationsManager 
-                userId={currentUserId} initialOpenLocationId={targetLocationId} locations={arsenalData.locations} spots={arsenalData.spots}
+                userId={currentUserId} 
+                initialOpenLocationId={targetLocationId} 
+                locations={arsenalData.locations} 
+                spots={arsenalData.spots}
+                isActuallyNight={isActuallyNight} // Michael : Raccordement au pilier V8.0
                 onAddLocation={(label: string, coords: any) => handleAddItem('locations', label, coords ? { coordinates: coords } : undefined)}
                 onEditLocation={(id: string, label: string, extra?: any) => handleEditItem('locations', id, label, extra)}
                 onDeleteLocation={(id: string) => handleDeleteItem('locations', id)}
@@ -87,7 +91,6 @@ export const ViewRouter = ({ engine }: { engine: any }) => {
                 onDeleteWeight={(id: string) => handleDeleteItem('ref_weights', id)} 
                 onEditWeight={(id: string, l: string) => handleEditItem('ref_weights', id, l)} 
                 onMoveWeight={(id: string, dir: 'up' | 'down') => handleMoveItem('ref_weights', id, dir)} 
-                // Michael : Re-activation des fonctions de Reset Michael (Zéro omission)
                 onResetTechniques={(defaults) => handleResetCollection('techniques', defaults, arsenalData.techniques)} 
                 onResetLureTypes={(defaults) => handleResetCollection('ref_lure_types', defaults, arsenalData.lureTypes)} 
                 onResetColors={(defaults) => handleResetCollection('ref_colors', defaults, arsenalData.colors)} 
