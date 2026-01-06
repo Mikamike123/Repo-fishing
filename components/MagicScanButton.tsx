@@ -56,14 +56,14 @@ const MagicScanButton: React.FC<MagicScanButtonProps> = ({
                     const ctx = canvas.getContext('2d');
                     ctx?.drawImage(img, 0, 0, width, height);
 
-                    const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+                    const base64 = canvas.toDataURL('image/webp', 0.7).split(',')[1];
                     canvas.toBlob((blob) => {
                         if (blob) {
                             resolve({ base64, blob });
                         } else {
                             reject(new Error("Erreur lors de la création du Blob de compression"));
                         }
-                    }, 'image/jpeg', 0.7);
+                    }, 'image/webp', 0.7);
                 };
             };
             reader.onerror = (error) => reject(error);
