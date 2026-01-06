@@ -26,7 +26,7 @@ const getEnvVar = (key: string): string | undefined => {
 };
 
 const firebaseConfig = {
-    apiKey: getEnvVar('VITE_FIREBASE_API_KEY'),
+    apiKey: 'AIzaSyBg7rhZeL217FPxcKRUqgNj_85Ujm11pQI',
     authDomain: "mysupstack.firebaseapp.com",
     projectId: "mysupstack", 
     storageBucket: "mysupstack.firebasestorage.app"

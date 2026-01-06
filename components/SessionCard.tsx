@@ -1,4 +1,4 @@
-// components/SessionCard.tsx - Version 8.0 (Soft Night Ops Official Hex)
+// components/SessionCard.tsx - Version 8.6 (Metadata Driven & Perfect Centering)
 import React, { useState } from 'react';
 import { 
     MapPin, Fish, Trash2, Edit2, User, Calendar, AlertOctagon,
@@ -58,6 +58,21 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
         .filter(c => c.photoUrls && c.photoUrls.length > 0)
         .flatMap(c => c.photoUrls!);
 
+    // Michael : Détection basée sur la metadata portée par la session
+    const morphology = (env?.metadata as any)?.morphologyType || (session as any).morphologyId;
+    const is9IconMode = ['Z_POND', 'Z_DEEP'].includes(morphology);
+
+    // Michael : On prépare la liste filtrée des indicateurs pour la grille
+    const allIndicators = [
+        ...Object.entries(WEATHER_METADATA).map(([key, meta]) => ({ key, meta, source: 'weather' })),
+        ...Object.entries(HYDRO_METADATA).map(([key, meta]) => ({ key, meta, source: 'hydro' }))
+    ].filter(item => {
+        if (item.key === 'level') return false;
+        // Michael : Règle d'affichage dynamique pour le courant
+        if (item.key === 'flowIndex' && is9IconMode) return false;
+        return true;
+    });
+
     const MiniEnvTile = ({ meta, value, customUnit, isEstimated }: { 
         meta: IndicatorMeta, 
         value: string | number, 
@@ -89,7 +104,7 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
         const Icon = meta.icon;
 
         return (
-            <div className={`${themes[meta.theme] || (isActuallyNight ? 'bg-stone-800 border-stone-700' : 'bg-stone-50')} flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-black shrink-0 shadow-sm transition-transform active:scale-95`}>
+            <div className={`${themes[meta.theme] || (isActuallyNight ? 'bg-stone-800 border-stone-700' : 'bg-stone-50')} flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-black w-full shadow-sm transition-transform active:scale-95`}>
                 <Icon size={14} className="opacity-70 shrink-0" />
                 <div className="flex flex-col leading-none">
                     <div className="flex items-center gap-1">
@@ -183,21 +198,47 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                     </div>
                 )}
 
-                {/* ENVIRONNEMENT */}
-                <div className="flex flex-wrap items-center gap-2.5 mb-6">
-                    {Object.entries(WEATHER_METADATA).map(([key, meta]) => {
-                        let val = env?.weather?.[meta.dataKey as keyof typeof env.weather];
-                        let customUnit = key === 'wind' ? ` km/h ${getWindDir(env?.weather?.windDirection)}` : undefined;
-                        return <MiniEnvTile key={key} meta={meta} value={val !== undefined ? Math.round(val as number) : '--'} customUnit={customUnit} />;
-                    })}
+                {/* ENVIRONNEMENT : Grille dynamique (3x3 pour Etang/Z_DEEP, 3x3+1 pour les autres) */}
+                <div className="grid grid-cols-3 gap-2.5 mb-6 w-full max-w-fit md:max-w-2xl">
+                    {allIndicators.map((item) => {
+                        const { key, meta, source } = item;
+                        
+                        // Michael : Positionnement dynamique chirurgical
+                        const isOxygen = key === 'oxygen';
+                        // On force le centrage sur ligne 4 (col-start-2) UNIQUEMENT si on n'est pas en mode 9 icônes
+                        const gridClasses = (isOxygen && !is9IconMode) ? "col-start-2 mt-1" : "";
+                        
+                        let val: any;
+                        let customUnit: string | undefined;
+                        let isEstimated = false;
 
-                    {Object.entries(HYDRO_METADATA).map(([key, meta]) => {
-                        if (key === 'level') return null;
-                        let val = env?.hydro?.[meta.dataKey as keyof typeof env.hydro];
-                        if (val === undefined || val === null) return null;
-                        let displayVal: string | number = (key === 'waterTemp' || key === 'turbidity' || key === 'oxygen') ? (val as number).toFixed(1) : Math.round(val as number);
-                        let customUnit = (key === 'flowIndex' && (env?.metadata as any)?.flowStatus) ? `% (${(env.metadata as any).flowStatus})` : undefined;
-                        return <MiniEnvTile key={key} meta={meta} value={displayVal} customUnit={customUnit} isEstimated={true} />;
+                        if (source === 'weather') {
+                            val = env?.weather?.[meta.dataKey as keyof typeof env.weather];
+                            if (key === 'wind') customUnit = ` km/h ${getWindDir(env?.weather?.windDirection)}`;
+                        } else {
+                            val = env?.hydro?.[meta.dataKey as keyof typeof env.hydro];
+                            isEstimated = true;
+                            if (key === 'flowIndex' && (env?.metadata as any)?.flowStatus) {
+                                customUnit = `% (${(env.metadata as any).flowStatus})`;
+                            }
+                        }
+
+                        if (val === undefined || val === null || val === '--') return null;
+
+                        const displayVal = (key === 'waterTemp' || key === 'turbidity' || key === 'oxygen') 
+                            ? (val as number).toFixed(1) 
+                            : Math.round(val as number);
+
+                        return (
+                            <div key={key} className={gridClasses}>
+                                <MiniEnvTile 
+                                    meta={meta} 
+                                    value={displayVal} 
+                                    customUnit={customUnit} 
+                                    isEstimated={isEstimated} 
+                                />
+                            </div>
+                        );
                     })}
                 </div>
 

@@ -1,4 +1,4 @@
-// components/ProfileView.tsx - Version 9.9 (Soft Night Ops & Full Tutoiement)
+// components/ProfileView.tsx - Version 10.0 (Cloud Storage & Anti-Crash)
 import React, { useState, useMemo, useRef } from 'react';
 import { 
     User, Camera, Calendar, Fish, 
@@ -8,7 +8,9 @@ import {
 } from 'lucide-react';
 import { Session, UserProfile, AppData } from '../types';
 import { doc, updateDoc } from 'firebase/firestore'; 
-import { db } from '../lib/firebase';
+// Michael : Ajout des imports pour Firebase Storage
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../lib/firebase';
 import { buildUserHistory } from '../lib/gamification';
 
 // IMPORTS MODULAIRES
@@ -94,6 +96,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
       }
   };
 
+  // Michael : Gestion de la photo avec upload Storage (Solution 2)
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (!file) return;
@@ -104,20 +107,39 @@ const ProfileView: React.FC<ProfileViewProps> = ({
           img.src = reader.result as string;
           img.onload = async () => {
               const canvas = document.createElement('canvas');
-              const MAX_WIDTH = 300; 
+              // Michael : Compression locale avant upload pour économiser la data
+              const MAX_WIDTH = 200; 
               const scaleSize = MAX_WIDTH / img.width;
               canvas.width = MAX_WIDTH;
               canvas.height = img.height * scaleSize;
               const ctx = canvas.getContext('2d');
               ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+              
+              // Michael : On génère un JPEG compressé à 0.7
               const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
               
               try {
+                  // Michael : 1. Création de la référence dans Storage
+                  const storageRef = ref(storage, `avatars/${userProfile.id}.jpg`);
+                  
+                  // Michael : 2. Upload de la chaîne Base64 vers Storage
+                  console.log("📡 Upload de l'avatar vers Storage...");
+                  await uploadString(storageRef, compressedBase64, 'data_url');
+                  
+                  // Michael : 3. Récupération de l'URL publique générée
+                  const downloadURL = await getDownloadURL(storageRef);
+
+                  // Michael : 4. Mise à jour Firestore (on stocke l'URL et non le Base64 !)
                   const userDocRef = doc(db, "users", userProfile.id);
-                  await updateDoc(userDocRef, { avatarBase64: compressedBase64 });
-                  onUpdateProfile({ ...userProfile, avatarBase64: compressedBase64 });
+                  await updateDoc(userDocRef, { avatarBase64: downloadURL });
+                  
+                  // Michael : 5. Sync de l'état local
+                  onUpdateProfile({ ...userProfile, avatarBase64: downloadURL });
+                  console.log("✅ Avatar mis à jour via URL Storage");
+                  
               } catch (e) { 
-                  alert("Erreur lors de l'envoi de ta photo.");
+                  console.error("Erreur d'upload Michael :", e);
+                  alert("Erreur lors de l'envoi de ta photo sur le Cloud.");
               }
           };
       };
@@ -128,6 +150,8 @@ const ProfileView: React.FC<ProfileViewProps> = ({
   const cardClass = isActuallyNight 
     ? "bg-[#292524] border-stone-800 shadow-none" 
     : "bg-white border-stone-100 shadow-sm";
+
+  if (!userProfile) return <div className="p-20 text-red-500">Michael, le profil est UNDEFINED</div>;
 
   return (
     <div className="pb-24 animate-in fade-in duration-300 space-y-8 px-4">

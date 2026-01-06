@@ -1,4 +1,4 @@
-// components/layout/ViewRouter.tsx - Version 10.0.0 (Global Night Ops Routing)
+// components/layout/ViewRouter.tsx - Version 10.1.0 (Debug & Anti-Crash)
 import React from 'react';
 import Dashboard from '../Dashboard';
 import HistoryView from '../HistoryView';
@@ -7,6 +7,38 @@ import CoachView from '../CoachView';
 import ProfileView from '../ProfileView';
 import SessionForm from '../SessionForm';
 import LocationsManager from '../LocationsManager';
+
+// --- Michael : Petit outil de diagnostic visuel pour mobile ---
+const DebugOverlay = ({ data }: { data: any }) => (
+    <div style={{ 
+        position: 'fixed', 
+        bottom: '100px', 
+        left: '20px', 
+        right: '20px', 
+        background: 'rgba(0,0,0,0.9)', 
+        color: '#00ff00', 
+        padding: '15px', 
+        fontSize: '11px', 
+        zIndex: 9999, 
+        borderRadius: '15px', 
+        fontFamily: 'monospace',
+        border: '1px solid #333',
+        pointerEvents: 'none'
+    }}>
+        <div style={{ fontWeight: 'bold', borderBottom: '1px solid #333', marginBottom: '5px', paddingBottom: '3px' }}>
+            🔧 ORACLE DIAGNOSTIC
+        </div>
+        <div>AUTH_READY: {data.authLoading ? '⏳ LOADING' : '✅ OK'}</div>
+        <div>USER_AUTH: {data.hasUser ? `✅ ${data.email}` : '❌ NO_USER'}</div>
+        <div>WHITELIST: {data.isWhitelisted === null ? '⏳ CHECKING' : (data.isWhitelisted ? '✅ YES' : '❌ NO')}</div>
+        <div>PROFILE_LOAD: {data.profileExists ? '✅ LOADED' : '❌ WAITING'}</div>
+        <div>UID: {data.userId || 'none'}</div>
+        <div>ERROR: {data.error || 'NONE'}</div>
+        <div style={{ marginTop: '5px', color: '#888', fontSize: '9px' }}>
+            ID: {data.userId || 'none'}
+        </div>
+    </div>
+);
 
 export const ViewRouter = ({ engine }: { engine: any }) => {
     const { 
@@ -17,7 +49,8 @@ export const ViewRouter = ({ engine }: { engine: any }) => {
         setActiveLocationId, handleMagicDiscovery, displayedWeather, lastSyncTimestamp, 
         isActuallyNight, handleDeleteSession, handleEditRequest, handleSaveSession, 
         editingSession, magicDraft, lastCatchDefaults, themeMode, setUserProfile, 
-        handleLogout, handleResetCollection, currentLiveSnapshot 
+        handleLogout, handleResetCollection, currentLiveSnapshot,
+        user, authLoading, isWhitelisted // Michael : On récupère les états bruts pour le debug
     } = engine;
 
     switch (currentView) {
@@ -27,7 +60,7 @@ export const ViewRouter = ({ engine }: { engine: any }) => {
                 initialOpenLocationId={targetLocationId} 
                 locations={arsenalData.locations} 
                 spots={arsenalData.spots}
-                isActuallyNight={isActuallyNight} // Michael : Raccordement au pilier V8.0
+                isActuallyNight={isActuallyNight}
                 onAddLocation={(label: string, coords: any) => handleAddItem('locations', label, coords ? { coordinates: coords } : undefined)}
                 onEditLocation={(id: string, label: string, extra?: any) => handleEditItem('locations', id, label, extra)}
                 onDeleteLocation={(id: string) => handleDeleteItem('locations', id)}
@@ -106,9 +139,33 @@ export const ViewRouter = ({ engine }: { engine: any }) => {
             />;
 
         case 'profile':
+            // Michael : Si le profil n'est pas prêt, on affiche le message ET le diagnostic
+            if (!userProfile) {
+                return (
+                    <div className="p-20 text-center flex flex-col items-center justify-center min-h-[60vh]">
+                        <div className="opacity-50 font-black uppercase tracking-widest animate-pulse">
+                            Chargement du profil...
+                        </div>
+                        <DebugOverlay data={{ 
+                            authLoading, 
+                            hasUser: !!user, 
+                            email: user?.email, 
+                            isWhitelisted, 
+                            profileExists: !!userProfile,
+                            userId: currentUserId 
+                        }} />
+                    </div>
+                );
+            }
+
             return <ProfileView 
-                userProfile={userProfile!} sessions={sessions} arsenalData={arsenalData} 
-                onUpdateProfile={setUserProfile} onLogout={handleLogout} themeMode={themeMode} isActuallyNight={isActuallyNight} 
+                userProfile={userProfile} 
+                sessions={sessions} 
+                arsenalData={arsenalData} 
+                onUpdateProfile={setUserProfile} 
+                onLogout={handleLogout} 
+                themeMode={themeMode} 
+                isActuallyNight={isActuallyNight} 
             />;
 
         case 'session':

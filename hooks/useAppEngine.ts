@@ -1,4 +1,4 @@
-// hooks/useAppEngine.ts - Version 5.0.0 (Completed Brain)
+// hooks/useAppEngine.ts - Version 5.3.0 (Diagnostic Sonde & Full Logic)
 import { useState, useEffect, useMemo } from 'react';
 import { 
     onSnapshot, query, orderBy, 
@@ -35,6 +35,7 @@ export const useAppEngine = () => {
     // --- ÉTATS UTILISATEUR & SECTEURS ---
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [isProfileLoading, setIsProfileLoading] = useState(true);
+    const [firestoreError, setFirestoreError] = useState<string | null>(null); // Michael : La sonde d'erreur
     const [activeLocationId, setActiveLocationId] = useState<string>("");
     const [oraclePoints, setOraclePoints] = useState<OracleDataPoint[]>([]);
     const [isOracleLoading, setIsOracleLoading] = useState(false);
@@ -43,7 +44,7 @@ export const useAppEngine = () => {
 
     const currentUserId = user?.uid || "guest"; 
 
-    // Michael : Feedback haptique pattern marqué pour validation physique
+    // Michael : Feedback haptique
     const triggerHaptic = (pattern = [30, 50, 30]) => {
         if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(pattern);
     };
@@ -72,15 +73,28 @@ export const useAppEngine = () => {
         };
     }, []);
 
-    // --- LOGIQUE AUTH & FIREBASE ---
+    // --- LOGIQUE AUTH & WHITELIST (NORMALISÉE) ---
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             setAuthLoading(true);
             if (firebaseUser?.email) {
-                const whitelistDoc = await getDoc(doc(db, 'authorized_users', firebaseUser.email));
-                if (whitelistDoc.exists()) { setUser(firebaseUser); setIsWhitelisted(true); }
-                else { setIsWhitelisted(false); }
-            } else { setUser(null); setIsWhitelisted(null); }
+                const normalizedEmail = firebaseUser.email.toLowerCase().trim();
+                try {
+                    const whitelistDoc = await getDoc(doc(db, 'authorized_users', normalizedEmail));
+                    if (whitelistDoc.exists()) { 
+                        setUser(firebaseUser); 
+                        setIsWhitelisted(true); 
+                    } else { 
+                        setIsWhitelisted(false); 
+                    }
+                } catch (error) {
+                    console.error("🔥 Erreur Whitelist:", error);
+                    setIsWhitelisted(false);
+                }
+            } else { 
+                setUser(null); 
+                setIsWhitelisted(null); 
+            }
             setAuthLoading(false);
         });
         return () => unsubscribe();
@@ -88,7 +102,6 @@ export const useAppEngine = () => {
 
     const { arsenalData, handleAddItem, handleDeleteItem, handleEditItem, handleMoveItem, handleToggleLocationFavorite } = useArsenal(currentUserId);
 
-    // Michael : Reset des collections d'Arsenal
     const handleResetCollection = async (collectionName: string, defaultItems: any[], currentItems: any[]) => {
         try {
             const deletePromises = currentItems.map(item => deleteDoc(doc(db, collectionName, item.id)));
@@ -117,14 +130,12 @@ export const useAppEngine = () => {
 
     const activeLocation = useMemo(() => arsenalData.locations.find(l => l.id === activeLocationId), [arsenalData.locations, activeLocationId]);
 
-    // Michael : Identification du point Oracle live le plus proche
     const liveOraclePoint = useMemo(() => {
         if (!oraclePoints.length) return null;
         const nowTs = Date.now();
         return oraclePoints.reduce((prev, curr) => Math.abs(curr.timestamp - nowTs) < Math.abs(prev.timestamp - nowTs) ? curr : prev);
     }, [oraclePoints]);
 
-    // Michael : Snapshot Live complet pour le Coach IA
     const currentLiveSnapshot = useMemo(() => {
         if (!activeLocation || !liveOraclePoint || !displayedWeather) return null;
         return {
@@ -144,7 +155,7 @@ export const useAppEngine = () => {
         };
     }, [activeLocation, liveOraclePoint, displayedWeather, userProfile]);
 
-    // --- SYNCHRONISATION ORACLE & COACH RESET ---
+    // --- SYNCHRONISATION ORACLE ---
     useEffect(() => {
         const syncEnvironment = async () => {
             if (!activeLocation?.coordinates) return;
@@ -178,23 +189,34 @@ export const useAppEngine = () => {
         }
     }, [activeLocationId, lastCoachLocationId, currentUserId]);
 
-    // --- PROFIL & SESSIONS ---
+    // --- PROFIL & SESSIONS (AVEC SONDE D'ERREUR POUR MICHAEL) ---
     useEffect(() => {
-        if (!user) return;
+        if (!user || !isWhitelisted) return;
         setIsProfileLoading(true);
-        const unsubscribe = onSnapshot(doc(db, 'users', currentUserId), (docSnap) => {
+        setFirestoreError(null); // Reset de la sonde
+        
+        console.log(`📡 Abonnement profil UID: ${user.uid}`);
+        const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data() as UserProfile;
                 setUserProfile({ ...data, id: docSnap.id }); 
                 if ((data as any).themePreference) setThemeMode((data as any).themePreference);
+                console.log("✅ Profil chargé avec succès");
+            } else {
+                console.warn("⚠️ Document utilisateur inexistant");
+                setFirestoreError("DOC_NOT_FOUND");
             }
+            setIsProfileLoading(false);
+        }, (err) => {
+            console.error("🔥 Erreur Firestore Profil:", err.message);
+            setFirestoreError(err.message); // Capture l'erreur (ex: Missing Permissions)
             setIsProfileLoading(false);
         });
         return () => unsubscribe();
-    }, [currentUserId, user]);
+    }, [user, isWhitelisted]);
 
     useEffect(() => {
-        if (!user) return;
+        if (!user || !isWhitelisted) return;
         const q = query(sessionsCollection, orderBy('date', 'desc')); 
         const unsubscribeSessions = onSnapshot(q, (snapshot) => {
             const fetched = snapshot.docs.map(doc => {
@@ -203,9 +225,9 @@ export const useAppEngine = () => {
                 return { id: doc.id, ...data, date: dateString } as Session;
             });
             setSessions(fetched); setIsLoading(false);
-        });
+        }, (err) => console.error("🔥 Erreur Sessions:", err.message));
         return () => unsubscribeSessions();
-    }, [user]);
+    }, [user, isWhitelisted]);
 
     // --- HANDLERS ---
     const handleSaveSession = async (session: Session) => {
@@ -240,7 +262,8 @@ export const useAppEngine = () => {
         editingSession, setEditingSession, isMenuOpen, setIsMenuOpen, magicDraft, setMagicDraft,
         userProfile, setUserProfile, activeLocationId, setActiveLocationId, oraclePoints,
         isOracleLoading: isOracleLoading || isWeatherLoading, activeLocation, arsenalData, displayedWeather,
-        isOnline, triggerHaptic, handleLogin: () => signInWithPopup(auth, googleProvider),
+        isOnline, triggerHaptic, isWhitelisted, firestoreError, // Michael : Export de l'erreur pour le ViewRouter
+        handleLogin: () => signInWithPopup(auth, googleProvider),
         handleLogout: () => { signOut(auth); setCurrentView('dashboard'); setIsMenuOpen(false); },
         handleSaveSession, handleEditRequest: (s: Session) => { setEditingSession(s); setCurrentView('session'); },
         handleDeleteSession: async (id: string) => { await deleteDoc(doc(db, 'sessions', id)); },
