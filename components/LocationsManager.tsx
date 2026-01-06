@@ -1,4 +1,4 @@
-// components/LocationsManager.tsx - Version 10.0.0 (Full Night Ops Territory Management)
+// components/LocationsManager.tsx - Version 10.1.0 (Secure Depth Logic)
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
     MapPin, Star, Trash2, Plus, AlertCircle, ArrowLeft, 
@@ -52,7 +52,7 @@ interface LocationsManagerProps {
     onEditSpot: (id: string, label: string) => void;
     onBack: () => void;
     initialOpenLocationId?: string | null;
-    isActuallyNight?: boolean; // Michael : Pilier V8.0 raccordé [cite: 469]
+    isActuallyNight?: boolean; // Michael : Pilier V8.0 raccordé
 }
 
 const LocationsManager: React.FC<LocationsManagerProps> = ({ 
@@ -156,6 +156,16 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
         return [...locations].sort((a, b) => (a.displayOrder ?? 999) - (b.displayOrder ?? 999));
     }, [locations]);
 
+    // Michael : Calcul des bornes de profondeur selon la règle métier
+    const depthLimits = useMemo(() => {
+        switch (bioForm.depthId) {
+            case 'Z_LESS_3': return { min: 0.5, max: 3 };
+            case 'Z_3_15': return { min: 3, max: 15 };
+            case 'Z_MORE_15': return { min: 15, max: 20 };
+            default: return { min: 0.5, max: 20 };
+        }
+    }, [bioForm.depthId]);
+
     // --- LOGIQUE MÉTIER ---
 
     const handleSelectLocation = (loc: Location) => {
@@ -172,6 +182,24 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
             return;
         }
         onToggleFavorite(loc);
+    };
+
+    // Michael : Sécurisation de la profondeur moyenne lors du changement de catégorie
+    const handleDepthCategoryChange = (val: DepthCategoryID) => {
+        let newMean = bioForm.meanDepth;
+        if (val === 'Z_LESS_3' && newMean > 3) newMean = 3;
+        else if (val === 'Z_3_15') {
+            if (newMean < 3) newMean = 3;
+            if (newMean > 15) newMean = 15;
+        }
+        else if (val === 'Z_MORE_15' && newMean < 15) newMean = 15;
+
+        setBioForm({ ...bioForm, depthId: val, meanDepth: newMean });
+        
+        if (newMean !== bioForm.meanDepth) {
+            setNotification("Hop ! J'ai ajusté la profondeur moyenne pour que ça reste cohérent avec ton choix. 😉");
+            setTimeout(() => setNotification(null), 3000);
+        }
     };
 
     // --- WORKFLOW CRÉATION (MAP FIRST) ---
@@ -220,12 +248,12 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
         
         const currentSpots = spots.filter(s => s.locationId === selectedLocation.id);
         if (currentSpots.length === 0) {
-            setError("Configuration incomplète : Vous devez définir au moins un Spot dans l'onglet 'Spots' avant de sauvegarder.");
+            setError("Configuration incomplète : Tu dois définir au moins un Spot dans l'onglet 'Spots' avant de sauvegarder.");
             return;
         }
 
         if (bioForm.speciesIds.length === 0) {
-            setError("Impossible d'enregistrer : Sélectionnez au moins une espèce pour le calcul des Bioscores.");
+            setError("Impossible d'enregistrer : Sélectionne au moins une espèce pour le calcul des Bioscores.");
             return;
         }
 
@@ -346,7 +374,7 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
                     </div>
                 ) : (
                         <div className={`mb-6 h-24 rounded-2xl flex items-center justify-center border border-dashed text-xs px-4 transition-colors ${isActuallyNight ? 'bg-stone-900/40 border-stone-800 text-stone-600' : 'bg-stone-100 border-stone-300 text-stone-400'}`}>
-                        GPS manquant. Utilisez l'icône carte en haut pour définir.
+                        GPS manquant. Utilise l'icône carte en haut pour définir.
                         </div>
                 )}
 
@@ -385,7 +413,7 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className={`text-[10px] font-bold uppercase ml-1 block mb-1 ${textMuted}`}>Profondeur</label>
-                                        <select value={bioForm.depthId} onChange={(e) => setBioForm({...bioForm, depthId: e.target.value as DepthCategoryID})} className={`w-full text-sm font-bold rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all ${inputBg}`}>
+                                        <select value={bioForm.depthId} onChange={(e) => handleDepthCategoryChange(e.target.value as DepthCategoryID)} className={`w-full text-sm font-bold rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all ${inputBg}`}>
                                             {DEPTH_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                                         </select>
                                     </div>
@@ -406,7 +434,15 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
                                     <div>
                                         <label className={`text-[9px] font-bold uppercase ml-1 ${textMuted}`}>Profondeur Moyenne (m)</label>
                                         <div className="flex items-center gap-3">
-                                            <input type="range" min="0.5" max="20" step="0.5" value={bioForm.meanDepth} onChange={(e) => setBioForm({...bioForm, meanDepth: parseFloat(e.target.value)})} className={`flex-1 h-2 rounded-lg appearance-none cursor-pointer transition-all ${isActuallyNight ? 'bg-stone-800 accent-stone-200' : 'bg-stone-200 accent-stone-800'}`} />
+                                            <input 
+                                                type="range" 
+                                                min={depthLimits.min} 
+                                                max={depthLimits.max} 
+                                                step="0.5" 
+                                                value={bioForm.meanDepth} 
+                                                onChange={(e) => setBioForm({...bioForm, meanDepth: parseFloat(e.target.value)})} 
+                                                className={`flex-1 h-2 rounded-lg appearance-none cursor-pointer transition-all ${isActuallyNight ? 'bg-stone-800 accent-stone-200' : 'bg-stone-200 accent-stone-800'}`} 
+                                            />
                                             <span className={`w-12 text-right font-black px-2 py-1 rounded border text-xs transition-colors ${isActuallyNight ? 'bg-stone-900 border-stone-700 text-stone-200' : 'bg-white border-stone-200 text-stone-800'}`}>{bioForm.meanDepth}m</span>
                                         </div>
                                     </div>
@@ -527,7 +563,7 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
 
                             {bioForm.speciesIds.length === 0 && (
                                 <div className="mt-4 p-3 bg-rose-950/20 border border-rose-900/30 rounded-xl flex items-center gap-2 text-rose-500 text-xs font-bold animate-pulse">
-                                    <AlertCircle size={16}/> Sélectionner au moins une espèce.
+                                    <AlertCircle size={16}/> Sélectionne au moins une espèce.
                                 </div>
                             )}
                         </div>
@@ -567,7 +603,7 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
                 <button onClick={onBack} className={`p-2 rounded-full shadow-sm transition-colors ${isActuallyNight ? 'bg-stone-800 text-stone-400' : 'bg-white text-stone-400 hover:text-stone-800'}`}><ArrowLeft size={20} /></button>
                 <div>
                     <h2 className={`text-2xl font-black uppercase flex items-center gap-2 tracking-tighter italic ${textTitle}`}><MapPin className="text-emerald-500" /> Mes Secteurs</h2>
-                    <p className={`text-xs font-medium opacity-60 ${textTitle}`}>Gérez votre territoire de pêche.</p>
+                    <p className={`text-xs font-medium opacity-60 ${textTitle}`}>Gère ton territoire de pêche.</p>
                 </div>
             </div>
 
@@ -620,7 +656,7 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
 
             {/* LISTE DES SECTEURS */}
             <div className="space-y-3">
-                {sortedLocations.length === 0 && <div className="text-center text-stone-500 py-10 italic opacity-60">Aucun secteur. Commencez par en créer un !</div>}
+                {sortedLocations.length === 0 && <div className="text-center text-stone-500 py-10 italic opacity-60">Aucun secteur. Commence par en créer un !</div>}
                 
                 {sortedLocations.map((loc, index) => {
                     const listSafeCoords = getSafeCoords(loc);
@@ -641,6 +677,7 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
                                         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                                             <input type="text" value={tempLabel} onChange={(e) => setTempLabel(e.target.value)} className={`w-full rounded px-2 py-1 font-bold text-sm outline-none ${isActuallyNight ? 'bg-stone-900 text-stone-100 border border-stone-700' : 'bg-white text-stone-800 border border-amber-300'}`} autoFocus />
                                             <button onClick={(e) => { e.stopPropagation(); onEditLocation(loc.id, tempLabel); setEditingLabelId(null); }} className="p-1 bg-amber-500 text-white rounded"><Check size={14}/></button>
+                                            <button onClick={(e) => { e.stopPropagation(); setEditingLabelId(null); }} className="p-1 bg-rose-500 text-white rounded"><X size={14}/></button>
                                         </div>
                                     ) : (
                                         <div className={`font-bold text-lg flex items-center gap-2 transition-colors ${textTitle}`}>
