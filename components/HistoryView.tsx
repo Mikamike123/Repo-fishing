@@ -1,4 +1,4 @@
-// components/HistoryView.tsx - Version 8.0 (Soft Night Ops & Archivage Annuel)
+// components/HistoryView.tsx - Version 8.2 (Filtre Prises sur Barre Annuelle)
 import React, { useState, useMemo } from 'react';
 import { ScrollText, Users, User, Search, Clock, Calendar, ChevronDown, ChevronUp, Fish } from 'lucide-react';
 import { Session } from '../types';
@@ -25,6 +25,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
   const [showOnlyMine, setShowOnlyMine] = useState(true); 
   const [searchTerm, setSearchTerm] = useState('');
   
+  // Michael : État du filtre "Uniquement les succès"
+  const [showOnlySuccess, setShowOnlySuccess] = useState(false);
+  
   const [expandedYears, setExpandedYears] = useState<Record<string, boolean>>({});
 
   // --- LOGIQUE DE FILTRAGE & GROUPEMENT ---
@@ -40,6 +43,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
       const matchesUser = showOnlyMine ? session.userId === currentUserId : true;
       const searchLower = searchTerm.toLowerCase();
       
+      // Michael : Intégration du filtre sur le catchCount
+      const matchesSuccess = showOnlySuccess ? (session.catchCount || 0) > 0 : true;
+
       // Michael : Ta logique de recherche originale, strictement préservée.
       const matchesSearch = 
           (session.locationName || "").toLowerCase().includes(searchLower) || 
@@ -47,17 +53,16 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
           (session.notes || "").toLowerCase().includes(searchLower) ||
           (session.catches?.some(c => (c.species || "").toLowerCase().includes(searchLower) || (c.lureName || "").toLowerCase().includes(searchLower)) || false);
       
-      return matchesUser && matchesSearch;
+      return matchesUser && matchesSearch && matchesSuccess;
     });
 
-    // Archivage Annuel : Groupement par année [cite: 181]
+    // Archivage Annuel : Groupement par année
     const groups: Record<string, { sessions: Session[], totalCatches: number }> = {};
     filtered.forEach(s => {
       const ts = getTs(s.date);
       const year = new Date(ts).getFullYear().toString();
       if (!groups[year]) groups[year] = { sessions: [], totalCatches: 0 };
       groups[year].sessions.push(s);
-      // En-tête statistique : Total des prises de l'année [cite: 182]
       groups[year].totalCatches += (s.catchCount || 0);
     });
 
@@ -66,7 +71,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
     });
 
     return groups;
-  }, [sessions, showOnlyMine, currentUserId, searchTerm]);
+  }, [sessions, showOnlyMine, currentUserId, searchTerm, showOnlySuccess]);
 
   const sortedYears = useMemo(() => 
     Object.keys(groupedSessions).sort((a, b) => Number(b) - Number(a))
@@ -112,7 +117,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
           <div className={`flex p-1 rounded-xl border self-start shadow-inner ${isActuallyNight ? 'bg-stone-900 border-stone-800' : 'bg-stone-100 border-stone-200'}`}>
               <button 
                   onClick={() => setShowOnlyMine(false)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${!showOnlyMine ? (isActuallyNight ? 'bg-stone-800 text-stone-100' : 'bg-white text-stone-800 shadow-sm') : 'text-stone-400 hover:text-stone-500'}`}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${!showOnlyMine ? (isActuallyNight ? 'bg-stone-800 text-stone-100' : 'bg-white text-stone-800 shadow-sm') : 'text-stone-400 hover:text-stone-50'}`}
               >
                   <Users size={14} /> Tous
               </button>
@@ -137,7 +142,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
         </div>
       </div>
 
-      {/* LISTE GROUPÉE PAR ANNÉE AVEC ACCORDÉONS [cite: 180, 183] */}
+      {/* LISTE GROUPÉE PAR ANNÉE AVEC ACCORDÉONS */}
       <div className="space-y-6">
         {sortedYears.length > 0 ? (
           sortedYears.map((year) => {
@@ -159,10 +164,23 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${isActuallyNight ? 'bg-stone-800 border-stone-700 text-stone-400' : 'bg-stone-50 border-stone-100 text-stone-400'}`}>
                           {yearData.sessions.length} sessions
                         </span>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${isActuallyNight ? 'bg-emerald-900/20 border-emerald-900/30 text-emerald-500' : 'bg-emerald-50 border-emerald-100 text-emerald-600'} flex items-center gap-1`}>
-                          <Fish size={10} />
-                          {yearData.totalCatches} prises
-                        </span>
+                        
+                        {/* Michael : Le Toggle "Poisson" est maintenant ici, sur la séparation par année */}
+                        <button 
+                            onClick={(e) => {
+                                e.stopPropagation(); // Évite de fermer l'accordéon au clic
+                                if (window.navigator?.vibrate) window.navigator.vibrate(10);
+                                setShowOnlySuccess(!showOnlySuccess);
+                            }}
+                            className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-black transition-all active:scale-95 ${
+                                showOnlySuccess 
+                                    ? (isActuallyNight ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' : 'bg-emerald-100 border-emerald-300 text-emerald-700 shadow-inner')
+                                    : (isActuallyNight ? 'bg-stone-800 border-stone-700 text-stone-400' : 'bg-stone-50 border-stone-100 text-stone-400')
+                            }`}
+                        >
+                            <Fish size={10} fill={showOnlySuccess ? "currentColor" : "none"} />
+                            {yearData.totalCatches} prises
+                        </button>
                     </div>
                   </div>
                   {isExpanded ? <ChevronUp size={18} className="text-stone-400" /> : <ChevronDown size={18} className="text-stone-400" />}
@@ -204,7 +222,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
              </div>
              <h3 className={`font-black uppercase tracking-tighter text-lg ${isActuallyNight ? 'text-stone-400' : 'text-stone-500'}`}>Aucun résultat</h3>
              <p className="text-stone-400 text-sm italic mt-1 max-w-xs font-medium">
-               {searchTerm ? "Aucun secteur ou note ne correspond à cette recherche." : "Ton journal est vide."}
+               {searchTerm || showOnlySuccess ? "Aucune session ne correspond à tes filtres actuels." : "Ton journal est vide."}
              </p>
           </div>
         )}
