@@ -1,4 +1,4 @@
-// hooks/useAppEngine.ts - Version 5.3.0 (Diagnostic Sonde & Full Logic)
+// hooks/useAppEngine.ts - Version 5.4.0 (Onboarding Support)
 import { useState, useEffect, useMemo } from 'react';
 import { 
     onSnapshot, query, orderBy, 
@@ -6,13 +6,12 @@ import {
 } from 'firebase/firestore'; 
 import { onAuthStateChanged, signInWithPopup, signOut, User as FirebaseUser } from 'firebase/auth';
 import { db, sessionsCollection, auth, googleProvider, clearChatHistory } from '../lib/firebase'; 
-import { getUserProfile, createUserProfile } from '../lib/user-service';
+import { getUserProfile, createUserProfile } from '../lib/user-service'; // Michael : Assure-toi que createUserProfile est bien exporté
 import { useArsenal } from '../lib/useArsenal'; 
 import { getOrFetchOracleData, cleanupOracleCache } from '../lib/oracle-service'; 
 import { Session, UserProfile, WeatherSnapshot, OracleDataPoint } from '../types';
 
 export const useAppEngine = () => {
-    // --- ÉTATS SYSTÈME & THEME ---
     const [user, setUser] = useState<FirebaseUser | null>(null);
     const [isWhitelisted, setIsWhitelisted] = useState<boolean | null>(null);
     const [authLoading, setAuthLoading] = useState(true);
@@ -22,7 +21,6 @@ export const useAppEngine = () => {
     const [lastCoachLocationId, setLastCoachLocationId] = useState<string>("");
     const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-    // --- ÉTATS NAVIGATION ---
     const [currentView, setCurrentView] = useState<any>('dashboard'); 
     const [sessions, setSessions] = useState<Session[]>([]); 
     const [activeDashboardTab, setActiveDashboardTab] = useState<'live' | 'tactics' | 'activity' | 'experience'>('live');
@@ -32,10 +30,9 @@ export const useAppEngine = () => {
     const [magicDraft, setMagicDraft] = useState<any>(null);
     const [targetLocationId, setTargetLocationId] = useState<string | null>(null);
 
-    // --- ÉTATS UTILISATEUR & SECTEURS ---
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [isProfileLoading, setIsProfileLoading] = useState(true);
-    const [firestoreError, setFirestoreError] = useState<string | null>(null); // Michael : La sonde d'erreur
+    const [firestoreError, setFirestoreError] = useState<string | null>(null); 
     const [activeLocationId, setActiveLocationId] = useState<string>("");
     const [oraclePoints, setOraclePoints] = useState<OracleDataPoint[]>([]);
     const [isOracleLoading, setIsOracleLoading] = useState(false);
@@ -44,12 +41,10 @@ export const useAppEngine = () => {
 
     const currentUserId = user?.uid || "guest"; 
 
-    // Michael : Feedback haptique
     const triggerHaptic = (pattern = [30, 50, 30]) => {
         if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(pattern);
     };
 
-    // --- MOTEUR NIGHT OPS & RÉSEAU ---
     useEffect(() => {
         const checkTheme = () => {
             if (themeMode === 'auto') {
@@ -73,7 +68,6 @@ export const useAppEngine = () => {
         };
     }, []);
 
-    // --- LOGIQUE AUTH & WHITELIST (NORMALISÉE) ---
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             setAuthLoading(true);
@@ -115,7 +109,6 @@ export const useAppEngine = () => {
         } catch (e) { console.error(`Erreur Reset Michael :`, e); }
     };
 
-    // --- CALCULS SESSIONS & LAST CATCH ---
     const mySessions = useMemo(() => sessions.filter(s => s.userId === currentUserId), [sessions, currentUserId]);
     const lastCatchDefaults = useMemo(() => (mySessions[0]?.catches?.length ? mySessions[0].catches[mySessions[0].catches.length - 1] : null), [mySessions]);
 
@@ -155,7 +148,6 @@ export const useAppEngine = () => {
         };
     }, [activeLocation, liveOraclePoint, displayedWeather, userProfile]);
 
-    // --- SYNCHRONISATION ORACLE ---
     useEffect(() => {
         const syncEnvironment = async () => {
             if (!activeLocation?.coordinates) return;
@@ -189,31 +181,46 @@ export const useAppEngine = () => {
         }
     }, [activeLocationId, lastCoachLocationId, currentUserId]);
 
-    // --- PROFIL & SESSIONS (AVEC SONDE D'ERREUR POUR MICHAEL) ---
     useEffect(() => {
         if (!user || !isWhitelisted) return;
         setIsProfileLoading(true);
-        setFirestoreError(null); // Reset de la sonde
+        setFirestoreError(null); 
         
-        console.log(`📡 Abonnement profil UID: ${user.uid}`);
         const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data() as UserProfile;
                 setUserProfile({ ...data, id: docSnap.id }); 
                 if ((data as any).themePreference) setThemeMode((data as any).themePreference);
-                console.log("✅ Profil chargé avec succès");
+                setFirestoreError(null); // Michael : On nettoie l'erreur si le doc apparaît
             } else {
-                console.warn("⚠️ Document utilisateur inexistant");
                 setFirestoreError("DOC_NOT_FOUND");
             }
             setIsProfileLoading(false);
         }, (err) => {
-            console.error("🔥 Erreur Firestore Profil:", err.message);
-            setFirestoreError(err.message); // Capture l'erreur (ex: Missing Permissions)
+            setFirestoreError(err.message); 
             setIsProfileLoading(false);
         });
         return () => unsubscribe();
     }, [user, isWhitelisted]);
+
+    useEffect(() => {
+        if (firestoreError === "DOC_NOT_FOUND") {
+            setCurrentView('profile');
+        }
+    }, [firestoreError]);
+
+    // Michael : Nouveau handler pour créer le profil depuis l'UI Onboarding
+    const handleCreateProfile = async (pseudo: string) => {
+        if (!user) return;
+        try {
+            triggerHaptic([50, 50, 50]);
+            await createUserProfile(user.uid, pseudo);
+            // Le onSnapshot s'occupera de mettre à jour userProfile automatiquement
+            setCurrentView('dashboard');
+        } catch (e) {
+            console.error("Erreur création profil Michael :", e);
+        }
+    };
 
     useEffect(() => {
         if (!user || !isWhitelisted) return;
@@ -229,7 +236,6 @@ export const useAppEngine = () => {
         return () => unsubscribeSessions();
     }, [user, isWhitelisted]);
 
-    // --- HANDLERS ---
     const handleSaveSession = async (session: Session) => {
         triggerHaptic();
         if (session.id) {
@@ -262,7 +268,7 @@ export const useAppEngine = () => {
         editingSession, setEditingSession, isMenuOpen, setIsMenuOpen, magicDraft, setMagicDraft,
         userProfile, setUserProfile, activeLocationId, setActiveLocationId, oraclePoints,
         isOracleLoading: isOracleLoading || isWeatherLoading, activeLocation, arsenalData, displayedWeather,
-        isOnline, triggerHaptic, isWhitelisted, firestoreError, // Michael : Export de l'erreur pour le ViewRouter
+        isOnline, triggerHaptic, isWhitelisted, firestoreError, handleCreateProfile,
         handleLogin: () => signInWithPopup(auth, googleProvider),
         handleLogout: () => { signOut(auth); setCurrentView('dashboard'); setIsMenuOpen(false); },
         handleSaveSession, handleEditRequest: (s: Session) => { setEditingSession(s); setCurrentView('session'); },
