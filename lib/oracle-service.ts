@@ -1,10 +1,17 @@
-// lib/oracle-service.ts - Version 7.8 (Offline First & Garbage Collection)
-import { calculateUniversalBioScores, BioContext, BioScores } from './bioScoreEngine';
+// lib/oracle-service.ts - Version 8.1 (Atomic Snapshot & SWR Logic)
+import { calculateUniversalBioScores, BioContext } from './bioScoreEngine';
 import { solveDissolvedOxygen, calculateWaveHeight, BASSIN_TURBIDITY_BASE } from './zeroHydroEngine'; 
-import { LocationMorphology, DepthCategoryID, BassinType, OracleDataPoint } from '../types';
+import { 
+    LocationMorphology, 
+    DepthCategoryID, 
+    BassinType, 
+    OracleDataPoint, 
+    FullEnvironmentalSnapshot, 
+    SCHEMA_VERSION 
+} from '../types';
 
 // Michael : Constantes de gestion du cache
-const CACHE_KEY_PREFIX = 'oracle_cache_';
+const CACHE_KEY_PREFIX = 'oracle_cache_v8_'; // Nouveau préfixe pour isoler la v8
 const CACHE_DURATION_MS = 30 * 60 * 1000; // 30 minutes pour la fraîcheur
 const MAX_CACHE_AGE_MS = 24 * 60 * 60 * 1000; // 24 heures pour le nettoyage
 
@@ -33,26 +40,65 @@ const ALPHA_RAIN = 1.8;
 const DAILY_DECAY = 0.77;
 
 /**
- * [NOUVEAU] Michael : Garbage Collection
- * Supprime les entrées de cache vieilles de plus de 24h
+ * [NOUVEAU] Michael : Transforme un point de donnée en Snapshot Atomique
+ */
+export const mapPointToSnapshot = (point: OracleDataPoint, morphology?: LocationMorphology): FullEnvironmentalSnapshot => {
+    return {
+        weather: {
+            temperature: point.airTemp,
+            pressure: point.pressure,
+            windSpeed: point.windSpeed,
+            windDirection: point.windDirection,
+            precip: point.precip,
+            clouds: point.clouds,
+            conditionCode: point.conditionCode
+        },
+        hydro: {
+            flowRaw: point.flowRaw,
+            waterTemp: point.waterTemp,
+            tFond: point.tFond,
+            turbidityNTU: point.turbidityNTU,
+            dissolvedOxygen: point.dissolvedOxygen,
+            waveHeight: point.waveHeight
+        },
+        scores: {
+            sandre: point.sandre,
+            brochet: point.brochet,
+            perche: point.perche,
+            blackbass: point.blackbass
+        },
+        metadata: {
+            calculationDate: new Date().toISOString(),
+            calculationMode: 'ULTREIA_CALIBRATED',
+            flowStatus: point.flowStatus,
+            morphologyType: morphology?.typeId,
+            schemaVersion: SCHEMA_VERSION
+        }
+    };
+};
+
+/**
+ * Garbage Collection : Supprime les entrées de cache obsolètes ou mal versionnées
  */
 export const cleanupOracleCache = () => {
     const keys = Object.keys(localStorage);
     const now = Date.now();
 
     keys.forEach(key => {
-        if (key.startsWith(CACHE_KEY_PREFIX)) {
+        if (key.startsWith('oracle_cache_')) { // On check tous les anciens préfixes aussi
             try {
                 const item = localStorage.getItem(key);
                 if (item) {
-                    const { timestamp } = JSON.parse(item);
-                    if (now - timestamp > MAX_CACHE_AGE_MS) {
+                    const parsed = JSON.parse(item);
+                    const isOldVersion = !key.startsWith(CACHE_KEY_PREFIX) || parsed.version !== SCHEMA_VERSION;
+                    const isExpired = now - parsed.timestamp > MAX_CACHE_AGE_MS;
+
+                    if (isOldVersion || isExpired) {
                         localStorage.removeItem(key);
-                        console.log(`🧹 [GC Oracle] Cache expiré supprimé : ${key}`);
+                        console.log(`🧹 [GC Oracle] Nettoyage : ${key} (${isOldVersion ? 'Ancienne version' : 'Expiré'})`);
                     }
                 }
             } catch (e) {
-                // Suppression préventive si le format est corrompu
                 localStorage.removeItem(key);
             }
         }
@@ -60,60 +106,71 @@ export const cleanupOracleCache = () => {
 };
 
 /**
- * [MODIFIÉ] Gère la récupération intelligente : Cache Local vs API (avec Fallback Hors-Ligne)
+ * [MODIFIÉ v8.1] Gère la récupération intelligente avec Snapshot Atomique
  */
 export const getOrFetchOracleData = async (
     lat: number, 
     lng: number, 
     locationId: string,
     morphology?: LocationMorphology
-): Promise<OracleDataPoint[]> => {
+): Promise<{ points: OracleDataPoint[], snapshot: FullEnvironmentalSnapshot }> => {
     const cacheKey = `${CACHE_KEY_PREFIX}${locationId}`;
     const cached = localStorage.getItem(cacheKey);
 
     let cachedValue: any = null;
     
-    // 1. Analyse du cache existant
+    // 1. Analyse du cache
     if (cached) {
         try {
             cachedValue = JSON.parse(cached);
             const age = Date.now() - cachedValue.timestamp;
             
-            // Si le cache est très récent (< 30 min), on l'utilise direct
-            if (age < CACHE_DURATION_MS) {
-                console.log(`🚀 [Cache Oracle] Secteur ${locationId} : Donnée fraîche (${Math.round(age/60000)}min).`);
-                return cachedValue.data;
+            // Si cache frais ET bonne version
+            if (age < CACHE_DURATION_MS && cachedValue.version === SCHEMA_VERSION) {
+                console.log(`🚀 [Cache Oracle v${SCHEMA_VERSION}] Donnée fraîche pour ${locationId}.`);
+                return { 
+                    points: cachedValue.data, 
+                    snapshot: cachedValue.snapshot 
+                };
             }
         } catch (e) {
-            console.error("Erreur parsing cache Oracle", e);
+            console.error("Erreur cache", e);
         }
     }
 
-    // 2. Tentative de mise à jour via l'API
+    // 2. Refresh API (Silent ou Initial)
     try {
-        const freshData = await fetchOracleChartData(lat, lng, morphology);
+        const freshPoints = await fetchOracleChartData(lat, lng, morphology);
         
-        if (freshData.length > 0) {
-            localStorage.setItem(cacheKey, JSON.stringify({
+        if (freshPoints.length > 0) {
+            // On identifie le point correspondant à "Maintenant" (le premier isForecast ou le dernier historique)
+            const now = Date.now();
+            const currentPoint = freshPoints.find(p => p.timestamp >= now) || freshPoints[freshPoints.length - 1];
+            const freshSnapshot = mapPointToSnapshot(currentPoint, morphology);
+
+            const cachePayload = {
                 timestamp: Date.now(),
-                data: freshData
-            }));
+                version: SCHEMA_VERSION,
+                data: freshPoints,
+                snapshot: freshSnapshot
+            };
+
+            localStorage.setItem(cacheKey, JSON.stringify(cachePayload));
+            return { points: freshPoints, snapshot: freshSnapshot };
         }
-        return freshData;
+        throw new Error("Points Oracle vides");
     } catch (error) {
-        // 3. MODE HORS-LIGNE (FALLBACK)
-        // Si le réseau échoue mais qu'on a un cache (même ancien), on le rend au lieu d'afficher une erreur
-        if (cachedValue && cachedValue.data) {
-            console.warn(`📡 [Oracle Offline] Réseau indisponible pour ${locationId}. Utilisation de la dernière donnée connue.`);
-            return cachedValue.data;
+        // 3. Fallback Offline
+        if (cachedValue && cachedValue.data && cachedValue.snapshot) {
+            console.warn(`📡 [Offline] Utilisation du cache existant pour ${locationId}.`);
+            return { points: cachedValue.data, snapshot: cachedValue.snapshot };
         }
-        // Si vraiment rien en mémoire, on propage l'erreur
         throw error;
     }
 };
 
 /**
- * Moteur principal de calcul environnemental
+ * Moteur de calcul environnemental (Simulation 45 jours + Forecast 72h)
  */
 export const fetchOracleChartData = async (
     lat: number, 
@@ -164,16 +221,19 @@ export const fetchOracleChartData = async (
             const clouds = hourly.cloud_cover[i];
             const wCode = hourly.weathercode[i];
 
+            // Algorithme de simulation thermique Lite 1D
             const delta = m === 'Z_RIVER' ? 12 : 0.207 * Math.pow(D, 1.35);
             const mu = 0.15 + (1 / (D * 5));
             const solarTerm = mu * Math.sin((2 * Math.PI * (dayOfYear - PHI)) / 365);
             const equilibriumTemp = Ta + bParams.offset + (solarTerm * 10);
             currentWaterTemp += (equilibriumTemp - currentWaterTemp) / (delta * 24);
 
+            // Simulation Turbidité (NTU)
             const hourlyDecayFactor = Math.pow(1 - DAILY_DECAY, 1/24);
             currentNTU = baseNTU + (currentNTU - baseNTU) * hourlyDecayFactor;
             if (precip > 0.1) currentNTU += precip * ALPHA_RAIN;
 
+            // Moteur de flux (Indice de saturation sol)
             const currentK = Math.max(0.70, K_BASE - (Ta * K_TEMP_SENSITIVITY));
             const hourlyK = Math.pow(currentK, 1/24);
             api = (api * hourlyK) + precip; 
@@ -183,10 +243,13 @@ export const fetchOracleChartData = async (
             const trend: 'Montée' | 'Décrue' | 'Stable' = derivative > 0.021 ? 'Montée' : (derivative < -0.021 ? 'Décrue' : 'Stable');
             prevIntensity = intensity;
 
+            // Calcul de la houle (Wave Height)
             const hs = calculateWaveHeight(windKmH, surface, shape);
 
+            // Filtrage pour la fenêtre d'affichage (T-12h à T+72h)
             if (ts < startGraph || ts > endGraph) continue;
 
+            // Oxygène Dissous & BioContext
             const dissolvedOxygen = solveDissolvedOxygen(currentWaterTemp, Patm, windKmH);
             const prevPress24h = i >= 24 ? hourly.surface_pressure[i - 24] : hourly.surface_pressure[0];
             const deltaP24h = Patm - prevPress24h;
@@ -208,6 +271,7 @@ export const fetchOracleChartData = async (
 
             const rawScores = calculateUniversalBioScores(ctx);
 
+            // Application du lissage EMA (Exponential Moving Average)
             if (points.length === 0) {
                 emaScores = { ...rawScores };
             } else {

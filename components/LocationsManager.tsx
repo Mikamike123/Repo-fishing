@@ -1,11 +1,14 @@
-// components/LocationsManager.tsx - Version 10.1.0 (Secure Depth Logic)
+// components/LocationsManager.tsx - Version 10.1.1 (V8.1 Atomic Guard)
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
     MapPin, Star, Trash2, Plus, AlertCircle, ArrowLeft, 
     Info, Map as MapIcon, Edit2, X, Check, ChevronRight, 
     Anchor, Settings, Fish, Save, Activity, ChevronUp, ChevronDown
 } from 'lucide-react';
-import { Location, Spot, MorphologyID, DepthCategoryID, BassinType, SpeciesType } from '../types';
+import { 
+    Location, Spot, MorphologyID, DepthCategoryID, BassinType, SpeciesType,
+    SCHEMA_VERSION // Michael : Import de la version pour le marquage
+} from '../types';
 import LocationPicker from './LocationPicker'; 
 import { getRandomDeletionMessage, LOCATION_DELETION_MESSAGES } from '../constants/deletionMessages';
 import DeleteConfirmDialog from './DeleteConfirmDialog'; 
@@ -52,7 +55,7 @@ interface LocationsManagerProps {
     onEditSpot: (id: string, label: string) => void;
     onBack: () => void;
     initialOpenLocationId?: string | null;
-    isActuallyNight?: boolean; // Michael : Pilier V8.0 raccordé
+    isActuallyNight?: boolean;
 }
 
 const LocationsManager: React.FC<LocationsManagerProps> = ({ 
@@ -156,7 +159,6 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
         return [...locations].sort((a, b) => (a.displayOrder ?? 999) - (b.displayOrder ?? 999));
     }, [locations]);
 
-    // Michael : Calcul des bornes de profondeur selon la règle métier
     const depthLimits = useMemo(() => {
         switch (bioForm.depthId) {
             case 'Z_LESS_3': return { min: 0.5, max: 3 };
@@ -184,7 +186,6 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
         onToggleFavorite(loc);
     };
 
-    // Michael : Sécurisation de la profondeur moyenne lors du changement de catégorie
     const handleDepthCategoryChange = (val: DepthCategoryID) => {
         let newMean = bioForm.meanDepth;
         if (val === 'Z_LESS_3' && newMean > 3) newMean = 3;
@@ -202,7 +203,7 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
         }
     };
 
-    // --- WORKFLOW CRÉATION (MAP FIRST) ---
+    // --- WORKFLOW CRÉATION ---
 
     const startCreation = () => {
         setIsCreating(true);
@@ -218,8 +219,12 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
             setShowPicker(false);
         } else {
             if (selectedLocation) {
-                onEditLocation(selectedLocation.id, selectedLocation.label, { coordinates: coords });
-                setSelectedLocation(prev => prev ? {...prev, coordinates: coords} : null);
+                // Michael : On invalide le snapshot si on change de position GPS
+                onEditLocation(selectedLocation.id, selectedLocation.label, { 
+                    coordinates: coords,
+                    lastSnapshot: null 
+                });
+                setSelectedLocation(prev => prev ? {...prev, coordinates: coords, lastSnapshot: undefined} : null);
             }
             setShowPicker(false);
         }
@@ -257,8 +262,10 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
             return;
         }
 
+        // Michael : Diagnostic 100% - On force lastSnapshot à null pour déclencher un re-calcul v8.1
         const extraData = {
             coordinates: getSafeCoords(selectedLocation),
+            lastSnapshot: null, 
             morphology: {
                 typeId: bioForm.typeId,
                 depthId: bioForm.depthId, 
@@ -267,12 +274,16 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
                 surfaceArea: Number(bioForm.surfaceArea),
                 shapeFactor: Number(bioForm.shapeFactor)
             },
-            speciesIds: bioForm.speciesIds
+            speciesIds: bioForm.speciesIds,
+            schemaVersion: SCHEMA_VERSION
         };
+
+        // Michael : Invalidation du cache local (L2) pour forcer le re-calcul immédiat
+        localStorage.removeItem(`oracle_cache_v8_${selectedLocation.id}`);
 
         onEditLocation(selectedLocation.id, selectedLocation.label, extraData);
         
-        setNotification("Sauvegarde effectuée. Retour à la liste...");
+        setNotification("Sauvegarde effectuée. L'Oracle va recalculer ce secteur...");
         setError(null);
         
         setTimeout(() => {
@@ -313,7 +324,6 @@ const LocationsManager: React.FC<LocationsManagerProps> = ({
 
     // --- RENDERERS ---
 
-    // Michael : Styles Adaptatifs Soft Night Ops (#1c1917) 
     const cardClass = isActuallyNight 
         ? "bg-[#1c1917] border-stone-800 shadow-none" 
         : "bg-white border-stone-100 shadow-sm";

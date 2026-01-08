@@ -1,8 +1,9 @@
-// components/SessionForm.tsx - Version 4.8.10 (Form Ergonomics & Capot Express)
+// components/SessionForm.tsx - Version 4.9.0 (V8.1 Snapshot Frozen Integrity)
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Session, Zone, Setup, Technique, Catch, Miss, Lure, 
-    RefLureType, RefColor, RefSize, RefWeight, FullEnvironmentalSnapshot, Location, BioScoreSnapshot 
+    RefLureType, RefColor, RefSize, RefWeight, FullEnvironmentalSnapshot, Location, BioScoreSnapshot,
+    SCHEMA_VERSION // Michael : Import indispensable pour le Big Bang
 } from '../types';
 import { getFunctions, httpsCallable } from 'firebase/functions'; 
 import { getApp } from 'firebase/app';
@@ -13,7 +14,7 @@ import SessionFormUI from './SessionFormUI';
 interface SessionFormProps {
     onAddSession: (session: Session) => void;
     onUpdateSession: (id: string, data: Partial<Session>) => void;
-    onCancel?: () => void; // Michael : Ajout de la prop d'annulation
+    onCancel?: () => void; 
     initialData?: Session | null;
     initialDiscovery?: { date: string, startTime: string, endTime: string, initialCatch: Catch } | null;
     zones: Zone[];
@@ -87,9 +88,13 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
         }
     };
 
+    /**
+     * Michael : Orchestration de la Persistence Midpoint (Chapitre 6)
+     */
     useEffect(() => {
         if (!locationId || locations.length === 0) return;
 
+        // Si on édite une session et que les paramètres de temps n'ont pas changé, on garde le snapshot existant
         if (initialData && initialData.envSnapshot && 
             date === initialData.date && startTime === initialData.startTime && locationId === initialData.locationId) {
             setEnvSnapshot(initialData.envSnapshot);
@@ -105,6 +110,7 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
                     setEnvStatus('not-found');
                     return;
                 }
+                
                 const preciseIsoDate = calculateSessionMidpoint(date, startTime, endTime);
                 const weatherContext = await fetchHistoricalWeatherContext(
                     currentLocation.coordinates.lat,
@@ -129,13 +135,17 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
                 const cloudData = result.data as any;
 
                 if (cloudData) {
+                    // Michael : Reconstruction atomique v8.1 avec marquage de version
                     const newSnapshot: FullEnvironmentalSnapshot = {
                         weather: { ...weatherContext.snapshot },
                         hydro: { ...cloudData.hydro },
                         scores: cloudData.scores,
                         metadata: {
                             ...cloudData.metadata,
-                            sourceLogId: cloudData.metadata?.sourceLogId || 'ultreia_live_simulation'
+                            calculationDate: new Date().toISOString(),
+                            calculationMode: 'ZERO_HYDRO', // On fige une simulation physique
+                            sourceLogId: cloudData.metadata?.sourceLogId || 'ultreia_live_simulation',
+                            schemaVersion: SCHEMA_VERSION // [FIX] Big Bang Compatibility
                         }
                     };
                     setEnvSnapshot(newSnapshot);
@@ -192,6 +202,10 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
 
         let filteredSnapshot = envSnapshot ? JSON.parse(JSON.stringify(envSnapshot)) : null;
 
+        /**
+         * Michael : On ne garde dans la session que les scores des espèces configurées 
+         * pour ce secteur, afin de garder une donnée historique "propre".
+         */
         if (filteredSnapshot && speciesIds.length > 0) {
             const cleanedScores: Partial<BioScoreSnapshot> = {};
             const speciesMap: Record<string, keyof BioScoreSnapshot> = {
@@ -254,7 +268,7 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
             handleSaveCatch={handleSaveCatch}
             handleSaveMiss={handleSaveMiss}
             handleSubmit={handleSubmit}
-            onCancel={onCancel} // Michael : Transmission de l'action d'annulation
+            onCancel={onCancel} 
             userId={props.currentUserId}
             isActuallyNight={isActuallyNight}
         />

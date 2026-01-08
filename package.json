@@ -25,6 +25,7 @@
     "recharts": "^3.6.0"
   },
   "devDependencies": {
+    "@types/google.maps": "^3.58.1",
     "@types/minimist": "^1.2.5",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.7",

@@ -1,9 +1,10 @@
-// components/MissDialog.tsx - Version 10.0.0 (Night Ops Miss Logging)
+// components/MissDialog.tsx - Version 10.1.0 (V8.1 Snapshot Integrity)
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, AlertOctagon, Edit2, Loader2, Cloud, CloudOff, Check } from 'lucide-react';
 import { 
     Miss, Zone, RefLureType, RefColor, RefSize, RefWeight, 
-    FullEnvironmentalSnapshot, Location 
+    FullEnvironmentalSnapshot, Location,
+    SCHEMA_VERSION // Michael : Import de la constante de version
 } from '../types';
 import { getFunctions, httpsCallable } from 'firebase/functions'; 
 import { getApp } from 'firebase/app';
@@ -24,13 +25,13 @@ interface MissDialogProps {
   colors: RefColor[];
   sizes: RefSize[];
   weights: RefWeight[];
-  isActuallyNight?: boolean; // Michael : Pilier V8.0 raccordé
+  isActuallyNight?: boolean;
 }
 
 const MissDialog: React.FC<MissDialogProps> = ({ 
   isOpen, onClose, onSave, initialData, availableZones, locationId, locations,
   sessionStartTime, sessionEndTime, sessionDate, lureTypes, colors, sizes, weights,
-  isActuallyNight // Michael : Activation du thème furtif
+  isActuallyNight 
 }) => {
   const [type, setType] = useState<Miss['type']>('Décroché');
   const [time, setTime] = useState(sessionStartTime);
@@ -124,7 +125,12 @@ const MissDialog: React.FC<MissDialogProps> = ({
                             turbidityIdx: Math.min(1, (cloudData.turbidityNTU || 5) / 50) 
                         },
                         scores: cloudData.scores ?? { sandre: 0, brochet: 0, perche: 0, blackbass: 0 },
-                        metadata: { sourceLogId: 'universel_simulated_miss', calculationDate: new Date().toISOString() }
+                        metadata: { 
+                            sourceLogId: 'universel_simulated_miss', 
+                            calculationDate: new Date().toISOString(),
+                            calculationMode: 'ZERO_HYDRO', // Michael : Marqué comme simulation physique
+                            schemaVersion: SCHEMA_VERSION // [FIX] Big Bang Compatibility
+                        }
                     });
                     setEnvStatus('simulated');
                 } else {
@@ -169,7 +175,6 @@ const MissDialog: React.FC<MissDialogProps> = ({
     onClose();
   };
 
-  // Styles dynamiques V8.0
   const inputBg = isActuallyNight ? 'bg-stone-800 border-stone-700 text-stone-100' : 'bg-white border-stone-200 text-stone-700';
   const textMuted = isActuallyNight ? 'text-stone-500' : 'text-stone-400';
 

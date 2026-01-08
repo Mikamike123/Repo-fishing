@@ -1,4 +1,4 @@
-// components/Dashboard.tsx - Version 10.0.0 (Full Night Ops Propagation)
+// components/Dashboard.tsx - Version 10.1.0 (Precision Sync Display)
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
     Activity, Target, ScrollText, MapPin, ChevronDown, Flame, Trophy, RefreshCw
@@ -37,7 +37,6 @@ interface DashboardProps {
     onLocationSelect: (id: string) => void;
     arsenalData: AppData;
     displayedWeather: WeatherSnapshot | null;
-    // Michael : Nouvelles props pour la fraîcheur et le thème (V4.8.18)
     lastSyncTimestamp?: number;
     isActuallyNight?: boolean;
 }
@@ -55,18 +54,18 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
     } = props;
 
     const [activeTab, setActiveTab] = useState<DashboardTab>(propTab || 'live');
-    const [minutesAgo, setMinutesAgo] = useState<string>("à l'instant");
+    const [syncTimeLabel, setSyncTimeLabel] = useState<string>("--:--:--");
 
-    // Michael : Calcul dynamique de la fraîcheur des données de l'Oracle
+    // Michael : Capture de l'heure exacte de synchro (V8.1 Precision)
     useEffect(() => {
-        if (!lastSyncTimestamp) return;
-        const updateAgo = () => {
-            const diff = Math.floor((Date.now() - lastSyncTimestamp) / 60000);
-            setMinutesAgo(diff <= 0 ? "à l'instant" : `${diff} min`);
-        };
-        updateAgo();
-        const interval = setInterval(updateAgo, 30000); // Mise à jour toutes les 30 sec
-        return () => clearInterval(interval);
+        if (lastSyncTimestamp) {
+            const date = new Date(lastSyncTimestamp);
+            setSyncTimeLabel(date.toLocaleTimeString('fr-FR', { 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                second: '2-digit' 
+            }));
+        }
     }, [lastSyncTimestamp]);
 
     useEffect(() => {
@@ -110,7 +109,6 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
 
     return (
         <div className="space-y-4 animate-in fade-in duration-500 pb-20">
-            {/* Michael : Sélecteur d'onglets calibré pour le mode Night Ops [cite: 14, 106] */}
             <div className={`flex p-1.5 rounded-[2rem] border mx-1 transition-all duration-500 ${
                 isActuallyNight ? 'bg-stone-900/50 border-stone-800' : 'bg-stone-200/50 border-stone-200'
             }`}>
@@ -139,11 +137,10 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
                             isActuallyNight={isActuallyNight}
                         />
                         
-                        {/* Michael : Micro-mention de synchronisation Oracle (Sentiment tactique) */}
                         <div className="flex items-center justify-center gap-2 py-4 opacity-40">
                             <RefreshCw size={10} className={isOracleLoading ? "animate-spin" : ""} />
                             <span className="text-[10px] font-black uppercase tracking-[0.2em] italic">
-                                Données Oracle synchronisées il y a {minutesAgo}
+                                Données synchronisées à {syncTimeLabel}
                             </span>
                         </div>
                     </div>

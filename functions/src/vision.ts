@@ -1,4 +1,3 @@
-// functions/src/vision.ts
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { VertexAI } from "@google-cloud/vertexai";
 import { z } from "zod"; // Import de Zod pour la validation
@@ -81,11 +80,6 @@ export const analyzeCatchImage = onCall({
     Si tu as un doute, choisis l'ID dont le label est le plus sémantiquement proche.
 
     FORMAT DE RÉPONSE : Tu dois répondre EXCLUSIVEMENT avec un objet JSON valide.
-    IMPORTANT : 
-    - NE PAS utiliser de blocs de code Markdown (\`\`\`json).
-    - Assure-toi que toutes les clés sont entre doubles guillemets.
-    - Ton message enthousiaste doit se trouver exclusivement dans le champ "enthusiastic_message".
-
     {
       "species": "Nom de l'espèce (ex: Sandre)",
       "size": nombre entier (cm),
@@ -104,8 +98,7 @@ export const analyzeCatchImage = onCall({
     },
     generationConfig: {
       responseMimeType: "application/json",
-      temperature: 0.2, // Michael : on remonte un poil pour avoir un message moins robotique
-      maxOutputTokens: 1000, // Michael : On augmente pour ne pas couper le message enthousiaste
+      temperature: 0.1, 
     },
   });
 
@@ -114,12 +107,7 @@ export const analyzeCatchImage = onCall({
       contents: [
         {
           role: 'user',
-          parts: [
-            // Michael : On passe en image/webp pour matcher la compression client
-            { inlineData: { mimeType: "image/webp", data: cleanImage } },
-            // Michael : On ajoute cet ancrage textuel pour forcer le JSON tout en gardant l'enthousiasme
-            { text: "Analyse cette prise de pêche. Sois précis et n'oublie pas ton message enthousiaste dans le JSON." }
-          ],
+          parts: [{ inlineData: { mimeType: "image/jpeg", data: cleanImage } }],
         }
       ],
     };
@@ -129,27 +117,13 @@ export const analyzeCatchImage = onCall({
 
     if (!responseText) throw new Error("Réponse vide de Gemini");
 
-    /**
-     * Michael : NETTOYAGE DE SÉCURITÉ DU JSON
-     * On extrait uniquement ce qui est entre la première '{' et la dernière '}'
-     */
-    const firstBrace = responseText.indexOf('{');
-    const lastBrace = responseText.lastIndexOf('}');
-    
-    if (firstBrace === -1 || lastBrace === -1) {
-        // Michael : On logue ce que l'IA a vraiment dit pour pouvoir débugger au bord de l'eau
-        console.error("Réponse brute de l'IA (Sans JSON):", responseText);
-        throw new Error("Format JSON introuvable dans la réponse de l'IA.");
-    }
-
-    const cleanedResponse = responseText.substring(firstBrace, lastBrace + 1);
-    const jsonResponse = JSON.parse(cleanedResponse);
+    const jsonResponse = JSON.parse(responseText);
     
     // 2. VALIDATION DE LA RÉPONSE DE L'IA (Anti-Hallucination)
     const validatedOutput = MagicScanOutputSchema.safeParse(jsonResponse);
     
     if (!validatedOutput.success) {
-        console.error("Gemini a produit un JSON invalide par rapport au schéma:", validatedOutput.error);
+        console.error("Gemini a produit un JSON invalide:", validatedOutput.error);
         throw new Error("L'IA a produit des données non conformes.");
     }
 
@@ -160,7 +134,6 @@ export const analyzeCatchImage = onCall({
 
   } catch (error: any) {
     console.error("Erreur Oracle Vision 3.0:", error);
-    const errorMessage = error instanceof SyntaxError ? "Erreur de syntaxe JSON IA" : error.message;
-    throw new HttpsError("internal", `L'Oracle Vision 3.0 rencontre un problème technique : ${errorMessage}`);
+    throw new HttpsError("internal", "L'Oracle Vision 3.0 rencontre un problème technique de traitement.");
   }
 });

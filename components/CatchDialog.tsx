@@ -1,4 +1,4 @@
-// components/CatchDialog.tsx - Version 10.0.0 (Night Ops Vision Sync)
+// components/CatchDialog.tsx - Version 10.1.0 (V8.1 Snapshot Integrity)
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
     X, Ruler, Sparkles, Edit2, Image as ImageIcon, Loader2, 
@@ -6,7 +6,8 @@ import {
 } from 'lucide-react';
 import { 
     SpeciesType, Zone, Technique, Catch, RefLureType, 
-    RefColor, RefSize, RefWeight, FullEnvironmentalSnapshot, Location 
+    RefColor, RefSize, RefWeight, FullEnvironmentalSnapshot, Location,
+    SCHEMA_VERSION // MICHAEL : Import de la constante de version
 } from '../types';
 import { getFunctions, httpsCallable } from 'firebase/functions'; 
 import { getApp } from 'firebase/app';
@@ -34,7 +35,7 @@ interface CatchDialogProps {
     lastCatchDefaults?: Catch | null;
     userPseudo?: string;
     userId: string; 
-    isActuallyNight?: boolean; // MICHAEL : Pilier V8.0 raccordé
+    isActuallyNight?: boolean;
 }
 
 const SPECIES_CONFIG: Record<string, { max: number }> = {
@@ -79,7 +80,7 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
     isOpen, onClose, onSave, initialData, availableZones, locationId, locations, availableTechniques, 
     sessionStartTime, sessionEndTime, sessionDate, lureTypes, colors, sizes, weights,
     lastCatchDefaults, userPseudo = "Michael", userId,
-    isActuallyNight // MICHAEL : Activation du thème furtif
+    isActuallyNight 
 }) => {
     const [species, setSpecies] = useState<SpeciesType>('Sandre');
     const [size, setSize] = useState<number>(45);
@@ -199,7 +200,12 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
                                         turbidityIdx: Math.min(1, (cloudData.turbidityNTU || 5) / 50) 
                                     },
                                 scores: cloudData.scores ?? { sandre: 0, brochet: 0, perche: 0, blackbass: 0 },
-                                metadata: { sourceLogId: 'universel_simulated', calculationDate: new Date().toISOString() }
+                                metadata: { 
+                                    sourceLogId: 'universel_simulated', 
+                                    calculationDate: new Date().toISOString(),
+                                    calculationMode: 'ZERO_HYDRO', // Michael : Marqué comme simulation physique
+                                    schemaVersion: SCHEMA_VERSION // [FIX] Big Bang Compatibility
+                                }
                             });
                             setEnvStatus('simulated');
                         }
@@ -283,7 +289,6 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
         onClose();
     };
 
-    // MICHAEL : Styles dynamiques Standard V8.0
     const inputBg = isActuallyNight ? 'bg-stone-800 border-stone-700 text-stone-100' : 'bg-white border-stone-200 text-stone-700';
     const textTitle = isActuallyNight ? 'text-stone-100' : 'text-stone-800';
     const textMuted = isActuallyNight ? 'text-stone-500' : 'text-stone-400';
@@ -297,8 +302,8 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
                 onChange={(e) => onChange(e.target.value)} 
                 className={`w-full p-2.5 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-amber-500/20 transition-all border ${inputBg}`}
             >
-               <option value="">{placeholder}</option>
-               {options.map((o: any) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                <option value="">{placeholder}</option>
+                {options.map((o: any) => <option key={o.id} value={o.id}>{o.label}</option>)}
             </select>
         </div>
     );

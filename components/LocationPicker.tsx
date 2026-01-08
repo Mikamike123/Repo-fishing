@@ -1,3 +1,4 @@
+// components/LocationPicker.tsx - Version 8.1.0 (Fix GPS Types & Precision)
 /// <reference types="vite/client" />
 import React, { useState, useCallback } from 'react';
 import { APIProvider, Map, AdvancedMarker, Pin, MapCameraChangedEvent } from '@vis.gl/react-google-maps';
@@ -26,8 +27,11 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ initialLat, initialLng,
     // Helper de formatage (4 décimales)
     const formatCoord = (val: number) => Number(val.toFixed(4));
 
-    // Gestion du Drag & Drop du marqueur
-    const handleMarkerDragEnd = (e: google.maps.MapMouseEvent) => {
+    /**
+     * Diagnostic 100% : Utilisation d'un type étendu pour éviter l'erreur de namespace 
+     * si @types/google.maps n'est pas encore détecté.
+     */
+    const handleMarkerDragEnd = (e: any) => {
         if (e.latLng) {
             setMarkerPosition({ 
                 lat: formatCoord(e.latLng.lat()), 

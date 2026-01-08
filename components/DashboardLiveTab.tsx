@@ -1,4 +1,4 @@
-// components/DashboardLiveTab.tsx - Version 10.0.0 (Night Ops Live Integration)
+// components/DashboardLiveTab.tsx - Version 10.1.0 (UI Streamlined)
 import React, { useMemo } from 'react';
 import OracleHero from './OracleHero';
 import { 
@@ -21,7 +21,7 @@ export const DashboardLiveTab: React.FC<any> = ({
     uniqueLocationsList, oracleData, isOracleLoading, activeLocationId, 
     onLocationSelect, displayLocations, targetLocation, displayedWeather, isLoading,
     onLocationClick, activeLocationLabel,
-    isActuallyNight // Michael : Injection du pilier V8.0 [cite: 14, 469]
+    isActuallyNight 
 }) => {
     const liveOraclePoint = useMemo(() => {
         if (!oracleData || !oracleData.length) return null;
@@ -59,7 +59,7 @@ export const DashboardLiveTab: React.FC<any> = ({
 
     return (
         <div className="space-y-4 animate-in slide-in-from-left duration-500">
-            {/* Propagation du thème au Hero (Graphique 72h) */}
+            {/* Oracle Graph 72h */}
             <OracleHero 
                 locations={uniqueLocationsList} 
                 dataPoints={oracleData} 
@@ -69,18 +69,9 @@ export const DashboardLiveTab: React.FC<any> = ({
                 isActuallyNight={isActuallyNight}
             />
 
-            {/* Michael : Badge de secteur dynamique Night Ops */}
-            <div onClick={onLocationClick} className="flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-transform z-10 relative py-1">
-                <div className={`flex items-center gap-2 font-bold uppercase tracking-widest text-[10px] px-3 py-1 rounded-full border transition-colors ${
-                    isActuallyNight 
-                        ? 'text-stone-400 bg-stone-900 border-stone-800 hover:bg-stone-800' 
-                        : 'text-stone-400 bg-stone-50 border-stone-100 hover:bg-stone-100'
-                }`}>
-                    <MapPin size={12} /> {activeLocationLabel} <ChevronDown size={12} />
-                </div>
-            </div>
+            {/* Michael : Badge supprimé ici pour gagner de l'espace vertical (V8.1) */}
 
-            {/* Michael : Carte principale - Standard V8.0 gris anthracite doux (#1c1917) [cite: 14, 106] */}
+            {/* Carte principale Live */}
             <div className={`rounded-[2rem] p-1 shadow-organic border overflow-hidden relative mx-2 transition-colors duration-500 ${
                 isActuallyNight ? 'bg-[#1c1917] border-stone-800 shadow-none' : 'bg-white border-stone-100'
             }`}>
@@ -90,7 +81,7 @@ export const DashboardLiveTab: React.FC<any> = ({
                             <ActivityIcon /> Météo & Hydro Live
                         </h3>
                         
-                        {/* Sélecteur de secteur stylisé Night Ops */}
+                        {/* Sélecteur de secteur stylisé */}
                         <div className="relative w-full sm:w-auto min-w-[180px]">
                             <select 
                                 value={activeLocationId} 
@@ -120,7 +111,7 @@ export const DashboardLiveTab: React.FC<any> = ({
                                     score={liveOraclePoint ? (liveOraclePoint as any)[config.key] : undefined} 
                                     hexColor={config.hexColor} 
                                     loading={isLoading}
-                                    isActuallyNight={isActuallyNight} // Propagation Michael
+                                    isActuallyNight={isActuallyNight}
                                 />
                             );
                         })}
@@ -137,7 +128,7 @@ export const DashboardLiveTab: React.FC<any> = ({
                                     value={getVal(key)} 
                                     unit={unit} 
                                     icon={key === 'tempAir' && displayedWeather ? getWeatherIcon(displayedWeather.clouds) : <meta.icon size={16} />} 
-                                    color={getTileTheme(meta.theme, isActuallyNight)} // Thème dynamique Michael
+                                    color={getTileTheme(meta.theme, isActuallyNight)} 
                                     loading={isLoading} 
                                     description={meta.description}
                                     isActuallyNight={isActuallyNight}
@@ -159,7 +150,7 @@ export const DashboardLiveTab: React.FC<any> = ({
                                     value={val} 
                                     unit={displayUnit} 
                                     icon={<meta.icon size={16} />} 
-                                    color={getTileTheme(meta.theme, isActuallyNight)} // Thème dynamique Michael
+                                    color={getTileTheme(meta.theme, isActuallyNight)} 
                                     loading={isLoading} 
                                     description={meta.description} 
                                     isActuallyNight={isActuallyNight}

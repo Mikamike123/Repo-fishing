@@ -1,4 +1,4 @@
-// hooks/useAppEngine.ts - Version 5.4.0 (Onboarding Support)
+// hooks/useAppEngine.ts - Version 8.1.3 (Honest Sync Logic)
 import { useState, useEffect, useMemo } from 'react';
 import { 
     onSnapshot, query, orderBy, 
@@ -6,10 +6,10 @@ import {
 } from 'firebase/firestore'; 
 import { onAuthStateChanged, signInWithPopup, signOut, User as FirebaseUser } from 'firebase/auth';
 import { db, sessionsCollection, auth, googleProvider, clearChatHistory } from '../lib/firebase'; 
-import { getUserProfile, createUserProfile } from '../lib/user-service'; // Michael : Assure-toi que createUserProfile est bien exporté
+import { getUserProfile, createUserProfile } from '../lib/user-service'; 
 import { useArsenal } from '../lib/useArsenal'; 
 import { getOrFetchOracleData, cleanupOracleCache } from '../lib/oracle-service'; 
-import { Session, UserProfile, WeatherSnapshot, OracleDataPoint } from '../types';
+import { Session, UserProfile, WeatherSnapshot, OracleDataPoint, SCHEMA_VERSION } from '../types';
 
 export const useAppEngine = () => {
     const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -17,7 +17,8 @@ export const useAppEngine = () => {
     const [authLoading, setAuthLoading] = useState(true);
     const [themeMode, setThemeMode] = useState<'light' | 'night' | 'auto'>('auto'); 
     const [isActuallyNight, setIsActuallyNight] = useState(false);
-    const [lastSyncTimestamp, setLastSyncTimestamp] = useState<number>(Date.now());
+    // Michael : On initialise à 0 pour éviter le "faux frais" au chargement
+    const [lastSyncTimestamp, setLastSyncTimestamp] = useState<number>(0);
     const [lastCoachLocationId, setLastCoachLocationId] = useState<string>("");
     const [isOnline, setIsOnline] = useState(navigator.onLine);
 
@@ -123,6 +124,15 @@ export const useAppEngine = () => {
 
     const activeLocation = useMemo(() => arsenalData.locations.find(l => l.id === activeLocationId), [arsenalData.locations, activeLocationId]);
 
+    useEffect(() => {
+        if (activeLocation?.lastSnapshot) {
+            setDisplayedWeather(activeLocation.lastSnapshot.weather);
+            // Michael : On hydrate le timestamp depuis le snapshot existant pour être honnête dès le load
+            const snapDate = new Date(activeLocation.lastSnapshot.metadata.calculationDate).getTime();
+            setLastSyncTimestamp(snapDate);
+        }
+    }, [activeLocationId, activeLocation?.lastSnapshot]);
+
     const liveOraclePoint = useMemo(() => {
         if (!oraclePoints.length) return null;
         const nowTs = Date.now();
@@ -151,22 +161,49 @@ export const useAppEngine = () => {
     useEffect(() => {
         const syncEnvironment = async () => {
             if (!activeLocation?.coordinates) return;
-            setIsOracleLoading(true); setIsWeatherLoading(true);
+
+            const hasExistingData = oraclePoints.length > 0 || activeLocation.lastSnapshot;
+            if (!hasExistingData) {
+                setIsOracleLoading(true); 
+                setIsWeatherLoading(true);
+            }
+
             try {
-                const points = await getOrFetchOracleData(activeLocation.coordinates.lat, activeLocation.coordinates.lng, activeLocation.id, activeLocation.morphology);
+                const { points, snapshot } = await getOrFetchOracleData(
+                    activeLocation.coordinates.lat, 
+                    activeLocation.coordinates.lng, 
+                    activeLocation.id, 
+                    activeLocation.morphology
+                );
+
                 setOraclePoints(points);
-                setLastSyncTimestamp(Date.now()); 
-                if (points.length > 0) {
-                    const nowTs = Date.now();
-                    const livePoint = points.reduce((prev, curr) => Math.abs(curr.timestamp - nowTs) < Math.abs(prev.timestamp - nowTs) ? curr : prev);
-                    setDisplayedWeather({
-                        temperature: livePoint.airTemp, pressure: livePoint.pressure, clouds: livePoint.clouds,
-                        windSpeed: livePoint.windSpeed, windDirection: livePoint.windDirection, precip: livePoint.precip, conditionCode: livePoint.conditionCode
-                    } as WeatherSnapshot);
+                
+                if (snapshot) {
+                    setDisplayedWeather(snapshot.weather);
+                    
+                    const snapDate = new Date(snapshot.metadata.calculationDate).getTime();
+                    // Michael : On cale l'UI sur la date réelle de calcul du snapshot, pas sur maintenant
+                    setLastSyncTimestamp(snapDate);
+
+                    // On ne commite sur Firestore que si c'est un nouveau calcul (< 1 min)
+                    if (Date.now() - snapDate < 60000 && activeLocation.id) {
+                         // Diagnostic 100% : Update direct pour bypasser la signature string de handleEditItem
+                         await updateDoc(doc(db, 'locations', activeLocation.id), {
+                            lastSnapshot: snapshot,
+                            lastCalculatedTemp: snapshot.hydro.waterTemp,
+                            lastSyncDate: snapshot.metadata.calculationDate
+                        });
+                        console.log(`✅ [Sync Cloud] Snapshot v${snapshot.metadata.schemaVersion} persisté pour ${activeLocation.label}.`);
+                    }
                 }
-            } catch (err) { console.error("Sync Error:", err); } 
-            finally { setIsOracleLoading(false); setIsWeatherLoading(false); }
+            } catch (err) { 
+                console.error("🔥 Sync Error:", err); 
+            } finally { 
+                setIsOracleLoading(false); 
+                setIsWeatherLoading(false); 
+            }
         };
+
         syncEnvironment();
         const interval = setInterval(syncEnvironment, 30 * 60 * 1000);
         return () => clearInterval(interval);
@@ -191,7 +228,7 @@ export const useAppEngine = () => {
                 const data = docSnap.data() as UserProfile;
                 setUserProfile({ ...data, id: docSnap.id }); 
                 if ((data as any).themePreference) setThemeMode((data as any).themePreference);
-                setFirestoreError(null); // Michael : On nettoie l'erreur si le doc apparaît
+                setFirestoreError(null); 
             } else {
                 setFirestoreError("DOC_NOT_FOUND");
             }
@@ -209,13 +246,11 @@ export const useAppEngine = () => {
         }
     }, [firestoreError]);
 
-    // Michael : Nouveau handler pour créer le profil depuis l'UI Onboarding
     const handleCreateProfile = async (pseudo: string) => {
         if (!user) return;
         try {
             triggerHaptic([50, 50, 50]);
             await createUserProfile(user.uid, pseudo);
-            // Le onSnapshot s'occupera de mettre à jour userProfile automatiquement
             setCurrentView('dashboard');
         } catch (e) {
             console.error("Erreur création profil Michael :", e);
