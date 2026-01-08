@@ -1,6 +1,6 @@
-// components/OracleHero.tsx - Version 10.0.0 (Night Ops & Prop Sync)
+// components/OracleHero.tsx - Version 10.1.0 (D3 Sync & Prop Alignment)
 import React, { useState, useEffect, useMemo } from 'react';
-import { ChevronDown, Zap, Calendar, MapPin, BarChart2, Target, Plus } from 'lucide-react';
+import { ChevronDown, Zap, Calendar, MapPin, BarChart2, Target } from 'lucide-react';
 import OracleChart, { ChartMode, TargetSpecies } from './OracleChart';
 import { fetchOracleChartData } from '../lib/oracle-service';
 import { Location, OracleDataPoint } from '../types';
@@ -68,10 +68,9 @@ const OracleHero: React.FC<OracleHeroProps> = ({
         validLocations.find(l => l.id === effectiveLocId)
     , [validLocations, effectiveLocId]);
 
-    // Michael : Détermination des clés de données autorisées (ex: 'brochet') basées sur speciesIds (ex: 'Brochet')
+    // Michael : Détermination des clés de données autorisées
     const allowedKeys = useMemo(() => {
         if (!selectedLocation?.speciesIds || selectedLocation.speciesIds.length === 0) {
-            // Michael : v8.4 - On ajoute par défaut le Bass si rien n'est coché
             return ['sandre', 'brochet', 'perche', 'blackbass']; 
         }
         const mapping: Record<string, string> = {
@@ -119,7 +118,6 @@ const OracleHero: React.FC<OracleHeroProps> = ({
         if (mode === 'single') {
             if (dataPoints && dataPoints.length > 0) {
                 return dataPoints.map(pt => {
-                    // Michael : On prépare l'objet de base avec les métadonnées environnementales v8.4
                     const filteredPoint: any = {
                         time: pt.timestamp,
                         dissolvedOxygen: pt.dissolvedOxygen,
@@ -127,7 +125,6 @@ const OracleHero: React.FC<OracleHeroProps> = ({
                         waterTemp: pt.waterTemp
                     };
                     
-                    // Michael : On n'injecte que les scores autorisés par la config du secteur
                     allowedKeys.forEach(key => {
                         if ((pt as any)[key] !== undefined) {
                             filteredPoint[key] = (pt as any)[key];
@@ -139,7 +136,6 @@ const OracleHero: React.FC<OracleHeroProps> = ({
             }
             return [];
         } else {
-            // Mode Comparatif (Basé sur le cache interne)
             const baseData = cache[favorites[0]?.id];
             if (!baseData) return [];
 
@@ -150,7 +146,6 @@ const OracleHero: React.FC<OracleHeroProps> = ({
                     if (locData && locData[index]) {
                         const baseLabel = (loc as any).label || loc.name || 'Secteur';
                         const uniqueKey = `${baseLabel} (${loc.id.substring(0, 3)})`;
-                        // Michael : v8.4 - On s'assure que targetSpecies pointe vers la bonne clé (ex: blackbass)
                         mergedPoint[uniqueKey] = (locData[index] as any)[targetSpecies];
                     }
                 });
@@ -183,7 +178,6 @@ const OracleHero: React.FC<OracleHeroProps> = ({
             Math.abs(curr.timestamp - now) < Math.abs(prev.timestamp - now) ? curr : prev
         );
 
-        // Michael : v8.4 - On filtre la liste des scores pour la synthèse en haut à gauche
         const scores = [
             { name: 'Sandre', score: current.sandre, key: 'sandre' },
             { name: 'Brochet', score: current.brochet, key: 'brochet' },
@@ -283,9 +277,9 @@ const OracleHero: React.FC<OracleHeroProps> = ({
                         isActuallyNight ? 'via-stone-800' : 'via-stone-200'
                     }`}></div>
                     
-                    {/* CONTROLS (PILLS FIXES) */}
+                    {/* SELECTION DU SECTEUR */}
                     {mode === 'single' && favorites.length > 1 && (
-                        <div className="flex overflow-x-auto gap-2 mb-4 pb-1 scrollbar-hide">
+                        <div className="flex overflow-x-auto gap-2 mb-4 pb-1 scrollbar-hide px-2">
                             {favorites.map(loc => {
                                 const pillLabel = (loc as any).label || loc.name || 'Secteur';
                                 const isActive = effectiveLocId === loc.id;
@@ -304,6 +298,7 @@ const OracleHero: React.FC<OracleHeroProps> = ({
                         </div>
                     )}
 
+                    {/* SELECTION DE L'ESPECE (MODE COMPARATIF) */}
                     {mode === 'compare' && (
                         <div className={`flex gap-2 mb-4 justify-center p-1.5 rounded-xl border w-fit mx-auto overflow-x-auto max-w-full ${
                             isActuallyNight ? 'bg-stone-900 border-stone-800' : 'bg-stone-50 border-stone-100'
@@ -324,14 +319,7 @@ const OracleHero: React.FC<OracleHeroProps> = ({
                         </div>
                     )}
 
-                    <div className="flex justify-between items-center px-1 mb-2">
-                        <span className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">H -12h</span>
-                        <div className={`h-px flex-1 mx-4 ${isActuallyNight ? 'bg-stone-800' : 'bg-stone-100'}`}></div>
-                        <span className={`text-[10px] font-bold tracking-widest uppercase flex items-center gap-1 ${isActuallyNight ? 'text-indigo-400' : 'text-indigo-500'}`}>
-                            <Calendar size={10} /> H +72h
-                        </span>
-                    </div>
-
+                    
                     <div className="w-full">
                         <OracleChart 
                             date={new Date()}
@@ -340,7 +328,7 @@ const OracleHero: React.FC<OracleHeroProps> = ({
                             externalData={formattedChartData}
                             title={chartTitle}
                             subTitle={chartSubTitle}
-                            isActuallyNight={isActuallyNight} // Michael : On transmet la nuit au graphique final
+                            isActuallyNight={isActuallyNight}
                         />
                     </div>
                 </div>
