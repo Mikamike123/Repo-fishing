@@ -1,5 +1,6 @@
-// components/SessionDetailModal.tsx - Version 10.0.0 (Elite Night Ops Detail Sync)
+// components/SessionDetailModal.tsx - Version 10.0.2 (Portal Edition & Precision Centering)
 import React from 'react';
+import { createPortal } from 'react-dom'; // Michael : Ajout indispensable pour le fix "envolée"
 import { 
     X, Calendar, Clock, Anchor, Activity, CloudSun, Fish, Trophy, 
     Wind, Droplets, Image as ImageIcon, Gauge, Thermometer, 
@@ -22,6 +23,7 @@ interface SessionDetailModalProps {
 }
 
 const SessionDetailModal: React.FC<SessionDetailModalProps> = ({ session, isOpen, onClose, isActuallyNight }) => {
+    // Michael : On sort immédiatement si fermé ou pas de session
     if (!isOpen || !session) return null;
 
     const env = session.envSnapshot;
@@ -105,15 +107,22 @@ const SessionDetailModal: React.FC<SessionDetailModalProps> = ({ session, isOpen
         );
     };
 
-    // Styles structurels V8.0
     const modalBg = isActuallyNight ? "bg-[#1c1917] border-stone-800" : "bg-[#fdfbf7] border-stone-200";
     const bodyBg = isActuallyNight ? "bg-stone-950/20" : "bg-stone-50/50";
     const textTitle = isActuallyNight ? "text-stone-100" : "text-stone-800";
     const textMuted = isActuallyNight ? "text-stone-500" : "text-stone-400";
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className={`w-full max-w-4xl rounded-[2rem] shadow-2xl max-h-[96vh] flex flex-col border relative overflow-hidden transition-colors duration-500 ${modalBg}`}>
+    // Michael : Le contenu de la modale est défini ici pour être téléporté
+    const modalContent = (
+        /* Michael : Correction h-full -> h-[100dvh] et items-center pour un centrage viewport absolu */
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-hidden h-[100dvh] w-full">
+            <div 
+                className="absolute inset-0 cursor-pointer" 
+                onClick={onClose} 
+                aria-hidden="true"
+            />
+            
+            <div className={`w-full max-w-4xl rounded-[2.5rem] shadow-2xl max-h-[90dvh] h-fit flex flex-col border relative overflow-hidden transition-colors duration-500 ${modalBg}`}>
                 
                 {/* HEADER ULTRA-SLIM Adapté au thème */}
                 <div className={`relative px-5 py-3 shrink-0 border-b transition-colors ${isActuallyNight ? 'bg-stone-900 border-stone-800 text-white' : 'bg-stone-800 border-white/5 text-white'}`}>
@@ -158,7 +167,7 @@ const SessionDetailModal: React.FC<SessionDetailModalProps> = ({ session, isOpen
                 </div>
 
                 {/* CONTENT (DÉROULANT) Adapté */}
-                <div className={`p-5 space-y-6 overflow-y-auto flex-1 transition-colors ${bodyBg}`}>
+                <div className={`p-5 space-y-6 overflow-y-auto flex-1 transition-colors ${bodyBg} scrollbar-thin`}>
                     
                     <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {/* ATMOSPHÈRE */}
@@ -295,11 +304,14 @@ const SessionDetailModal: React.FC<SessionDetailModalProps> = ({ session, isOpen
                 
                 {/* FOOTER Adapté */}
                 <div className={`p-3 border-t text-center shrink-0 transition-colors ${isActuallyNight ? 'bg-stone-900 border-stone-800' : 'bg-white border-stone-100'}`}>
-                    <span className={`text-[7px] font-black uppercase tracking-widest ${isActuallyNight ? 'text-stone-700' : 'text-stone-300'}`}>Oracle Fish v4.8.8 • Precision Fisheries Archive</span>
+                    <span className={`text-[7px] font-black uppercase tracking-widest ${isActuallyNight ? 'text-stone-700' : 'text-stone-300'}`}>Oracle Fish v10.0.2 • Precision Fisheries Archive</span>
                 </div>
             </div>
         </div>
     );
+
+    // Michael : Téléportation du contenu à la racine du document
+    return createPortal(modalContent, document.body);
 };
 
 export default SessionDetailModal;

@@ -1,5 +1,6 @@
-// components/DeleteConfirmDialog.tsx - Version 10.0.0 (Night Ops Sardonic Dialog)
+// components/DeleteConfirmDialog.tsx - Version 10.0.2 (Portal Edition & Precision Centering)
 import React, { useMemo } from 'react';
+import { createPortal } from 'react-dom'; // Michael : Ajout du Portal pour le fix "envolée"
 import { X, AlertTriangle } from 'lucide-react';
 
 interface DeleteConfirmDialogProps {
@@ -42,6 +43,7 @@ const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
         return pool[randomIndex];
     }, [isOpen, customMessages]);
 
+    // Michael : Si fermé, on ne rend rien du tout
     if (!isOpen) return null;
 
     // Styles dynamiques Michael V8.0
@@ -51,14 +53,15 @@ const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
     const cancelBtn = isActuallyNight ? "bg-stone-900 hover:bg-stone-800 text-stone-400" : "bg-stone-100 hover:bg-stone-200 text-stone-600";
     const closeIconBg = isActuallyNight ? "bg-stone-900/50" : "bg-white/50";
 
-    return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 h-full w-full">
+    // Michael : Préparation du contenu pour la téléportation
+    const dialogContent = (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 sm:p-6 h-[100dvh] w-full overflow-hidden">
             <div 
                 className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" 
                 onClick={onClose} 
             />
             
-            <div className={`relative w-full max-w-xs rounded-[2rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 border transition-colors duration-500 ${modalBg}`}>
+            <div className={`relative w-full max-w-xs h-fit max-h-[90dvh] rounded-[2rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 border transition-colors duration-500 ${modalBg}`}>
                 <div className="p-6 text-center">
                     <div className={`mx-auto w-14 h-14 rounded-[1.5rem] flex items-center justify-center mb-4 border rotate-6 group overflow-hidden relative transition-all hover:rotate-0 ${
                         isActuallyNight ? 'bg-amber-950/20 border-amber-900/50' : 'bg-amber-50 border-amber-100'
@@ -101,6 +104,9 @@ const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
             </div>
         </div>
     );
+
+    // Michael : Téléportation au sommet du DOM
+    return createPortal(dialogContent, document.body);
 };
 
 export default DeleteConfirmDialog;

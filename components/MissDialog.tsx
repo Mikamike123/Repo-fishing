@@ -1,5 +1,6 @@
-// components/MissDialog.tsx - Version 10.1.0 (V8.1 Snapshot Integrity)
+// components/MissDialog.tsx - Version 10.0.2 (Portal Edition & Precision Centering)
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom'; // Michael : Import indispensable pour le fix "envolée"
 import { X, AlertOctagon, Edit2, Loader2, Cloud, CloudOff, Check } from 'lucide-react';
 import { 
     Miss, Zone, RefLureType, RefColor, RefSize, RefWeight, 
@@ -192,9 +193,13 @@ const MissDialog: React.FC<MissDialogProps> = ({
     </div>
   );
 
-  return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 sm:items-center p-4">
-      <div className={`w-full max-w-lg rounded-3xl shadow-2xl p-6 space-y-5 border max-h-[90vh] overflow-y-auto transition-colors duration-500 ${
+  // Michael : Contenu de la modale préparé pour la téléportation
+  const modalContent = (
+    /* Michael : Correction h-full -> h-[100dvh] et items-center pour un centrage viewport absolu */
+    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 p-4 h-[100dvh] w-full overflow-hidden">
+      <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
+      
+      <div className={`w-full max-w-lg h-fit max-h-[90dvh] rounded-3xl shadow-2xl p-6 space-y-5 border overflow-y-auto transition-colors duration-500 ${
           isActuallyNight ? 'bg-[#1c1917] border-stone-800' : 'bg-[#FAF9F6] border-white/50'
       }`}>
         <div className={`flex justify-between items-center border-b pb-4 ${isActuallyNight ? 'border-stone-800' : 'border-stone-100'}`}>
@@ -265,6 +270,9 @@ const MissDialog: React.FC<MissDialogProps> = ({
       </div>
     </div>
   );
+
+  // Michael : Téléportation au sommet du DOM
+  return createPortal(modalContent, document.body);
 };
 
 export default MissDialog;

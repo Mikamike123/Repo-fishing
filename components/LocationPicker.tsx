@@ -1,6 +1,7 @@
-// components/LocationPicker.tsx - Version 8.1.0 (Fix GPS Types & Precision)
+// components/LocationPicker.tsx - Version 8.2.0 (Portal Edition & Precision Centering)
 /// <reference types="vite/client" />
 import React, { useState, useCallback } from 'react';
+import { createPortal } from 'react-dom'; // Michael : Import indispensable pour le fix "envolée"
 import { APIProvider, Map, AdvancedMarker, Pin, MapCameraChangedEvent } from '@vis.gl/react-google-maps';
 import { X, Check, MapPin, Crosshair, Move } from 'lucide-react';
 
@@ -54,9 +55,12 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ initialLat, initialLng,
         });
     };
 
-    return (
-        <div className="fixed inset-0 z-[100] bg-stone-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-            <div className="bg-white w-full max-w-lg h-[80vh] rounded-[2rem] overflow-hidden flex flex-col shadow-2xl relative">
+    // Michael : Préparation du contenu pour la téléportation
+    const pickerContent = (
+        /* Michael : Correction h-full -> h-[100dvh] et z-index poussé pour passer au-dessus de tout */
+        <div className="fixed inset-0 z-[999] bg-stone-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in h-[100dvh] w-full overflow-hidden">
+            {/* Michael : h-[80dvh] pour un centrage parfait qui respecte les barres mobiles */}
+            <div className="bg-white w-full max-w-lg h-[80dvh] rounded-[2rem] overflow-hidden flex flex-col shadow-2xl relative">
                 
                 {/* Header Flottant */}
                 <div className="absolute top-4 left-4 right-4 z-10 flex justify-between items-start pointer-events-none">
@@ -130,6 +134,9 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ initialLat, initialLng,
             </div>
         </div>
     );
+
+    // Michael : Téléportation au corps du document pour ignorer les transforms du parent
+    return createPortal(pickerContent, document.body);
 };
 
 export default LocationPicker;

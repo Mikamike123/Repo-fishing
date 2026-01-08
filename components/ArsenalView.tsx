@@ -1,4 +1,4 @@
-// components/ArsenalView.tsx - Version 3.5 (Fix Bug & High Visibility Reset)
+// components/ArsenalView.tsx - Version 3.6.0 (Tactile Arsenal Upgrade)
 import React, { useState, useMemo } from 'react';
 import { 
     Anchor, Crosshair, Plus, Edit2, Check, Palette, Ruler, Scale, 
@@ -40,18 +40,18 @@ const ConfigSection: React.FC<{
     };
 
     return (
-        <div className="bg-white rounded-[2.5rem] p-6 lg:p-8 shadow-sm border border-stone-100 relative overflow-hidden h-full flex flex-col transition-all duration-300">
+        <div className="bg-white rounded-[2.5rem] p-6 lg:p-8 shadow-sm border border-stone-100 relative overflow-hidden h-full flex flex-col transition-all duration-300 oracle-card-press">
             {isReadOnly && <div className="absolute top-6 right-6 text-stone-300"><Lock size={16} /></div>}
 
             <div className="flex items-start justify-between mb-8">
                 <div className={`flex items-center gap-4 ${colorClass}`}>
-                    <div className="p-3 rounded-2xl bg-stone-50 border border-stone-100 shadow-sm">{icon}</div>
+                    <div className="p-3 rounded-2xl bg-stone-50 border border-stone-100 shadow-sm transition-all oracle-btn-press">{icon}</div>
                     <h3 className="font-black text-xl text-stone-800 tracking-tight italic uppercase leading-tight">{title}</h3>
                 </div>
                 {!isReadOnly && (
                     <button 
                         onClick={() => setIsConfirmOpen(true)}
-                        className="flex items-center gap-2 px-3 py-2 bg-amber-50 text-amber-600 border border-amber-100 rounded-xl hover:bg-amber-100 transition-all active:scale-95 shadow-sm"
+                        className="flex items-center gap-2 px-3 py-2 bg-amber-50 text-amber-600 border border-amber-100 rounded-xl hover:bg-amber-100 transition-all shadow-sm oracle-btn-press"
                     >
                         <RotateCcw size={14} className="font-bold" />
                         <span className="text-[10px] font-black uppercase tracking-tighter">Reset</span>
@@ -61,11 +61,11 @@ const ConfigSection: React.FC<{
             
             <ul className="space-y-3 mb-6 max-h-[400px] overflow-y-auto pr-2 scrollbar-thin flex-1">
                 {sortedItems.map((item, index) => (
-                    <li key={item.id} className="flex justify-between items-center bg-stone-50/50 p-4 rounded-2xl border border-stone-100 group hover:border-amber-200 hover:bg-white transition-all duration-200">
+                    <li key={item.id} className="flex justify-between items-center bg-stone-50/50 p-4 rounded-2xl border border-stone-100 group hover:border-amber-200 hover:bg-white transition-all duration-200 oracle-card-press">
                         {editingId === item.id && !isReadOnly ? (
                             <div className="flex flex-1 gap-2">
                                 <input value={editingLabel} onChange={(e) => setEditingLabel(e.target.value)} className="flex-1 px-3 py-2 rounded-xl border border-amber-300 text-sm outline-none shadow-inner" autoFocus />
-                                <button onClick={() => { onEdit(item.id, editingLabel); setEditingId(null); }} className="text-emerald-600 bg-emerald-50 p-2 rounded-xl border border-emerald-100"><Check size={18}/></button>
+                                <button onClick={() => { onEdit(item.id, editingLabel); setEditingId(null); }} className="text-emerald-600 bg-emerald-50 p-2 rounded-xl border border-emerald-100 transition-all oracle-btn-press"><Check size={18}/></button>
                             </div>
                         ) : (
                             <>
@@ -73,12 +73,12 @@ const ConfigSection: React.FC<{
                                 {!isReadOnly && (
                                     <div className="flex gap-2 items-center shrink-0">
                                         <div className="flex flex-col opacity-0 group-hover:opacity-100 transition-opacity">
-                                            {index > 0 && <button onClick={() => onMove(item.id, 'up')} className="p-1 text-stone-400 hover:text-stone-700"><ChevronUp size={14} strokeWidth={3} /></button>}
-                                            {index < sortedItems.length - 1 && <button onClick={() => onMove(item.id, 'down')} className="p-1 text-stone-400 hover:text-stone-700"><ChevronDown size={14} strokeWidth={3} /></button>}
+                                            {index > 0 && <button onClick={() => onMove(item.id, 'up')} className="p-1 text-stone-400 hover:text-stone-700 transition-all oracle-btn-press"><ChevronUp size={14} strokeWidth={3} /></button>}
+                                            {index < sortedItems.length - 1 && <button onClick={() => onMove(item.id, 'down')} className="p-1 text-stone-400 hover:text-stone-700 transition-all oracle-btn-press"><ChevronDown size={14} strokeWidth={3} /></button>}
                                         </div>
                                         <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity pl-3 border-l border-stone-200">
-                                            <button onClick={() => { setEditingId(item.id); setEditingLabel(item.label); }} className="p-2 text-stone-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-colors"><Edit2 size={14}/></button>
-                                            <button title="Archiver" onClick={() => onDelete(item.id)} className="p-2 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"><Archive size={14}/></button>
+                                            <button onClick={() => { setEditingId(item.id); setEditingLabel(item.label); }} className="p-2 text-stone-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-all oracle-btn-press"><Edit2 size={14}/></button>
+                                            <button title="Archiver" onClick={() => onDelete(item.id)} className="p-2 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all oracle-btn-press"><Archive size={14}/></button>
                                         </div>
                                     </div>
                                 )}
@@ -92,14 +92,14 @@ const ConfigSection: React.FC<{
             {!isReadOnly && (
                 <form onSubmit={(e) => { e.preventDefault(); if(newItemLabel.trim()){ onAdd(newItemLabel.trim()); setNewItemLabel(''); } }} className="flex gap-3 mt-auto pt-4 border-t border-stone-50">
                     <input type="text" value={newItemLabel} onChange={(e) => setNewItemLabel(e.target.value)} placeholder={placeholder} className="flex-1 bg-stone-50 border border-stone-200 rounded-2xl px-5 py-4 text-sm font-medium outline-none focus:ring-4 focus:ring-amber-500/10 focus:bg-white focus:border-amber-200 transition-all shadow-inner" />
-                    <button type="submit" disabled={!newItemLabel.trim()} className="p-4 bg-stone-800 text-white rounded-2xl hover:bg-amber-600 disabled:opacity-20 transition-all shadow-lg active:scale-95"><Plus size={20} /></button>
+                    <button type="submit" disabled={!newItemLabel.trim()} className="p-4 bg-stone-800 text-white rounded-2xl hover:bg-amber-600 disabled:opacity-20 transition-all shadow-lg oracle-btn-press"><Plus size={20} /></button>
                 </form>
             )}
 
             {/* Michael : Pop-in de confirmation de reset */}
             {isConfirmOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-                    <div className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl border border-stone-100 animate-in zoom-in-95 duration-300">
+                    <div className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl border border-stone-100 animate-in zoom-in-95 duration-300 oracle-card-press">
                         <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mb-6 mx-auto">
                             <AlertTriangle size={32} className="text-amber-500" />
                         </div>
@@ -111,13 +111,13 @@ const ConfigSection: React.FC<{
                         <div className="grid grid-cols-2 gap-3">
                             <button 
                                 onClick={() => setIsConfirmOpen(false)} 
-                                className="py-3.5 px-4 bg-stone-100 text-stone-600 font-bold rounded-2xl hover:bg-stone-200 transition-all"
+                                className="py-3.5 px-4 bg-stone-100 text-stone-600 font-bold rounded-2xl hover:bg-stone-200 transition-all oracle-btn-press"
                             >
                                 Annuler
                             </button>
                             <button 
                                 onClick={() => { onReset(defaultItems); setIsConfirmOpen(false); }} 
-                                className="py-3.5 px-4 bg-amber-500 text-white font-black rounded-2xl hover:bg-amber-600 shadow-lg shadow-amber-200 transition-all active:scale-95"
+                                className="py-3.5 px-4 bg-amber-500 text-white font-black rounded-2xl hover:bg-amber-600 shadow-lg shadow-amber-200 transition-all oracle-btn-press"
                             >
                                 Remplacer
                             </button>
@@ -135,9 +135,9 @@ const ArsenalView: React.FC<ArsenalViewProps> = (props) => {
     return (
         <div className="pb-32 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-[1600px] mx-auto">
             <div className="mb-10 px-6">
-                <div className="flex justify-between items-center bg-white p-6 rounded-[2.5rem] border border-stone-100 shadow-sm">
+                <div className="flex justify-between items-center bg-white p-6 rounded-[2.5rem] border border-stone-100 shadow-sm oracle-card-press">
                     <div className="flex items-center gap-5">
-                        <div className="p-4 bg-stone-900 rounded-[1.5rem] text-white shadow-xl shadow-stone-200"><Anchor size={32} /></div>
+                        <div className="p-4 bg-stone-900 rounded-[1.5rem] text-white shadow-xl shadow-stone-200 transition-all oracle-btn-press"><Anchor size={32} /></div>
                         <div>
                             <h2 className="text-3xl font-black text-stone-800 tracking-tighter uppercase italic leading-none">
                                 Arsenal

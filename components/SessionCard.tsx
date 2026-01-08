@@ -1,4 +1,4 @@
-// components/SessionCard.tsx - Version 8.7 (Normalization & Smart Avatar Feed)
+// components/SessionCard.tsx - Version 8.8 (Tactile Spring & Elevation Upgrade)
 import React, { useState } from 'react';
 import { 
     MapPin, Fish, Trash2, Edit2, User, Calendar, AlertOctagon,
@@ -133,7 +133,7 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
         const Icon = meta.icon;
 
         return (
-            <div className={`${themes[meta.theme] || (isActuallyNight ? 'bg-stone-800 border-stone-700' : 'bg-stone-50')} flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-black w-full shadow-sm transition-transform active:scale-95`}>
+            <div className={`${themes[meta.theme] || (isActuallyNight ? 'bg-stone-800 border-stone-700' : 'bg-stone-50')} flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-black w-full shadow-sm transition-all oracle-btn-press`}>
                 <Icon size={14} className="opacity-70 shrink-0" />
                 <div className="flex flex-col leading-none">
                     <div className="flex items-center gap-1">
@@ -150,7 +150,7 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
         <>
             <div 
                 onClick={() => onClick && onClick(session)} 
-                className={`relative rounded-[2.5rem] p-6 border transition-all cursor-pointer group mb-4 ${
+                className={`relative rounded-[2.5rem] p-6 border transition-all cursor-pointer group mb-4 oracle-card-press ${
                     isActuallyNight 
                         ? (isOwner ? 'bg-[#1c1917] border-stone-800 shadow-none' : 'bg-stone-950 border-stone-900')
                         : (isOwner ? 'bg-white border-stone-100 shadow-organic hover:shadow-xl' : 'bg-[#F5F4F1] border-stone-200/60')
@@ -181,8 +181,8 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                     <div className="flex items-center gap-3 ml-2">
                         {isOwner && (
                             <div className="flex gap-1 sm:opacity-0 group-hover:opacity-100 transition-all">
-                                <button onClick={(e) => { e.stopPropagation(); onEdit?.(session); }} className={`p-2.5 rounded-full border transition-colors ${isActuallyNight ? 'bg-stone-800 border-stone-700 text-stone-400 hover:bg-amber-900/40 hover:text-amber-400' : 'bg-stone-50 border-stone-100 text-stone-600 hover:bg-amber-100'}`}><Edit2 size={14}/></button>
-                                <button onClick={(e) => { e.stopPropagation(); onDelete?.(session.id); }} className={`p-2.5 rounded-full border transition-colors ${isActuallyNight ? 'bg-stone-800 border-stone-700 text-stone-400 hover:bg-rose-900/40 hover:text-rose-400' : 'bg-stone-50 border-stone-100 text-stone-600 hover:bg-rose-100'}`}><Trash2 size={14}/></button>
+                                <button onClick={(e) => { e.stopPropagation(); onEdit?.(session); }} className={`p-2.5 rounded-full border transition-all oracle-btn-press ${isActuallyNight ? 'bg-stone-800 border-stone-700 text-stone-400 hover:bg-amber-900/40 hover:text-amber-400' : 'bg-stone-50 border-stone-100 text-stone-600 hover:bg-amber-100'}`}><Edit2 size={14}/></button>
+                                <button onClick={(e) => { e.stopPropagation(); onDelete?.(session.id); }} className={`p-2.5 rounded-full border transition-all oracle-btn-press ${isActuallyNight ? 'bg-stone-800 border-stone-700 text-stone-400 hover:bg-rose-900/40 hover:text-rose-400' : 'bg-stone-50 border-stone-100 text-stone-600 hover:bg-rose-100'}`}><Trash2 size={14}/></button>
                             </div>
                         )}
                         {/* Michael : SSOT Avatar - On utilise l'URL passée ou le champ legacy pour la transition */}
@@ -203,7 +203,7 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                             return (
                                 <div 
                                     key={idx} 
-                                    className={`relative h-32 w-48 rounded-2xl overflow-hidden border shadow-sm shrink-0 group/photo snap-center cursor-zoom-in ${isActuallyNight ? 'bg-stone-950 border-stone-800' : 'bg-stone-50 border-stone-100'}`}
+                                    className={`relative h-32 w-48 rounded-2xl overflow-hidden border shadow-sm shrink-0 group/photo snap-center cursor-zoom-in transition-all oracle-btn-press ${isActuallyNight ? 'bg-stone-950 border-stone-800' : 'bg-stone-50 border-stone-100'}`}
                                     onClick={(e) => { e.stopPropagation(); setSelectedPhoto(url); }}
                                 >
                                     <img src={url} className="h-full w-full object-cover block" alt={`Prise ${idx + 1}`} loading="lazy" />
@@ -272,7 +272,7 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
 
                 {/* OBSERVATION */}
                 {session.notes && (
-                    <div className={`mb-6 px-5 py-4 rounded-[1.5rem] border relative italic text-[13px] leading-relaxed shadow-sm ${
+                    <div className={`mb-6 px-5 py-4 rounded-[1.5rem] border relative italic text-[13px] leading-relaxed shadow-sm transition-all oracle-btn-press ${
                         isActuallyNight ? 'bg-amber-950/10 border-amber-900/20 text-stone-400' : 'bg-amber-50/40 border-amber-100/50 text-stone-700'
                     }`}>
                         <div className={`absolute -top-2.5 left-6 px-3 text-[9px] font-black uppercase tracking-widest border rounded-full shadow-sm ${
@@ -285,12 +285,12 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                 {/* PRISES */}
                 <div className="flex flex-wrap gap-2.5 mb-6">
                     {session.catches.map(fish => (
-                        <div key={fish.id} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[11px] font-black shadow-sm ${getSpeciesColor(fish.species as SpeciesType, isActuallyNight)}`}>
+                        <div key={fish.id} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[11px] font-black shadow-sm transition-all oracle-btn-press ${getSpeciesColor(fish.species as SpeciesType, isActuallyNight)}`}>
                             <Fish size={12} strokeWidth={2.5} /> {fish.species} <span className="opacity-60 ml-0.5">{fish.size}cm</span>
                         </div>
                     ))}
                     {session.misses.map(miss => (
-                        <div key={miss.id} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[11px] font-black shadow-sm ${
+                        <div key={miss.id} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[11px] font-black shadow-sm transition-all oracle-btn-press ${
                             isActuallyNight ? 'bg-rose-950/30 border-rose-900/50 text-rose-400' : 'border-rose-200 bg-rose-50 text-rose-800'
                         }`}>
                             <AlertOctagon size={12} strokeWidth={2.5} /> {miss.type}
@@ -309,7 +309,7 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                             const scoreValue = (env?.scores as any)?.[scoreKey];
                             if (scoreValue === undefined || scoreValue === null) return null;
                             return (
-                                <div key={label} className="flex flex-col">
+                                <div key={label} className="flex flex-col transition-all oracle-btn-press">
                                     <span className={`text-[9px] font-black uppercase tracking-tighter ${isActuallyNight ? 'text-stone-600' : 'text-stone-300'}`}>{label === 'Black-Bass' ? 'Bass' : label}</span>
                                     <div className={`flex items-center gap-1.5 text-xs font-black ${isActuallyNight ? 'text-stone-400' : 'text-stone-600'}`}>
                                         <Activity size={12} className={scoreValue > 50 ? "text-emerald-500" : "text-amber-500"} />
@@ -319,7 +319,7 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                             );
                         })}
                     </div>
-                    <div className={`text-xs font-black px-4 py-1.5 rounded-full shadow-sm border ${
+                    <div className={`text-xs font-black px-4 py-1.5 rounded-full shadow-sm border transition-all oracle-btn-press ${
                         session.feelingScore >= 7 
                             ? (isActuallyNight ? 'bg-emerald-950/30 text-emerald-400 border-emerald-900/50' : 'bg-emerald-50 text-emerald-800 border-emerald-100') 
                             : (isActuallyNight ? 'bg-amber-950/30 text-amber-400 border-amber-900/50' : 'bg-amber-50 text-amber-800 border-amber-100')
@@ -337,7 +337,7 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                 >
                     <div className="p-6 flex justify-between items-center text-white relative z-10">
                         <span className="text-[10px] font-black uppercase tracking-[0.3em] opacity-60 italic">Visualisation Oracle</span>
-                        <button className="p-3 bg-white/10 rounded-full hover:bg-white/20 transition-all active:scale-90">
+                        <button className="p-3 bg-white/10 rounded-full hover:bg-white/20 transition-all oracle-btn-press">
                             <X size={24} />
                         </button>
                     </div>

@@ -1,4 +1,4 @@
-// components/DashboardLiveTab.tsx - Version 10.1.0 (UI Streamlined)
+// components/DashboardLiveTab.tsx - Version 10.2.0 (Tactile Dashboard Upgrade)
 import React, { useMemo } from 'react';
 import OracleHero from './OracleHero';
 import { 
@@ -71,8 +71,8 @@ export const DashboardLiveTab: React.FC<any> = ({
 
             {/* Michael : Badge supprimé ici pour gagner de l'espace vertical (V8.1) */}
 
-            {/* Carte principale Live */}
-            <div className={`rounded-[2rem] p-1 shadow-organic border overflow-hidden relative mx-2 transition-colors duration-500 ${
+            {/* Carte principale Live - Michael : Devient une oracle-card-press pour la profondeur visuelle */}
+            <div className={`rounded-[2rem] p-1 shadow-organic border overflow-hidden relative mx-2 transition-all duration-500 oracle-card-press ${
                 isActuallyNight ? 'bg-[#1c1917] border-stone-800 shadow-none' : 'bg-white border-stone-100'
             }`}>
                 <div className="p-6 relative z-10">
@@ -81,8 +81,8 @@ export const DashboardLiveTab: React.FC<any> = ({
                             <ActivityIcon /> Météo & Hydro Live
                         </h3>
                         
-                        {/* Sélecteur de secteur stylisé */}
-                        <div className="relative w-full sm:w-auto min-w-[180px]">
+                        {/* Sélecteur de secteur stylisé - Michael : Ajout de la classe oracle-btn-press */}
+                        <div className="relative w-full sm:w-auto min-w-[180px] transition-all oracle-btn-press">
                             <select 
                                 value={activeLocationId} 
                                 onChange={(e) => onLocationSelect(e.target.value)} 

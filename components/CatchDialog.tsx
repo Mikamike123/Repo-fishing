@@ -1,5 +1,6 @@
-// components/CatchDialog.tsx - Version 10.1.0 (V8.1 Snapshot Integrity)
+// components/CatchDialog.tsx - Version 10.0.2 (Portal Edition & Precision Centering)
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom'; // Michael : Import indispensable pour le fix "envolée"
 import { 
     X, Ruler, Sparkles, Edit2, Image as ImageIcon, Loader2, 
     Cloud, CloudOff, Check, Wand2, CheckCircle2, AlertCircle, Camera, UploadCloud 
@@ -310,9 +311,14 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
 
     if (!isOpen) return null;
 
-    return (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 sm:items-center p-4">
-            <div className={`w-full max-w-lg rounded-3xl shadow-2xl p-6 space-y-4 border max-h-[90vh] overflow-y-auto custom-scrollbar transition-colors duration-500 ${
+    // Michael : Contenu de la modale préparé pour la téléportation
+    const modalContent = (
+        /* Michael : Correction h-full -> h-[100dvh] et items-center pour un centrage viewport absolu */
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 p-4 h-[100dvh] w-full overflow-hidden">
+            <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
+            
+            {/* Michael : h-fit + max-h-[90dvh] pour garantir que la modal reste au centre et scrollable si contenu trop long */}
+            <div className={`relative w-full max-w-lg h-fit max-h-[90dvh] rounded-3xl shadow-2xl p-6 space-y-4 border overflow-y-auto custom-scrollbar transition-colors duration-500 ${
                 isActuallyNight ? 'bg-[#1c1917] border-stone-800' : 'bg-[#FAF9F6] border-white/50'
             }`}>
                 
@@ -444,6 +450,9 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
             </div>
         </div>
     );
+
+    // Michael : Téléportation au sommet du DOM
+    return createPortal(modalContent, document.body);
 };
 
 export default CatchDialog;

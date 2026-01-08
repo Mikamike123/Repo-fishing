@@ -1,4 +1,4 @@
-// components/DashboardWidgets.tsx - Version 10.0.0 (Night Ops UI Engine)
+// components/DashboardWidgets.tsx - Version 10.0.1 (Tactile Widgets Upgrade)
 import React from 'react';
 import { 
     Activity, Cloud, Sun, CloudSun, CloudRain, 
@@ -54,7 +54,7 @@ export const DropletsIcon = () => <Droplets size={16} />;
 export const GaugeIcon = () => <Gauge size={16} />;
 export const ThermometerIcon = () => <div className="flex justify-center"><Thermometer size={16} /></div>;
 
-// Michael : Grille optimisée pour le responsive. On utilise flex-1 pour que les éléments se partagent l'espace uniformément.
+// Michael : Grille optimisée pour le responsive.
 export const SpeciesScoreGrid: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     <div className="flex flex-row justify-center items-center gap-1 sm:gap-4 py-2 w-full max-w-4xl mx-auto overflow-hidden">
         {children}
@@ -66,12 +66,12 @@ interface SpeciesScoreProps {
     score?: number;
     hexColor: string; 
     loading?: boolean;
-    isActuallyNight?: boolean; // Raccordement Michael
+    isActuallyNight?: boolean; 
 }
 
-// Michael : Score compacté pour supporter 4 items sur une ligne mobile (min-w réduit)
+// Michael : Score compacté - Ajout du comportement tactile oracle-btn-press
 export const SpeciesScore: React.FC<SpeciesScoreProps> = ({ label, score, hexColor, loading, isActuallyNight }) => (
-    <div className="flex flex-col items-center flex-1 min-w-[65px] max-w-[90px]">
+    <div className="flex flex-col items-center flex-1 min-w-[65px] max-w-[90px] transition-all oracle-btn-press cursor-pointer">
         <div className="relative w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center">
             {/* Michael : Track de fond dynamique */}
             <div className={`absolute inset-0 border-[4px] sm:border-[5px] rounded-full ${isActuallyNight ? 'border-stone-800' : 'border-stone-50'}`}></div>
@@ -112,12 +112,13 @@ interface DataTileProps {
     color: string;
     loading?: boolean;
     description?: string; 
-    isActuallyNight?: boolean; // Raccordement Michael
+    isActuallyNight?: boolean; 
 }
 
+// Michael : Tuile de donnée - Ajout du comportement tactile oracle-btn-press
 export const DataTile: React.FC<DataTileProps> = ({ label, value, unit, icon, color, loading, description, isActuallyNight }) => (
     <div 
-        className={`flex flex-col items-center justify-center p-3 rounded-2xl border ${
+        className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all oracle-btn-press ${
             isActuallyNight ? 'border-stone-800' : 'border-stone-50'
         } ${color.split(' ')[0]} bg-opacity-30 relative group cursor-help`}
         title={description}
