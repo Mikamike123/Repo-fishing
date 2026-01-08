@@ -1,4 +1,4 @@
-// components/Dashboard.tsx - Version 10.1.0 (Precision Sync Display)
+// components/Dashboard.tsx - Version 10.5.0 (Multi-User Registry Support)
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
     Activity, Target, ScrollText, MapPin, ChevronDown, Flame, Trophy, RefreshCw
@@ -18,6 +18,7 @@ interface DashboardProps {
     activeTab?: 'live' | 'tactics' | 'activity' | 'experience';
     onTabChange?: (tab: 'live' | 'tactics' | 'activity' | 'experience') => void;
     userProfile: UserProfile | null;
+    usersRegistry: Record<string, UserProfile>; // Michael : Ajout du registre pour la Phase de Normalisation v10.6
     sessions: Session[];
     onDeleteSession: (id: string) => void;
     onEditSession: (session: Session) => void;
@@ -43,7 +44,7 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = (props) => {
     const { 
-        activeTab: propTab, onTabChange, userProfile,
+        activeTab: propTab, onTabChange, userProfile, usersRegistry,
         sessions, currentUserId, locations, activeLocationId, setActiveLocationId, 
         oracleData, isOracleLoading, onDeleteSession, onEditSession,
         activeLocationLabel, onLocationClick, onLocationSelect, arsenalData,
@@ -161,7 +162,9 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
                         currentUserId={currentUserId} 
                         onDeleteSession={onDeleteSession} 
                         onEditSession={onEditSession}
-                        isActuallyNight={isActuallyNight} 
+                        isActuallyNight={isActuallyNight}
+                        userProfile={userProfile} 
+                        usersRegistry={usersRegistry} // Michael : Le registre arrive enfin à destination
                     />
                 )}
 

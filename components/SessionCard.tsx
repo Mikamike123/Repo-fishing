@@ -1,4 +1,4 @@
-// components/SessionCard.tsx - Version 8.6 (Metadata Driven & Perfect Centering)
+// components/SessionCard.tsx - Version 8.7 (Normalization & Smart Avatar Feed)
 import React, { useState } from 'react';
 import { 
     MapPin, Fish, Trash2, Edit2, User, Calendar, AlertOctagon,
@@ -13,8 +13,37 @@ interface SessionCardProps {
     onEdit?: (session: Session) => void;
     onClick?: (session: Session) => void;
     currentUserId: string;
-    isActuallyNight?: boolean; // Michael : Pilotage du thème nuit
+    isActuallyNight?: boolean; 
+    authorAvatarUrl?: string; // Michael : La "FK" résolue pour le Multi-User v10.6
 }
+
+/**
+ * Michael : Mini-composant interne pour un avatar résilient dans le flux
+ */
+const AuthorAvatar: React.FC<{ url?: string; isActuallyNight?: boolean }> = ({ url, isActuallyNight }) => {
+    const [error, setError] = useState(false);
+    const [loading, setLoading] = useState(!!url);
+
+    return (
+        <div className={`w-12 h-12 rounded-full border-2 overflow-hidden shadow-md flex items-center justify-center shrink-0 ${
+            isActuallyNight ? 'border-stone-800 bg-stone-900' : 'border-white bg-stone-100'
+        }`}>
+            {loading && <div className="absolute w-10 h-10 animate-pulse bg-stone-400/20 rounded-full" />}
+            
+            {!url || error ? (
+                <User size={24} className={isActuallyNight ? 'text-stone-700' : 'text-stone-300'} />
+            ) : (
+                <img 
+                    src={url} 
+                    className={`w-full h-full object-cover transition-opacity duration-300 ${loading ? 'opacity-0' : 'opacity-100'}`} 
+                    alt="Avatar" 
+                    onLoad={() => setLoading(false)}
+                    onError={() => { setError(true); setLoading(false); }}
+                />
+            )}
+        </div>
+    );
+};
 
 const getWindDir = (deg?: number) => {
     if (deg === undefined) return '';
@@ -48,7 +77,7 @@ const SPECIES_MAP: Record<string, string> = {
     'Black-Bass': 'blackbass'
 };
 
-const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, onClick, currentUserId, isActuallyNight }) => {
+const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, onClick, currentUserId, isActuallyNight, authorAvatarUrl }) => {
     const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
     const env = session.envSnapshot as FullEnvironmentalSnapshot;
     const isOwner = session.userId === currentUserId;
@@ -156,9 +185,11 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                                 <button onClick={(e) => { e.stopPropagation(); onDelete?.(session.id); }} className={`p-2.5 rounded-full border transition-colors ${isActuallyNight ? 'bg-stone-800 border-stone-700 text-stone-400 hover:bg-rose-900/40 hover:text-rose-400' : 'bg-stone-50 border-stone-100 text-stone-600 hover:bg-rose-100'}`}><Trash2 size={14}/></button>
                             </div>
                         )}
-                        <div className={`w-12 h-12 rounded-full border-2 overflow-hidden shadow-md flex items-center justify-center shrink-0 ${isActuallyNight ? 'border-stone-800 bg-stone-900' : 'border-white bg-stone-100'}`}>
-                            {session.userAvatar ? <img src={session.userAvatar} className="w-full h-full object-cover" alt="Avatar" /> : <User size={24} className={isActuallyNight ? 'text-stone-700' : 'text-stone-300'} />}
-                        </div>
+                        {/* Michael : SSOT Avatar - On utilise l'URL passée ou le champ legacy pour la transition */}
+                        <AuthorAvatar 
+                            url={authorAvatarUrl || (session as any).userAvatar} 
+                            isActuallyNight={isActuallyNight} 
+                        />
                     </div>
                 </div>
 
@@ -198,14 +229,11 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                     </div>
                 )}
 
-                {/* ENVIRONNEMENT : Grille dynamique (3x3 pour Etang/Z_DEEP, 3x3+1 pour les autres) */}
+                {/* ENVIRONNEMENT : Grille dynamique */}
                 <div className="grid grid-cols-3 gap-2.5 mb-6 w-full max-w-fit md:max-w-2xl">
                     {allIndicators.map((item) => {
                         const { key, meta, source } = item;
-                        
-                        // Michael : Positionnement dynamique chirurgical
                         const isOxygen = key === 'oxygen';
-                        // On force le centrage sur ligne 4 (col-start-2) UNIQUEMENT si on n'est pas en mode 9 icônes
                         const gridClasses = (isOxygen && !is9IconMode) ? "col-start-2 mt-1" : "";
                         
                         let val: any;

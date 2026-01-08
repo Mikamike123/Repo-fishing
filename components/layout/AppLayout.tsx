@@ -1,7 +1,28 @@
-// components/layout/AppLayout.tsx
-import React from 'react';
+// components/layout/AppLayout.tsx - Version 10.5.0 (Normalization Alignment)
+import React, { useState } from 'react';
 import { Home, ScrollText, PlusCircle, Bot, MapPin, Menu, User, X, Anchor, ChevronRight, Moon, Sun, WifiOff, Sparkles, PartyPopper } from 'lucide-react';
 import MagicScanButton from '../MagicScanButton';
+
+/**
+ * Michael : Mini-composant interne pour gérer les avatars du layout de manière résiliente
+ */
+const LayoutAvatar = ({ url, size = "w-10 h-10", iconSize = 24 }: { url?: string, size?: string, iconSize?: number }) => {
+    const [error, setError] = useState(false);
+    return (
+        <div className={`${size} rounded-full overflow-hidden border-2 border-transparent flex items-center justify-center bg-stone-100/10 shrink-0`}>
+            {!url || error ? (
+                <User size={iconSize} className="text-stone-400" />
+            ) : (
+                <img 
+                    src={url} 
+                    alt="Avatar" 
+                    className="w-full h-full object-cover" 
+                    onError={() => setError(true)}
+                />
+            )}
+        </div>
+    );
+};
 
 export const AppLayout = ({ engine, children }: { engine: any, children: React.ReactNode }) => {
     const { isActuallyNight, triggerHaptic, setIsMenuOpen, userProfile, isOnline, navigateFromMenu, isMenuOpen, currentView, setCurrentView, handleMagicDiscovery, arsenalData, currentUserId } = engine;
@@ -21,8 +42,9 @@ export const AppLayout = ({ engine, children }: { engine: any, children: React.R
                     <span className={`font-black text-xl tracking-tighter uppercase italic ${isActuallyNight ? 'text-stone-100' : 'text-stone-800'}`}>Oracle<span className="text-amber-500"> Fish</span></span>
                     {!isOnline && <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-600 rounded-full animate-pulse"><WifiOff size={16} strokeWidth={3} /><span className="text-[12px] font-black uppercase">Offline</span></div>}
                 </div>
-                <button onClick={() => engine.setCurrentView('profile')} className={`w-10 h-10 rounded-full overflow-hidden border-2 ${isActuallyNight ? 'border-stone-700' : 'border-stone-200'}`}>
-                    {userProfile?.avatarBase64 ? <img src={userProfile.avatarBase64} alt="Profile" className="w-full h-full object-cover" /> : <User size={24} className="text-stone-400 m-auto mt-1" />}
+                {/* Michael : Utilisation du LayoutAvatar branché sur avatarUrl */}
+                <button onClick={() => engine.setCurrentView('profile')} className={`rounded-full border-2 transition-all active:scale-95 ${isActuallyNight ? 'border-stone-700' : 'border-stone-200'}`}>
+                    <LayoutAvatar url={userProfile?.avatarUrl} />
                 </button>
             </header>
 
@@ -59,10 +81,12 @@ const SideMenu = ({ engine }: any) => (
         <aside className={`fixed top-0 left-0 h-full w-4/5 max-w-xs z-[60] shadow-2xl p-8 animate-in slide-in-from-left flex flex-col pt-[env(safe-area-inset-top,24px)] ${engine.isActuallyNight ? 'bg-[#1c1917] text-stone-200 border-r border-stone-800' : 'bg-white text-stone-600'}`}>
             <div className="flex justify-between items-center mb-10"><span className="text-xs font-black text-stone-400 uppercase tracking-widest">Menu Principal</span><button onClick={() => engine.setIsMenuOpen(false)} className="p-3 text-stone-400"><X size={28} /></button></div>
             <div className={`flex items-center gap-4 mb-10 p-5 rounded-3xl border ${engine.isActuallyNight ? 'bg-[#292524] border-stone-700' : 'bg-stone-50 border-stone-100'}`}>
-                <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center border-2 border-amber-100 text-amber-500 overflow-hidden shadow-inner">
-                    {engine.userProfile?.avatarBase64 ? <img src={engine.userProfile.avatarBase64} alt="Avatar" className="w-full h-full object-cover"/> : <User size={32} />}
+                {/* Michael : Mise à jour avatarUrl dans le menu également */}
+                <LayoutAvatar url={engine.userProfile?.avatarUrl} size="w-16 h-16" iconSize={32} />
+                <div>
+                    <div className="font-black text-xl leading-none">{engine.userProfile?.pseudo}</div>
+                    <div className="text-xs text-stone-400 font-bold mt-1.5 uppercase tracking-wide">Soldat du Quai</div>
                 </div>
-                <div><div className="font-black text-xl leading-none">{engine.userProfile?.pseudo}</div><div className="text-xs text-stone-400 font-bold mt-1.5 uppercase tracking-wide">Soldat du Quai</div></div>
             </div>
             <nav className="space-y-3 flex-1">
                 <button onClick={() => { engine.setCurrentView('arsenal'); engine.setIsMenuOpen(false); }} className={`w-full flex items-center justify-between p-5 rounded-2xl transition-all font-black text-xl group ${engine.isActuallyNight ? 'hover:bg-stone-800 text-stone-300' : 'hover:bg-amber-50 text-stone-600'}`}><span className="flex items-center gap-4"><Anchor size={28} className="text-stone-400 group-hover:text-amber-500"/> Mon Arsenal</span><ChevronRight size={24} /></button>

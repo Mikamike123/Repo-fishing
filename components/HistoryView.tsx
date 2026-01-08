@@ -1,7 +1,7 @@
-// components/HistoryView.tsx - Version 8.2 (Filtre Prises sur Barre Annuelle)
+// components/HistoryView.tsx - Version 8.4 (Multi-User Registry & History Alignment)
 import React, { useState, useMemo } from 'react';
 import { ScrollText, Users, User, Search, Clock, Calendar, ChevronDown, ChevronUp, Fish } from 'lucide-react';
-import { Session } from '../types';
+import { Session, UserProfile } from '../types';
 import SessionCard from './SessionCard';
 import SessionDetailModal from './SessionDetailModal';
 import DeleteConfirmDialog from './DeleteConfirmDialog';
@@ -11,10 +11,20 @@ interface HistoryViewProps {
   onDeleteSession: (id: string) => void;
   onEditSession: (session: Session) => void;
   currentUserId: string;
-  isActuallyNight?: boolean; // Michael : Nouveau pour harmonisation Night Ops V8.0
+  userProfile: UserProfile | null;
+  usersRegistry: Record<string, UserProfile>; // Michael : Le dictionnaire des visages Oracle
+  isActuallyNight?: boolean; 
 }
 
-const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, onEditSession, currentUserId, isActuallyNight }) => {
+const HistoryView: React.FC<HistoryViewProps> = ({ 
+    sessions, 
+    onDeleteSession, 
+    onEditSession, 
+    currentUserId, 
+    userProfile,
+    usersRegistry, // Michael : Réception du registre pour la jointure historique
+    isActuallyNight 
+}) => {
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   
@@ -46,7 +56,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
       // Michael : Intégration du filtre sur le catchCount
       const matchesSuccess = showOnlySuccess ? (session.catchCount || 0) > 0 : true;
 
-      // Michael : Ta logique de recherche originale, strictement préservée.
       const matchesSearch = 
           (session.locationName || "").toLowerCase().includes(searchLower) || 
           (session.spotName || "").toLowerCase().includes(searchLower) || 
@@ -93,7 +102,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
     }
   };
 
-  // Styles dynamiques Michael - Adoption du gris anthracite doux (#1c1917) 
+  // Styles dynamiques Michael
   const cardClass = isActuallyNight ? "bg-[#1c1917] border-stone-800 shadow-none" : "bg-white border-stone-100 shadow-sm";
   const textTitle = isActuallyNight ? "text-stone-100" : "text-stone-800";
   const inputBg = isActuallyNight ? "bg-stone-900 border-stone-800 text-stone-200" : "bg-stone-50 border-stone-100 text-stone-800";
@@ -101,7 +110,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
   return (
     <div className="space-y-6 pb-24 animate-in fade-in duration-500">
       
-      {/* HEADER & FILTRES (Night Ops Ready) */}
+      {/* HEADER & FILTRES */}
       <div className={`${cardClass} rounded-[2.5rem] p-6 space-y-4 transition-colors duration-500`}>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -142,7 +151,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
         </div>
       </div>
 
-      {/* LISTE GROUPÉE PAR ANNÉE AVEC ACCORDÉONS */}
+      {/* LISTE GROUPÉE PAR ANNÉE */}
       <div className="space-y-6">
         {sortedYears.length > 0 ? (
           sortedYears.map((year) => {
@@ -165,10 +174,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
                           {yearData.sessions.length} sessions
                         </span>
                         
-                        {/* Michael : Le Toggle "Poisson" est maintenant ici, sur la séparation par année */}
                         <button 
                             onClick={(e) => {
-                                e.stopPropagation(); // Évite de fermer l'accordéon au clic
+                                e.stopPropagation(); 
                                 if (window.navigator?.vibrate) window.navigator.vibrate(10);
                                 setShowOnlySuccess(!showOnlySuccess);
                             }}
@@ -188,26 +196,34 @@ const HistoryView: React.FC<HistoryViewProps> = ({ sessions, onDeleteSession, on
 
                 {isExpanded && (
                   <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
-                    {yearData.sessions.map((session) => (
-                      <div 
-                        key={session.id}
-                        className={`transition-all duration-300 transform ${
-                          deletingId === session.id ? 'opacity-0 scale-95 -translate-y-4 pointer-events-none' : 'opacity-100 scale-100'
-                        }`}
-                      >
-                        <SessionCard 
-                            session={session} 
-                            onDelete={(id) => {
-                                setSessionIdToDelete(id);
-                                setIsDeleteConfirmOpen(true);
-                            }} 
-                            onEdit={onEditSession}
-                            onClick={(s) => { setSelectedSession(s); setIsDetailOpen(true); }}
-                            currentUserId={currentUserId}
-                            isActuallyNight={isActuallyNight}
-                        />
-                      </div>
-                    ))}
+                    {yearData.sessions.map((session) => {
+                      // Michael : Jointure SSOT v10.6 - Résolution de l'avatar via le Registre
+                      const authorAvatar = session.userId === currentUserId 
+                        ? userProfile?.avatarUrl 
+                        : usersRegistry?.[session.userId]?.avatarUrl;
+
+                      return (
+                        <div 
+                          key={session.id}
+                          className={`transition-all duration-300 transform ${
+                            deletingId === session.id ? 'opacity-0 scale-95 -translate-y-4 pointer-events-none' : 'opacity-100 scale-100'
+                          }`}
+                        >
+                          <SessionCard 
+                              session={session} 
+                              onDelete={(id) => {
+                                  setSessionIdToDelete(id);
+                                  setIsDeleteConfirmOpen(true);
+                              }} 
+                              onEdit={onEditSession}
+                              onClick={(s) => { setSelectedSession(s); setIsDetailOpen(true); }}
+                              currentUserId={currentUserId}
+                              isActuallyNight={isActuallyNight}
+                              authorAvatarUrl={authorAvatar} // Michael : Injection de l'URL résolue
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

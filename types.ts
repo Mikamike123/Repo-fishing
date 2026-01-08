@@ -11,7 +11,6 @@ export interface BaseEntity {
   active: boolean;          
   displayOrder: number;     
   userPseudo?: string;
-  userAvatar?: string;
   isFavorite?: boolean;   
   coordinates?: {         
       lat: number;
@@ -239,7 +238,7 @@ export interface UserProfile {
   id: string; 
   pseudo: string;
   createdAt: any;
-  avatarBase64?: string;
+  avatarUrl?: string;
   lastXpGain?: number;
   lastXpYear?: number;
   xpTotal?: number;      // Ajouté pour la persistance

@@ -1,4 +1,4 @@
-// hooks/useAppEngine.ts - Version 8.1.3 (Honest Sync Logic)
+// hooks/useAppEngine.ts - Version 8.1.5 (Multi-User Registry Logic)
 import { useState, useEffect, useMemo } from 'react';
 import { 
     onSnapshot, query, orderBy, 
@@ -40,11 +40,57 @@ export const useAppEngine = () => {
     const [displayedWeather, setDisplayedWeather] = useState<WeatherSnapshot | null>(null);
     const [isWeatherLoading, setIsWeatherLoading] = useState(false);
 
+    // Michael : Le Registre Multi-Utilisateurs (Cache L1 des profils tiers)
+    const [usersRegistry, setUsersRegistry] = useState<Record<string, UserProfile>>({});
+
     const currentUserId = user?.uid || "guest"; 
 
     const triggerHaptic = (pattern = [30, 50, 30]) => {
         if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(pattern);
     };
+
+    // --- LOGIQUE DU REGISTRE (Multi-User v10.6) ---
+    useEffect(() => {
+        if (!sessions.length) return;
+
+        const fetchMissingProfiles = async () => {
+            // 1. On liste tous les IDs uniques présents dans les sessions affichées
+            const uniqueUserIds = Array.from(new Set(sessions.map(s => s.userId)));
+            
+            // 2. On filtre ceux qu'on ne connaît pas encore (et qui ne sont pas Michael)
+            const missingIds = uniqueUserIds.filter(id => 
+                id !== currentUserId && 
+                id !== "guest" && 
+                !usersRegistry[id]
+            );
+
+            if (missingIds.length === 0) return;
+
+            console.log(`🔍 [Registry Oracle] Découverte de ${missingIds.length} nouveaux profils...`);
+            
+            const fetchedEntries: Record<string, UserProfile> = {};
+            let hasUpdates = false;
+
+            // Michael : Récupération asynchrone des profils manquants
+            for (const id of missingIds) {
+                try {
+                    const profile = await getUserProfile(id);
+                    if (profile) {
+                        fetchedEntries[id] = profile;
+                        hasUpdates = true;
+                    }
+                } catch (e) {
+                    console.error(`Erreur de reconnaissance pour l'ID ${id}:`, e);
+                }
+            }
+
+            if (hasUpdates) {
+                setUsersRegistry(prev => ({ ...prev, ...fetchedEntries }));
+            }
+        };
+
+        fetchMissingProfiles();
+    }, [sessions, currentUserId, usersRegistry]);
 
     useEffect(() => {
         const checkTheme = () => {
@@ -279,7 +325,15 @@ export const useAppEngine = () => {
             setEditingSession(null); setCurrentView('history');
         } else {
             const { id, date, ...dataToSave } = session;
-            await addDoc(collection(db, 'sessions'), { ...dataToSave, date: Timestamp.fromDate(new Date(date as string)), userId: currentUserId, userPseudo: userProfile?.pseudo || 'Inconnu', userAvatar: userProfile?.avatarBase64 || null, createdAt: Timestamp.now(), active: true });
+            // Michael : Phase Normalisation v10.6 - On retire définitivement userAvatar du document session
+            await addDoc(collection(db, 'sessions'), { 
+                ...dataToSave, 
+                date: Timestamp.fromDate(new Date(date as string)), 
+                userId: currentUserId, 
+                userPseudo: userProfile?.pseudo || 'Inconnu', 
+                createdAt: Timestamp.now(), 
+                active: true 
+            });
             setMagicDraft(null); setCurrentView('dashboard');
         }
     };
@@ -304,6 +358,7 @@ export const useAppEngine = () => {
         userProfile, setUserProfile, activeLocationId, setActiveLocationId, oraclePoints,
         isOracleLoading: isOracleLoading || isWeatherLoading, activeLocation, arsenalData, displayedWeather,
         isOnline, triggerHaptic, isWhitelisted, firestoreError, handleCreateProfile,
+        usersRegistry, // Michael : On expose le registre pour les jointures UI
         handleLogin: () => signInWithPopup(auth, googleProvider),
         handleLogout: () => { signOut(auth); setCurrentView('dashboard'); setIsMenuOpen(false); },
         handleSaveSession, handleEditRequest: (s: Session) => { setEditingSession(s); setCurrentView('session'); },

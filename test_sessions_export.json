@@ -1,6 +1,70 @@
 [
   {
-    "id": "LME4Cq3P0G00jIQODjY3",
+    "id": "Ebw4xW1NgKfp2n44w8JO",
+    "startTime": "08:00",
+    "endTime": "11:00",
+    "locationId": "7VDb345oVrTVs9wLuPsF",
+    "locationName": "Nanterre",
+    "speciesIds": [
+      "Brochet",
+      "Sandre",
+      "Perche"
+    ],
+    "spotId": "yWaYFKx6qtaE1knixQLR",
+    "spotName": "Entre le p'tit pont et l'escalier",
+    "setupId": "1x5pn9yMSbq7A1LskdC0",
+    "setupName": "Combo Brochet - Canne Savage",
+    "feelingScore": 10,
+    "notes": "",
+    "catches": [],
+    "misses": [],
+    "envSnapshot": {
+      "weather": {
+        "temperature": 5.7,
+        "pressure": 1005,
+        "clouds": 100,
+        "windSpeed": 10,
+        "windDirection": 255,
+        "precip": 0,
+        "conditionCode": 3
+      },
+      "hydro": {
+        "waterTemp": 4.7,
+        "turbidityNTU": 15.1,
+        "turbidityIdx": 0.19,
+        "dissolvedOxygen": 12.79,
+        "waveHeight": 1.7,
+        "flowRaw": 20
+      },
+      "scores": {
+        "brochet": 15,
+        "sandre": 12,
+        "perche": 12
+      },
+      "metadata": {
+        "calculationDate": "2026-01-08T06:32:19.921Z",
+        "calculationMode": "ZERO_HYDRO",
+        "flowStatus": "Montée",
+        "morphologyType": "Z_RIVER",
+        "sourceLogId": "ultreia_hourly_45d",
+        "schemaVersion": 8.1
+      }
+    },
+    "catchCount": 0,
+    "date": {
+      "_seconds": 1767830400,
+      "_nanoseconds": 0
+    },
+    "userId": "PhE3URDlONcTWb3v6166W0EBGom2",
+    "userPseudo": "Mika",
+    "createdAt": {
+      "_seconds": 1767853961,
+      "_nanoseconds": 915000000
+    },
+    "active": true
+  },
+  {
+    "id": "wig8LFymKaaLEfHTR76z",
     "startTime": "14:58",
     "endTime": "16:58",
     "locationId": "7VDb345oVrTVs9wLuPsF",
@@ -10,21 +74,21 @@
       "Sandre",
       "Perche"
     ],
-    "spotId": "5HfhQ1eYLPye754jIbro",
-    "spotName": "Zone profonde",
-    "setupId": "2d5cLgVXg77Itbu760LU",
-    "setupName": "Combo X - Canne et moulinet inconnus",
+    "spotId": "yWaYFKx6qtaE1knixQLR",
+    "spotName": "Entre le p'tit pont et l'escalier",
+    "setupId": "1x5pn9yMSbq7A1LskdC0",
+    "setupName": "Combo Brochet - Canne Savage",
     "feelingScore": 5,
     "notes": "",
     "catches": [
       {
-        "id": "magic_1767817269086",
+        "id": "magic_1767854077746",
         "species": "Sandre",
-        "size": 52,
+        "size": 43,
         "lureTypeId": "4frlhdT3AjcE7nbFXXMp",
         "lureColorId": "lP9VuACi9n9kqhVe1OhG",
         "photoUrls": [
-          "https://firebasestorage.googleapis.com/v0/b/mysupstack.firebasestorage.app/o/catches%2FPhE3URDlONcTWb3v6166W0EBGom2%2Fmagic_1767817258748_1000022568.jpg?alt=media&token=43d52c63-bce0-4508-8b2c-428561cbc1d8"
+          "https://firebasestorage.googleapis.com/v0/b/mysupstack.firebasestorage.app/o/catches%2FPhE3URDlONcTWb3v6166W0EBGom2%2Fmagic_1767854066994_1000022568.jpg?alt=media&token=332dadff-8132-407e-bf20-45f72d6caf88"
         ],
         "time": "14:58",
         "lureName": "Identifié par Oracle Vision"
@@ -42,7 +106,7 @@
         "conditionCode": 3
       },
       "hydro": {
-        "waterTemp": 9.6,
+        "waterTemp": 9.7,
         "turbidityNTU": 14.6,
         "turbidityIdx": 0.18,
         "dissolvedOxygen": 11.26,
@@ -55,7 +119,7 @@
         "perche": 24
       },
       "metadata": {
-        "calculationDate": "2026-01-07T20:21:10.320Z",
+        "calculationDate": "2026-01-08T06:34:39.399Z",
         "calculationMode": "ZERO_HYDRO",
         "flowStatus": "Décrue",
         "morphologyType": "Z_RIVER",
@@ -70,10 +134,9 @@
     },
     "userId": "PhE3URDlONcTWb3v6166W0EBGom2",
     "userPseudo": "Mika",
-    "userAvatar": null,
     "createdAt": {
-      "_seconds": 1767817283,
-      "_nanoseconds": 394000000
+      "_seconds": 1767854082,
+      "_nanoseconds": 700000000
     },
     "active": true
   }
