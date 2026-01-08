@@ -1,4 +1,4 @@
-// hooks/useAppEngine.ts - Version 8.1.5 (Multi-User Registry Logic)
+// hooks/useAppEngine.ts - Version 8.1.6 (Smooth Post-Save Navigation)
 import { useState, useEffect, useMemo } from 'react';
 import { 
     onSnapshot, query, orderBy, 
@@ -42,6 +42,9 @@ export const useAppEngine = () => {
 
     // Michael : Le Registre Multi-Utilisateurs (Cache L1 des profils tiers)
     const [usersRegistry, setUsersRegistry] = useState<Record<string, UserProfile>>({});
+
+    // Michael : État de suivi pour le focus post-sauvegarde (Plan d'action v10.8)
+    const [lastSavedSessionId, setLastSavedSessionId] = useState<string | null>(null);
 
     const currentUserId = user?.uid || "guest"; 
 
@@ -319,14 +322,16 @@ export const useAppEngine = () => {
 
     const handleSaveSession = async (session: Session) => {
         triggerHaptic();
+        let savedId = session.id;
+
         if (session.id) {
             const { date, id, ...data } = session;
             await updateDoc(doc(db, 'sessions', id), { ...data, date: Timestamp.fromDate(new Date(date as string)) });
-            setEditingSession(null); setCurrentView('history');
+            setEditingSession(null); 
         } else {
             const { id, date, ...dataToSave } = session;
             // Michael : Phase Normalisation v10.6 - On retire définitivement userAvatar du document session
-            await addDoc(collection(db, 'sessions'), { 
+            const docRef = await addDoc(collection(db, 'sessions'), { 
                 ...dataToSave, 
                 date: Timestamp.fromDate(new Date(date as string)), 
                 userId: currentUserId, 
@@ -334,8 +339,13 @@ export const useAppEngine = () => {
                 createdAt: Timestamp.now(), 
                 active: true 
             });
-            setMagicDraft(null); setCurrentView('dashboard');
+            savedId = docRef.id; // Michael : On récupère l'ID généré pour le focus
+            setMagicDraft(null); 
         }
+
+        // Michael : Phase Focus v10.8 - On mémorise l'ID et on redirige systématiquement vers l'historique
+        setLastSavedSessionId(savedId || null);
+        setCurrentView('history');
     };
 
     const handleConsumeLevelUp = async (goToExperience: boolean) => {
@@ -358,7 +368,8 @@ export const useAppEngine = () => {
         userProfile, setUserProfile, activeLocationId, setActiveLocationId, oraclePoints,
         isOracleLoading: isOracleLoading || isWeatherLoading, activeLocation, arsenalData, displayedWeather,
         isOnline, triggerHaptic, isWhitelisted, firestoreError, handleCreateProfile,
-        usersRegistry, // Michael : On expose le registre pour les jointures UI
+        usersRegistry, 
+        lastSavedSessionId, setLastSavedSessionId, // Michael : On expose les nouveaux contrôleurs
         handleLogin: () => signInWithPopup(auth, googleProvider),
         handleLogout: () => { signOut(auth); setCurrentView('dashboard'); setIsMenuOpen(false); },
         handleSaveSession, handleEditRequest: (s: Session) => { setEditingSession(s); setCurrentView('session'); },

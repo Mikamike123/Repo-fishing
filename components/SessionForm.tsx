@@ -1,4 +1,4 @@
-// components/SessionForm.tsx - Version 4.9.0 (V8.1 Snapshot Frozen Integrity)
+// components/SessionForm.tsx - Version 4.9.1 (FR Locale Formatting)
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Session, Zone, Setup, Technique, Catch, Miss, Lure, 
@@ -35,6 +35,7 @@ interface SessionFormProps {
 const SessionForm: React.FC<SessionFormProps> = (props) => {
     const { initialData, initialDiscovery, zones, setups, locations, defaultLocationId, onUpdateSession, onAddSession, onCancel, isActuallyNight } = props;
 
+    // Michael : On garde le stockage en ISO (YYYY-MM-DD) car c'est le standard pour les inputs HTML5 date
     const [date, setDate] = useState(initialData?.date || initialDiscovery?.date || new Date().toISOString().split('T')[0]);
     const [startTime, setStartTime] = useState(initialData?.startTime || initialDiscovery?.startTime || "08:00");
     const [endTime, setEndTime] = useState(initialData?.endTime || initialDiscovery?.endTime || "11:00");
@@ -53,6 +54,13 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
     const [isMissModalOpen, setIsMissModalOpen] = useState(false);
     const [editingCatch, setEditingCatch] = useState<Catch | null>(null);
     const [editingMiss, setEditingMiss] = useState<Miss | null>(null);
+
+    // Michael : Helpers de formatage pour l'affichage FR (dd/mm/yyyy)
+    const formattedDisplayDate = useMemo(() => {
+        if (!date) return "";
+        const [y, m, d] = date.split('-');
+        return `${d}/${m}/${y}`;
+    }, [date]);
 
     const filteredSpots = useMemo(() => {
         if (!locationId) return [];
@@ -259,6 +267,7 @@ const SessionForm: React.FC<SessionFormProps> = (props) => {
             envSnapshot={envSnapshot}
             isLoadingEnv={isLoadingEnv}
             envStatus={envStatus}
+            displayDateFR={formattedDisplayDate} // Michael : On passe la date formatée à l'UI
             isCatchModalOpen={isCatchModalOpen} setIsCatchModalOpen={setIsCatchModalOpen}
             isMissModalOpen={isMissModalOpen} setIsMissModalOpen={setIsMissModalOpen}
             editingCatch={editingCatch} setEditingCatch={setEditingCatch}

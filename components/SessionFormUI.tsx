@@ -1,4 +1,4 @@
-// components/SessionFormUI.tsx - Version 4.8.18 (Night Ops Global Sync)
+// components/SessionFormUI.tsx - Version 4.9.0 (FR Localization & Focus UI)
 import React, { useState } from 'react';
 import { 
     Save, Loader2, Fish, AlertOctagon, X, Copy, 
@@ -38,6 +38,7 @@ interface SessionFormUIProps {
     envSnapshot: FullEnvironmentalSnapshot | null;
     isLoadingEnv: boolean;
     envStatus: 'idle' | 'found' | 'not-found' | 'simulated';
+    displayDateFR: string; // Michael : Reçu du form parent pour l'affichage localisé
     isCatchModalOpen: boolean; setIsCatchModalOpen: (v: boolean) => void;
     isMissModalOpen: boolean; setIsMissModalOpen: (v: boolean) => void;
     editingCatch: Catch | null; setEditingCatch: (v: Catch | null) => void;
@@ -48,7 +49,7 @@ interface SessionFormUIProps {
     handleSaveMiss: (data: any) => void;
     handleSubmit: (e: React.FormEvent) => void;
     onCancel?: () => void;
-    isActuallyNight?: boolean; // Michael : Pilier V8.0
+    isActuallyNight?: boolean;
 }
 
 const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
@@ -57,7 +58,7 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
         date, setDate, startTime, setStartTime, endTime, setEndTime,
         locationId, setLocationId, filteredSpots, spotId, setSpotId, setupId, setSetupId,
         feelingScore, setFeelingScore, notes, setNotes, catches, misses, envSnapshot,
-        isLoadingEnv, envStatus, isCatchModalOpen, setIsCatchModalOpen, isMissModalOpen, setIsMissModalOpen,
+        isLoadingEnv, envStatus, displayDateFR, isCatchModalOpen, setIsCatchModalOpen, isMissModalOpen, setIsMissModalOpen,
         editingCatch, setEditingCatch, editingMiss, setEditingMiss,
         handleDeleteCatch, handleDeleteMiss, handleSaveCatch, handleSaveMiss, handleSubmit, zones, userId, onCancel,
         isActuallyNight
@@ -65,10 +66,9 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
 
     const [isCapotExpress, setIsCapotExpress] = useState(false);
 
-    // Michael : Feedback haptique local pour la validation
     const handleFormSubmit = (e: React.FormEvent) => {
         if (window.navigator && window.navigator.vibrate) {
-            window.navigator.vibrate(25); // Vibration courte de validation
+            window.navigator.vibrate(25);
         }
         handleSubmit(e);
     };
@@ -88,7 +88,6 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
         setPendingDelete({ id: '', type: null });
     };
 
-    // Styles dynamiques Michael pour Night Ops (#1c1917)
     const inputBg = isActuallyNight ? 'bg-stone-800 border-stone-700 text-stone-100' : 'bg-stone-50 border-transparent text-stone-700';
 
     return (
@@ -106,19 +105,41 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
             </div>
 
             <form onSubmit={handleFormSubmit} className="space-y-4">
-                {/* DATE / HEURE */}
+                {/* DATE / HEURE - LOCALISATION FR */}
                 <div className="grid grid-cols-12 gap-2">
                     <div className="col-span-4">
-                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-widest mb-1 block">Date</label>
-                        <input type="date" required value={date} onChange={e => setDate(e.target.value)} className={`w-full p-3 rounded-xl font-bold text-xs outline-none border transition-all ${inputBg}`} />
+                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-widest mb-1 block">
+                            Date {displayDateFR && <span className="text-amber-500/80">({displayDateFR})</span>}
+                        </label>
+                        <input 
+                            type="date" 
+                            required 
+                            value={date} 
+                            onChange={e => setDate(e.target.value)} 
+                            className={`w-full p-3 rounded-xl font-bold text-xs outline-none border transition-all ${inputBg}`} 
+                        />
                     </div>
                     <div className="col-span-4">
-                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-widest mb-1 block">Début</label>
-                        <input type="time" required value={startTime} onChange={e => setStartTime(e.target.value)} className={`w-full p-3 rounded-xl font-bold text-xs outline-none border transition-all ${inputBg}`} />
+                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-widest mb-1 block">Début (24h)</label>
+                        <input 
+                            type="time" 
+                            required 
+                            step="60"
+                            value={startTime} 
+                            onChange={e => setStartTime(e.target.value)} 
+                            className={`w-full p-3 rounded-xl font-bold text-xs outline-none border transition-all ${inputBg}`} 
+                        />
                     </div>
                     <div className="col-span-4">
-                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-widest mb-1 block">Fin</label>
-                        <input type="time" required value={endTime} onChange={e => setEndTime(e.target.value)} className={`w-full p-3 rounded-xl font-bold text-xs outline-none border transition-all ${inputBg}`} />
+                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-widest mb-1 block">Fin (24h)</label>
+                        <input 
+                            type="time" 
+                            required 
+                            step="60"
+                            value={endTime} 
+                            onChange={e => setEndTime(e.target.value)} 
+                            className={`w-full p-3 rounded-xl font-bold text-xs outline-none border transition-all ${inputBg}`} 
+                        />
                     </div>
                 </div>
 
@@ -233,26 +254,26 @@ const SessionFormUI: React.FC<SessionFormUIProps> = (props) => {
                 onSave={handleSaveCatch} initialData={editingCatch} availableZones={zones} locationId={locationId} locations={locations}   
                 availableTechniques={techniques} sessionStartTime={startTime} sessionEndTime={endTime} sessionDate={date} 
                 lureTypes={lureTypes} colors={colors} sizes={sizes} weights={weights} lastCatchDefaults={lastCatchDefaults} userId={userId}
-                isActuallyNight={isActuallyNight} // Michael : Propagation vers CatchDialog
+                isActuallyNight={isActuallyNight}
             />
             
             <button
                 type="button"
-                className="hidden" // Placeholder logic
+                className="hidden" 
             />
 
             <MissDialog 
                 isOpen={isMissModalOpen} onClose={() => { setIsMissModalOpen(false); setEditingMiss(null); }} 
                 onSave={handleSaveMiss} initialData={editingMiss} availableZones={zones} locationId={locationId} locations={locations}   
                 sessionStartTime={startTime} sessionEndTime={endTime} sessionDate={date} lureTypes={lureTypes} colors={colors} sizes={sizes} weights={weights}
-                isActuallyNight={isActuallyNight} // Michael : Propagation vers MissDialog
+                isActuallyNight={isActuallyNight}
             />
 
             <DeleteConfirmDialog
                 isOpen={pendingDelete.type !== null} onClose={() => setPendingDelete({ id: '', type: null })} onConfirm={confirmDeletion}
                 title={pendingDelete.type === 'catch' ? "Supprimer cette prise ?" : "Supprimer ce raté ?"}
                 customMessages={pendingDelete.type === 'catch' ? CATCH_DELETION_MESSAGES : MISS_DELETION_MESSAGES}
-                isActuallyNight={isActuallyNight} // Michael : Déjà géré dans les étapes précédentes
+                isActuallyNight={isActuallyNight}
             />
         </div>
     );

@@ -1,5 +1,5 @@
-// components/HistoryView.tsx - Version 8.4 (Multi-User Registry & History Alignment)
-import React, { useState, useMemo } from 'react';
+// components/HistoryView.tsx - Version 8.5.0 (Post-Save Focus & Highlighting)
+import React, { useState, useMemo, useEffect } from 'react';
 import { ScrollText, Users, User, Search, Clock, Calendar, ChevronDown, ChevronUp, Fish } from 'lucide-react';
 import { Session, UserProfile } from '../types';
 import SessionCard from './SessionCard';
@@ -12,8 +12,10 @@ interface HistoryViewProps {
   onEditSession: (session: Session) => void;
   currentUserId: string;
   userProfile: UserProfile | null;
-  usersRegistry: Record<string, UserProfile>; // Michael : Le dictionnaire des visages Oracle
+  usersRegistry: Record<string, UserProfile>;
   isActuallyNight?: boolean; 
+  highlightSessionId?: string | null; // Michael : ID de la session à mettre en avant
+  onClearHighlight?: () => void;      // Michael : Nettoyeur de focus
 }
 
 const HistoryView: React.FC<HistoryViewProps> = ({ 
@@ -22,8 +24,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     onEditSession, 
     currentUserId, 
     userProfile,
-    usersRegistry, // Michael : Réception du registre pour la jointure historique
-    isActuallyNight 
+    usersRegistry,
+    isActuallyNight,
+    highlightSessionId,
+    onClearHighlight
 }) => {
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -34,11 +38,48 @@ const HistoryView: React.FC<HistoryViewProps> = ({
 
   const [showOnlyMine, setShowOnlyMine] = useState(true); 
   const [searchTerm, setSearchTerm] = useState('');
-  
-  // Michael : État du filtre "Uniquement les succès"
   const [showOnlySuccess, setShowOnlySuccess] = useState(false);
-  
   const [expandedYears, setExpandedYears] = useState<Record<string, boolean>>({});
+
+  // --- LOGIQUE DE FOCUS (Plan d'action v10.8) ---
+  useEffect(() => {
+    if (highlightSessionId) {
+      const targetSession = sessions.find(s => s.id === highlightSessionId);
+      if (targetSession) {
+        // Michael : 1. Extraction de l'année pour l'ouverture forcée
+        const getTs = (dateVal: any): number => {
+            if (!dateVal) return 0;
+            if (typeof dateVal === 'object') return (dateVal.seconds || dateVal._seconds || 0) * 1000;
+            const parsed = new Date(dateVal).getTime();
+            return isNaN(parsed) ? 0 : parsed;
+        };
+        const year = new Date(getTs(targetSession.date)).getFullYear().toString();
+        
+        // Michael : 2. On s'assure que l'année est dépliée
+        setExpandedYears(prev => ({ ...prev, [year]: true }));
+
+        // Michael : 3. On réinitialise les filtres qui pourraient masquer la session
+        if (targetSession.userId !== currentUserId && showOnlyMine) setShowOnlyMine(false);
+        if ((targetSession.catchCount || 0) === 0 && showOnlySuccess) setShowOnlySuccess(false);
+        if (searchTerm !== '') setSearchTerm('');
+
+        // Michael : 4. Scroll et Animation
+        const timer = setTimeout(() => {
+          const element = document.getElementById(`session-${highlightSessionId}`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // On laisse la surbrillance 3 secondes pour l'effet visuel puis on nettoie l'état engine
+            setTimeout(() => {
+                if (onClearHighlight) onClearHighlight();
+            }, 3000);
+          }
+        }, 600); // Délai pour laisser l'accordéon s'ouvrir
+
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [highlightSessionId, sessions, currentUserId, onClearHighlight]);
 
   // --- LOGIQUE DE FILTRAGE & GROUPEMENT ---
   const groupedSessions = useMemo(() => {
@@ -52,8 +93,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     const filtered = sessions.filter(session => {
       const matchesUser = showOnlyMine ? session.userId === currentUserId : true;
       const searchLower = searchTerm.toLowerCase();
-      
-      // Michael : Intégration du filtre sur le catchCount
       const matchesSuccess = showOnlySuccess ? (session.catchCount || 0) > 0 : true;
 
       const matchesSearch = 
@@ -65,7 +104,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({
       return matchesUser && matchesSearch && matchesSuccess;
     });
 
-    // Archivage Annuel : Groupement par année
     const groups: Record<string, { sessions: Session[], totalCatches: number }> = {};
     filtered.forEach(s => {
       const ts = getTs(s.date);
@@ -102,7 +140,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     }
   };
 
-  // Styles dynamiques Michael
   const cardClass = isActuallyNight ? "bg-[#1c1917] border-stone-800 shadow-none" : "bg-white border-stone-100 shadow-sm";
   const textTitle = isActuallyNight ? "text-stone-100" : "text-stone-800";
   const inputBg = isActuallyNight ? "bg-stone-900 border-stone-800 text-stone-200" : "bg-stone-50 border-stone-100 text-stone-800";
@@ -197,16 +234,23 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                 {isExpanded && (
                   <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
                     {yearData.sessions.map((session) => {
-                      // Michael : Jointure SSOT v10.6 - Résolution de l'avatar via le Registre
                       const authorAvatar = session.userId === currentUserId 
                         ? userProfile?.avatarUrl 
                         : usersRegistry?.[session.userId]?.avatarUrl;
 
+                      // Michael : État de surbrillance
+                      const isHighlighted = session.id === highlightSessionId;
+
                       return (
                         <div 
+                          id={`session-${session.id}`}
                           key={session.id}
-                          className={`transition-all duration-300 transform ${
+                          className={`transition-all duration-500 transform ${
                             deletingId === session.id ? 'opacity-0 scale-95 -translate-y-4 pointer-events-none' : 'opacity-100 scale-100'
+                          } ${
+                            isHighlighted 
+                              ? 'ring-4 ring-amber-500/50 rounded-[2.5rem] shadow-2xl scale-[1.02] z-10' 
+                              : ''
                           }`}
                         >
                           <SessionCard 
@@ -219,7 +263,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                               onClick={(s) => { setSelectedSession(s); setIsDetailOpen(true); }}
                               currentUserId={currentUserId}
                               isActuallyNight={isActuallyNight}
-                              authorAvatarUrl={authorAvatar} // Michael : Injection de l'URL résolue
+                              authorAvatarUrl={authorAvatar}
                           />
                         </div>
                       );
