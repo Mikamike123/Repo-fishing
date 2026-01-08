@@ -23,6 +23,7 @@ export const DashboardLiveTab: React.FC<any> = ({
     onLocationClick, activeLocationLabel,
     isActuallyNight 
 }) => {
+    // Michael : Extraction du point "Maintenant" avec la précision v8.4
     const liveOraclePoint = useMemo(() => {
         if (!oracleData || !oracleData.length) return null;
         const nowTs = Date.now();
@@ -31,13 +32,13 @@ export const DashboardLiveTab: React.FC<any> = ({
         );
     }, [oracleData]);
 
-    const isRiver = targetLocation?.morphology?.typeId === 'Z_RIVER';
+    const isRiver = targetLocation?.morphology?.typeId === 'Z_RIVER' || targetLocation?.morphology?.typeId === 'Z_MED';
     
     const activeSpeciesList = useMemo(() => {
         if (targetLocation?.speciesIds && targetLocation.speciesIds.length > 0) {
             return targetLocation.speciesIds;
         }
-        return ['Sandre', 'Brochet', 'Perche']; 
+        return ['Sandre', 'Brochet', 'Perche', 'Black-Bass']; // Michael : Ajout par défaut du Bass
     }, [targetLocation]);
 
     const getVal = (key: string) => {
@@ -68,8 +69,6 @@ export const DashboardLiveTab: React.FC<any> = ({
                 onLocationChange={onLocationSelect}
                 isActuallyNight={isActuallyNight}
             />
-
-            {/* Michael : Badge supprimé ici pour gagner de l'espace vertical (V8.1) */}
 
             {/* Carte principale Live - Michael : Devient une oracle-card-press pour la profondeur visuelle */}
             <div className={`rounded-[2rem] p-1 shadow-organic border overflow-hidden relative mx-2 transition-all duration-500 oracle-card-press ${

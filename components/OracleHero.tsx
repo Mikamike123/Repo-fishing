@@ -71,7 +71,8 @@ const OracleHero: React.FC<OracleHeroProps> = ({
     // Michael : Détermination des clés de données autorisées (ex: 'brochet') basées sur speciesIds (ex: 'Brochet')
     const allowedKeys = useMemo(() => {
         if (!selectedLocation?.speciesIds || selectedLocation.speciesIds.length === 0) {
-            return ['sandre', 'brochet', 'perche']; // Fallback historique
+            // Michael : v8.4 - On ajoute par défaut le Bass si rien n'est coché
+            return ['sandre', 'brochet', 'perche', 'blackbass']; 
         }
         const mapping: Record<string, string> = {
             'Sandre': 'sandre',
@@ -100,7 +101,7 @@ const OracleHero: React.FC<OracleHeroProps> = ({
                     );
                     newCache[loc.id] = points;
                 } catch (e) {
-                    console.error(`Erreur Oracle pour ${loc.name}`, e);
+                    console.error(`Erreur Oracle pour ${loc.label || loc.name}`, e);
                 }
             }
         }));
@@ -118,7 +119,7 @@ const OracleHero: React.FC<OracleHeroProps> = ({
         if (mode === 'single') {
             if (dataPoints && dataPoints.length > 0) {
                 return dataPoints.map(pt => {
-                    // Michael : On prépare l'objet de base avec les métadonnées
+                    // Michael : On prépare l'objet de base avec les métadonnées environnementales v8.4
                     const filteredPoint: any = {
                         time: pt.timestamp,
                         dissolvedOxygen: pt.dissolvedOxygen,
@@ -149,6 +150,7 @@ const OracleHero: React.FC<OracleHeroProps> = ({
                     if (locData && locData[index]) {
                         const baseLabel = (loc as any).label || loc.name || 'Secteur';
                         const uniqueKey = `${baseLabel} (${loc.id.substring(0, 3)})`;
+                        // Michael : v8.4 - On s'assure que targetSpecies pointe vers la bonne clé (ex: blackbass)
                         mergedPoint[uniqueKey] = (locData[index] as any)[targetSpecies];
                     }
                 });
@@ -181,13 +183,13 @@ const OracleHero: React.FC<OracleHeroProps> = ({
             Math.abs(curr.timestamp - now) < Math.abs(prev.timestamp - now) ? curr : prev
         );
 
-        // Michael : On filtre la liste des scores pour la synthèse en haut à gauche
+        // Michael : v8.4 - On filtre la liste des scores pour la synthèse en haut à gauche
         const scores = [
             { name: 'Sandre', score: current.sandre, key: 'sandre' },
             { name: 'Brochet', score: current.brochet, key: 'brochet' },
             { name: 'Perche', score: current.perche, key: 'perche' },
             { name: 'Black-Bass', score: current.blackbass || 0, key: 'blackbass' }
-        ].filter(s => allowedKeys.includes(s.key)); // FILTRAGE ICI
+        ].filter(s => allowedKeys.includes(s.key));
 
         return scores.sort((a, b) => b.score - a.score)[0];
     }, [cache, effectiveLocId, dataPoints, mode, allowedKeys]);
