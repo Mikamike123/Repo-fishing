@@ -2,7 +2,7 @@ import * as admin from "firebase-admin";
 import { setGlobalOptions } from "firebase-functions/v2";
 
 // Configuration globale pour la région Europe
-setGlobalOptions({ region: "europe-west9", maxInstances: 10 });
+setGlobalOptions({ region: "europe-west1", maxInstances: 10 });
 
 // Initialisation de l'application (Nécessaire pour les fonctions exportées ci-dessous)
 if (!admin.apps.length) { admin.initializeApp(); }

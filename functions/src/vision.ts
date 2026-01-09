@@ -2,9 +2,6 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { VertexAI } from "@google-cloud/vertexai";
 import { z } from "zod"; // Import de Zod pour la validation
 
-// Initialisation Vertex AI
-const vertexAI = new VertexAI({ project: 'mysupstack', location: 'us-central1' });
-
 const SPECIES_LIST = ['Sandre', 'Brochet', 'Perche', 'Silure', 'Chevesne', 'Black-Bass', 'Aspe', 'Truite', 'Bar'];
 
 // --- SCHÉMAS DE VALIDATION ZOD ---
@@ -44,6 +41,11 @@ export const analyzeCatchImage = onCall({
     maxInstances: 5 
 }, async (request) => {
   
+  // 0. SÉCURITÉ : Vérification de l'authentification Michael
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "L'accès à l'Oracle Vision nécessite une session active.");
+  }
+
   // 1. VALIDATION DU PAYLOAD D'ENTRÉE
   const validatedInput = MagicScanInputSchema.safeParse(request.data);
   
@@ -53,6 +55,9 @@ export const analyzeCatchImage = onCall({
   }
 
   const { image, userPseudo, referentials } = validatedInput.data;
+
+  // Michael : Initialisation Vertex AI déplacée à l'intérieur pour sécuriser le déploiement
+  const vertexAI = new VertexAI({ project: 'mysupstack', location: 'us-central1' });
 
   /**
    * NETTOYAGE IMAGE

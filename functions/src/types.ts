@@ -1,4 +1,5 @@
-// types.ts - Architecture Cible Complète (v5.0 - Simulation Déterministe)
+// types.ts - Architecture Cible Complète (v8.1 - Atomic Snapshot)
+export const SCHEMA_VERSION = 8.1;
 
 // --- ENTITÉS DE BASE ---
 export interface BaseEntity {
@@ -10,7 +11,6 @@ export interface BaseEntity {
   active: boolean;          
   displayOrder: number;     
   userPseudo?: string;
-  userAvatar?: string;
   isFavorite?: boolean;   
   coordinates?: {         
       lat: number;
@@ -91,6 +91,7 @@ export interface FullEnvironmentalSnapshot {
     calculationMode?: 'OBSERVATORY' | 'ZERO_HYDRO' | 'ULTREIA_CALIBRATED';
     flowStatus?: 'Montée' | 'Décrue' | 'Stable';
     morphologyType?: MorphologyID;
+    schemaVersion: number; // [NOUVEAU] Garantit l'intégrité v8.1
   };
 }
 
@@ -120,7 +121,8 @@ export interface Location extends BaseEntity {
   morphology?: LocationMorphology;
   speciesIds?: string[];
   lastCalculatedTemp?: number;   
-  lastSyncDate?: string;             
+  lastSyncDate?: string;  
+  lastSnapshot?: FullEnvironmentalSnapshot; // [NOUVEAU] Le bloc atomique persistant           
 }
 
 export interface Spot extends BaseEntity {
@@ -236,7 +238,7 @@ export interface UserProfile {
   id: string; 
   pseudo: string;
   createdAt: any;
-  avatarBase64?: string;
+  avatarUrl?: string;
   lastXpGain?: number;
   lastXpYear?: number;
   xpTotal?: number;      // Ajouté pour la persistance

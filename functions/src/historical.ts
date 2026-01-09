@@ -2,7 +2,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import { z } from "zod"; // Michael : Import Zod pour la sécurisation MEP
-import { MorphologyID, BassinType, DepthCategoryID, FullEnvironmentalSnapshot } from "./types";
+import { MorphologyID, BassinType, DepthCategoryID, FullEnvironmentalSnapshot, SCHEMA_VERSION } from "./types";
 
 // --- SCHÉMA DE VALIDATION Michael (v7.2+) ---
 const HistoricalInputSchema = z.object({
@@ -361,7 +361,8 @@ export const getHistoricalContext = onCall({ region: "europe-west1" }, async (re
             calculationMode: 'ULTREIA_CALIBRATED' as any,
             flowStatus: trend,
             morphologyType: morphoId,
-            sourceLogId: 'ultreia_hourly_45d'
+            sourceLogId: 'ultreia_hourly_45d',
+            schemaVersion: SCHEMA_VERSION
         }
     };
 
