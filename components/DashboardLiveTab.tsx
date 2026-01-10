@@ -1,4 +1,6 @@
-// components/DashboardLiveTab.tsx - Version 10.2.0 (Tactile Dashboard Upgrade)
+// components/DashboardLiveTab.tsx - Version 11.0.0 (Consistency & Color Harmonization)
+// Michael : Harmonisation couleur Perche (#a855f7) et tri immuable des bioscores.
+
 import React, { useMemo } from 'react';
 import OracleHero from './OracleHero';
 import { 
@@ -9,13 +11,17 @@ import { WEATHER_METADATA, HYDRO_METADATA } from '../constants/indicators';
 import { ChevronDown, MapPin } from 'lucide-react';
 import { OracleDataPoint } from '../types'; 
 
+// Michael : Harmonisation des couleurs avec OracleChart
 const SPECIES_CONFIG: Record<string, { label: string; key: string; hexColor: string }> = {
     'Sandre': { label: 'Sandre', key: 'sandre', hexColor: '#f59e0b' },
     'Brochet': { label: 'Brochet', key: 'brochet', hexColor: '#10b981' },
-    'Perche': { label: 'Perche', key: 'perche', hexColor: '#f43f5e' },
-    'Black-Bass': { label: 'Black-Bass', key: 'blackbass', hexColor: '#8b5cf6' },
+    'Perche': { label: 'Perche', key: 'perche', hexColor: '#a855f7' }, // Violet Améthyste synchronisé
+    'Black-Bass': { label: 'Black-Bass', key: 'blackbass', hexColor: '#6366f1' }, // Indigo synchronisé
     'Silure': { label: 'Silure', key: 'silure', hexColor: '#4b5563' }, 
 };
+
+// Michael : Définition de l'ordre d'affichage maître
+const SPECIES_MASTER_ORDER = ['Sandre', 'Brochet', 'Perche', 'Black-Bass', 'Silure'];
 
 export const DashboardLiveTab: React.FC<any> = ({ 
     uniqueLocationsList, oracleData, isOracleLoading, activeLocationId, 
@@ -34,11 +40,14 @@ export const DashboardLiveTab: React.FC<any> = ({
 
     const isRiver = targetLocation?.morphology?.typeId === 'Z_RIVER' || targetLocation?.morphology?.typeId === 'Z_MED';
     
+    // Michael : Application de l'ordre immuable tout en respectant le filtrage par secteur
     const activeSpeciesList = useMemo(() => {
-        if (targetLocation?.speciesIds && targetLocation.speciesIds.length > 0) {
-            return targetLocation.speciesIds;
-        }
-        return ['Sandre', 'Brochet', 'Perche', 'Black-Bass']; // Michael : Ajout par défaut du Bass
+        const sectorSpecies = (targetLocation?.speciesIds && targetLocation.speciesIds.length > 0)
+            ? targetLocation.speciesIds
+            : ['Sandre', 'Brochet', 'Perche', 'Black-Bass']; // Valeurs par défaut
+        
+        // On filtre l'ordre maître par les espèces présentes dans le secteur
+        return SPECIES_MASTER_ORDER.filter(speciesId => sectorSpecies.includes(speciesId));
     }, [targetLocation]);
 
     const getVal = (key: string) => {
@@ -70,7 +79,7 @@ export const DashboardLiveTab: React.FC<any> = ({
                 isActuallyNight={isActuallyNight}
             />
 
-            {/* Carte principale Live - Michael : Devient une oracle-card-press pour la profondeur visuelle */}
+            {/* Carte principale Live */}
             <div className={`rounded-[2rem] p-1 shadow-organic border overflow-hidden relative mx-2 transition-all duration-500 oracle-card-press ${
                 isActuallyNight ? 'bg-[#1c1917] border-stone-800 shadow-none' : 'bg-white border-stone-100'
             }`}>
@@ -80,7 +89,6 @@ export const DashboardLiveTab: React.FC<any> = ({
                             <ActivityIcon /> Météo & Hydro Live
                         </h3>
                         
-                        {/* Sélecteur de secteur stylisé - Michael : Ajout de la classe oracle-btn-press */}
                         <div className="relative w-full sm:w-auto min-w-[180px] transition-all oracle-btn-press">
                             <select 
                                 value={activeLocationId} 
@@ -162,3 +170,5 @@ export const DashboardLiveTab: React.FC<any> = ({
         </div>
     );
 };
+
+export default DashboardLiveTab;
