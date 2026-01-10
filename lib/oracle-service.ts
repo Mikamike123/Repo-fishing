@@ -1,4 +1,6 @@
-// lib/oracle-service.ts - Version 8.4 (Unified Simulation Engine)
+// lib/oracle-service.ts - Version 8.8 (Physical Simulation Alignment)
+// Michael : Intégration du moteur v8.8.1 avec correction de la continuité thermique.
+
 import { calculateUniversalBioScores, BioContext } from './bioScoreEngine';
 import { 
     solveDissolvedOxygen, 
@@ -29,18 +31,18 @@ const BASIN_PARAMS: Record<BassinType, { offset: number }> = {
 };
 
 const DEPTH_MAP: Record<DepthCategoryID, number> = {
-    'Z_LESS_3': 1.5, 
+    'Z_LESS_3': 2.0, // Michael : Aligné sur le moteur physique v8.8.1
     'Z_3_15': 6.0, 
     'Z_MORE_15': 18.0
 };
 
-const EMA_ALPHA = 0.30; // Michael : Légèrement réduit pour laisser passer les pics d'activité
+const EMA_ALPHA = 0.30; 
 const FLOW_NORM_VAL = 150;
 const K_BASE = 0.98;
 const K_TEMP_SENSITIVITY = 0.004;
 
 /**
- * Transforme un point de donnée en Snapshot Atomique (v8.1 logic preserved)
+ * Transforme un point de donnée en Snapshot Atomique
  */
 export const mapPointToSnapshot = (point: OracleDataPoint, morphology?: LocationMorphology): FullEnvironmentalSnapshot => {
     return {
@@ -78,7 +80,7 @@ export const mapPointToSnapshot = (point: OracleDataPoint, morphology?: Location
 };
 
 /**
- * Nettoyage du cache (Michael : Maintien de l'hygiène du localStorage)
+ * Nettoyage du cache
  */
 export const cleanupOracleCache = () => {
     const keys = Object.keys(localStorage);
@@ -147,8 +149,8 @@ export const fetchOracleChartData = async (
 ): Promise<OracleDataPoint[]> => {
     if (!lat || !lng) return [];
     try {
-        const m = morphology?.typeId || 'Z_RIVER';
-        const b = morphology?.bassin || 'URBAIN';
+        const m = (morphology?.typeId || 'Z_RIVER') as any;
+        const b = (morphology?.bassin || 'URBAIN') as BassinType;
         const D = morphology?.meanDepth || DEPTH_MAP[morphology?.depthId || 'Z_3_15'];
         const surface = morphology?.surfaceArea || 100000; 
         const shape = morphology?.shapeFactor || 1.2;
@@ -162,13 +164,16 @@ export const fetchOracleChartData = async (
         
         const points: OracleDataPoint[] = [];
         const nowTs = Date.now();
-        const startGraph = nowTs - (12 * 3600 * 1000);
-        const endGraph = nowTs + (72 * 3600 * 1000);
+        const startGraph = nowTs - (12 * 3600 * 1000); 
+        const endGraph = nowTs + (72 * 3600 * 1000);   
 
-        // État initial (Cold Start 45 jours avant)
+        // État initial (Cold Start à J-45)
         let soilSaturation = 15; 
         let currentNTU = BASSIN_TURBIDITY_BASE[b] || 8.0; 
-        let currentWaterTemp = 12.0; // Sera écrasé par le premier calcul
+        
+        // Michael : Doit être undefined pour laisser solveAir2Water choisir la Baseline au début
+        let currentWaterTemp: number | undefined = undefined; 
+        
         let prevFlowIntensity = 0;
         let emaScores = { sandre: 0, brochet: 0, perche: 0, blackbass: 0 };
 
@@ -176,24 +181,32 @@ export const fetchOracleChartData = async (
             const date = new Date(hourly.time[i]);
             const ts = date.getTime();
             
-            // 1. EXTRACTION MÉTÉO
             const Ta = hourly.temperature_2m[i]; 
             const Patm = hourly.surface_pressure[i];
             const windKmH = hourly.wind_speed_10m[i];
             const precip = hourly.precipitation[i] || 0;
 
-            // 2. SIMULATION PHYSIQUE v8.4 (Passage en mode itératif horaire)
-            // On injecte un tableau d'un seul élément pour réutiliser la logique de zeroHydroEngine
+            // 1. SIMULATION THERMIQUE v8.8.1 (Correction continuité)
+            // L'état 'currentWaterTemp' est passé en argument 5 pour la relaxation
             currentWaterTemp = solveAir2Water(
                 [{ date: date.toISOString(), temperature: Ta }], 
-                m, b, morphology?.depthId, currentWaterTemp, D, true
+                m, 
+                b, 
+                morphology?.depthId as DepthCategoryID, 
+                currentWaterTemp, 
+                D, 
+                surface, 
+                shape
             );
 
+            // 2. SIMULATION TURBIDITÉ
             currentNTU = solveTurbidity(
-                [{ precipitation: precip }], b, true
+                [{ precipitation: precip }], 
+                b, 
+                true 
             );
 
-            // 3. LOGIQUE HYDRO (Proxy Saturation Sols)
+            // 3. LOGIQUE HYDRO
             const hourlyK = Math.pow(Math.max(0.70, K_BASE - (Ta * K_TEMP_SENSITIVITY)), 1/24);
             soilSaturation = (soilSaturation * hourlyK) + precip; 
             const flowIntensity = Math.min(100, (soilSaturation / FLOW_NORM_VAL) * 100);
@@ -204,7 +217,7 @@ export const fetchOracleChartData = async (
             // 4. FILTRAGE FENÊTRE D'AFFICHAGE
             if (ts < startGraph || ts > endGraph) continue;
 
-            // 5. CALCUL BIOLOGIQUE v8.4
+            // 5. CALCUL BIOLOGIQUE
             const hs = calculateWaveHeight(windKmH, surface, shape);
             const dissolvedOxygen = solveDissolvedOxygen(currentWaterTemp, Patm, windKmH);
             const prevPress24h = i >= 24 ? hourly.surface_pressure[i - 24] : hourly.surface_pressure[0];
@@ -226,7 +239,7 @@ export const fetchOracleChartData = async (
 
             const rawScores = calculateUniversalBioScores(ctx);
 
-            // 6. LISSAGE EMA (Graphiques fluides)
+            // 6. LISSAGE EMA
             if (points.length === 0) {
                 emaScores = { ...rawScores };
             } else {

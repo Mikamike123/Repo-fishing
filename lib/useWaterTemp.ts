@@ -1,15 +1,17 @@
-// lib/useWaterTemp.ts - Version 5.5 (Alignement Signature & Profondeur)
+// lib/useWaterTemp.ts - Version 8.8 (Cold-Start Systematic Sync)
+// Michael : Suppression du mode incrémental pour garantir une convergence absolue avec le backend.
 
 import { useState, useEffect } from 'react';
 import { Location } from '../types';
 import { solveAir2Water } from './zeroHydroEngine';
 import { fetchWeatherHistory } from './universal-weather-service';
 
-// Michael : THROTTLE_HOURS à 6 pour éviter de saturer Firestore lors des tests répétitifs
+// Michael : THROTTLE_HOURS à 6 pour éviter de saturer Firestore et l'API météo
 const THROTTLE_HOURS = 6;
-// Michael : Augmentation de 30 à 45 jours pour une meilleure convergence du modèle Air2Water sur la Seine
+
+// Michael : 45 jours est le "Golden Standard" pour que le modèle de relaxation 
+// oublie totalement son état initial (Baseline) et colle à la réalité du terrain.
 const COLD_START_DAYS = 45; 
-const INCREMENTAL_THRESHOLD_DAYS = 15;
 
 export const useWaterTemp = (
     location: Location | null,
@@ -19,6 +21,7 @@ export const useWaterTemp = (
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
+        // Validation stricte des coordonnées et de la morphologie Michael
         if (!location || !location.coordinates || typeof location.coordinates.lat !== 'number' || typeof location.coordinates.lng !== 'number' || !location.morphology) {
             setWaterTemp(null);
             return;
@@ -29,50 +32,63 @@ export const useWaterTemp = (
             const lastSync = location.lastSyncDate ? new Date(location.lastSyncDate) : null;
             const hoursSinceSync = lastSync ? (now.getTime() - lastSync.getTime()) / (1000 * 60 * 60) : null;
 
-            // Michael : Si on a synchronisé récemment, on utilise la valeur persistée pour garantir la continuité thermique
+            // Michael : Gestion du cache local. Si on est dans la fenêtre des 6h, on ne sollicite pas l'API.
+            // Comme le calcul initial est désormais ultra-précis (45j), cette valeur persistée est "juste".
             if (hoursSinceSync !== null && hoursSinceSync < THROTTLE_HOURS && location.lastCalculatedTemp !== undefined) {
                 setWaterTemp(location.lastCalculatedTemp);
                 return;
             }
 
             setLoading(true);
-            let computedTemp = location.lastCalculatedTemp;
 
             try {
-                // Michael : On extrait les variables de morphologie pour la clarté de l'appel
-                const morphoId = location.morphology!.typeId;
-                const bassin = location.morphology!.bassin;
-                const depthId = location.morphology!.depthId || 'Z_3_15';
+                // Michael : Extraction des paramètres morphologiques pour injection dans le moteur v8.8
+                const morpho = location.morphology;
+                const morphoId = morpho.typeId;
+                const bassin = morpho.bassin;
+                const depthId = morpho.depthId || 'Z_3_15';
 
-                if (hoursSinceSync === null || hoursSinceSync > (INCREMENTAL_THRESHOLD_DAYS * 24)) {
-                    // Mode COLD START : Reconstruction profonde de la mémoire thermique
-                    const history = await fetchWeatherHistory(location.coordinates!.lat, location.coordinates!.lng, COLD_START_DAYS);
-                    if (history && history.length > 0) {
-                        // Ajout de depthId en 4ème argument pour s'aligner sur zeroHydroEngine v5.5
-                        computedTemp = solveAir2Water(history, morphoId, bassin, depthId);
-                    }
-                } else {
-                    // Mode INCREMENTAL : On ajoute les derniers jours à la mémoire existante (Warm Start)
-                    const daysMissing = Math.ceil(hoursSinceSync / 24);
-                    const history = await fetchWeatherHistory(location.coordinates!.lat, location.coordinates!.lng, daysMissing + 1);
-                    if (history && history.length > 0 && location.lastCalculatedTemp !== undefined) {
-                        // lastCalculatedTemp passe en 5ème argument
-                        computedTemp = solveAir2Water(history, morphoId, bassin, depthId, location.lastCalculatedTemp);
-                    }
-                }
+                // Michael : On ignore désormais totalement INCREMENTAL_THRESHOLD_DAYS. 
+                // Chaque rafraîchissement est une reconstruction totale sur 45 jours.
+                const history = await fetchWeatherHistory(
+                    location.coordinates!.lat, 
+                    location.coordinates!.lng, 
+                    COLD_START_DAYS
+                );
+                
+                if (history && history.length > 0) {
+                    // Michael : Appel au moteur solveAir2Water avec la signature v8.8
+                    // On passe 'undefined' pour prevTemp pour forcer l'usage de la Smart Baseline à J-45
+                    const computedTemp = solveAir2Water(
+                        history, 
+                        morphoId, 
+                        bassin, 
+                        depthId, 
+                        undefined, 
+                        morpho.meanDepth,
+                        morpho.surfaceArea,
+                        morpho.shapeFactor
+                    );
 
-                if (computedTemp !== undefined && !isNaN(computedTemp)) {
-                    setWaterTemp(computedTemp);
-                    const locLabel = (location as any).label || location.name || "Secteur";
-                    // Michael : On persiste la donnée pour que le prochain calcul reparte de cette base
-                    onUpdateLocation('locations', location.id, locLabel, {
-                        lastCalculatedTemp: computedTemp,
-                        lastSyncDate: now.toISOString()
-                    });
+                    if (computedTemp !== undefined && !isNaN(computedTemp)) {
+                        setWaterTemp(computedTemp);
+                        
+                        const locLabel = (location as any).label || location.name || "Secteur";
+                        
+                        // Michael : On persiste la vérité calculée. 
+                        // C'est cette valeur qui sera lue par le Live et les sessions récentes.
+                        onUpdateLocation('locations', location.id, locLabel, {
+                            lastCalculatedTemp: computedTemp,
+                            lastSyncDate: now.toISOString()
+                        });
+                    }
                 }
             } catch (err) {
-                console.error("Erreur Sync Michael :", err);
-                if (location.lastCalculatedTemp !== undefined) setWaterTemp(location.lastCalculatedTemp);
+                console.error("💀 Erreur Critique Sync Michael :", err);
+                // Fallback de sécurité sur la dernière valeur connue en cas de crash API
+                if (location.lastCalculatedTemp !== undefined) {
+                    setWaterTemp(location.lastCalculatedTemp);
+                }
             } finally {
                 setLoading(false);
             }
