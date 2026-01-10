@@ -1,8 +1,10 @@
-// components/OracleChart.tsx - Version 12.2.0 (Stealth Default & Pastel Mastery)
+// components/OracleChart.tsx - Version 21.0.0 (Celestial Final - Michael Edition)
+// Michael : Fading absolu 14j stabilisé, Lune jaune clair, Nuits bleutées et Zero-Blur.
+
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import * as d3 from 'd3';
 import { Thermometer, Waves, Droplets, RefreshCw } from 'lucide-react';
-import { format, startOfDay, addDays, setHours, getMonth, isSameDay, endOfDay } from 'date-fns';
+import { format, startOfDay, addDays, setHours, isSameDay, addHours, endOfDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 export type ChartMode = 'single' | 'compare'; 
@@ -16,12 +18,11 @@ export interface OracleChartProps {
 const SPECIES_CONFIG: Record<string, { label: string; color: string }> = {
   'sandre': { label: 'Sandre', color: '#f59e0b' }, 
   'brochet': { label: 'Brochet', color: '#10b981' }, 
-  'perche': { label: 'Perche', color: '#fbbf24' }, 
-  'blackbass': { label: 'Black-Bass', color: '#8b5cf6' },
+  'perche': { label: 'Perche', color: '#a855f7' }, 
+  'blackbass': { label: 'Black-Bass', color: '#6366f1' },
 };
 
 const SECTOR_COLORS = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#06b6d4'];
-const SECTOR_FILLS = ['#818cf8', '#f472b6', '#34d399', '#fbbf24', '#22d3ee']; 
 
 const HYDRO_META: Record<HydroMetric, { label: string; color: string; unit: string; icon: any }> = {
   waterTemp: { label: 'TEMP. EAU', color: '#3b82f6', unit: '°C', icon: Thermometer },
@@ -32,14 +33,26 @@ const HYDRO_META: Record<HydroMetric, { label: string; color: string; unit: stri
 const OracleChart: React.FC<OracleChartProps> = ({ externalData, title, isActuallyNight }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [zoomRange, setZoomRange] = useState<{ start: number, end: number, label: string } | null>(null);
-  const [activeHydro, setActiveHydro] = useState<HydroMetric | null>(null); // Michael: Initialisé à null
+  const scrollRef = useRef<HTMLDivElement>(null);
+  
+  const now = useMemo(() => new Date(), []);
+  
+  // Michael : 14J par défaut
+  const [viewMode, setViewMode] = useState<'focus' | 'standard' | 'macro'>('macro');
+  const [viewStart, setViewStart] = useState<number>(0);
+  
+  const windowWidthMs = useMemo(() => {
+    if (viewMode === 'macro') return 14 * 24 * 3600 * 1000;
+    if (viewMode === 'focus') return 24 * 3600 * 1000;
+    return 84 * 3600 * 1000;
+  }, [viewMode]);
+
+  const [activeHydro, setActiveHydro] = useState<HydroMetric | null>(null); 
   const [hoverData, setHoverData] = useState<any | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
-  const [dimensions, setDimensions] = useState({ width: 0, height: 410 });
+  const [dimensions, setDimensions] = useState({ width: 0, height: 380 });
 
-  const nowTime = new Date().getTime();
-  const margin = { top: 60, right: 35, left: 35, bottom: 65 };
+  const margin = { top: 65, right: 45, left: 45, bottom: 45 };
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -52,220 +65,244 @@ const OracleChart: React.FC<OracleChartProps> = ({ externalData, title, isActual
 
   const rawData = useMemo(() => {
     if (!externalData) return [];
-    return externalData.map(d => ({ ...d, time: d.timestamp || d.time })).sort((a, b) => a.time - b.time);
+    return [...externalData].map(d => ({ ...d, time: d.timestamp || d.time })).sort((a, b) => a.time - b.time);
   }, [externalData]);
 
-  const displayData = useMemo(() => {
-    if (!zoomRange) return rawData;
-    return rawData.filter((d: any) => d.time >= zoomRange.start && d.time <= zoomRange.end);
-  }, [rawData, zoomRange]);
-
-  const isComparisonMode = useMemo(() => {
-    if (displayData.length === 0) return false;
-    const keys = Object.keys(displayData[0]);
-    return !keys.includes('sandre') && keys.some(k => k.includes('('));
-  }, [displayData]);
-
-  const dataKeys = useMemo(() => {
-    if (displayData.length === 0) return [];
-    const forbidden = ['time', 'timestamp', 'waterTemp', 'dissolvedOxygen', 'turbidityNTU'];
-    return Object.keys(displayData[0]).filter(k => !forbidden.includes(k));
-  }, [displayData]);
+  // Sync initial du curseur temporel
+  useEffect(() => {
+    if (rawData.length > 0 && viewStart === 0) {
+        setViewStart(rawData[0].time);
+    }
+  }, [rawData, viewStart]);
 
   const dayTransitions = useMemo(() => {
-    const transitions = [];
-    const baseDate = rawData.length > 0 ? new Date(rawData[0].time) : new Date();
-    for (let i = 0; i <= 4; i++) {
-        const d = addDays(baseDate, i);
-        transitions.push({
-            label: isSameDay(d, new Date()) ? "AUJOURD'HUI" : format(d, 'EEEE d', { locale: fr }).toUpperCase(),
+    if (rawData.length === 0) return [];
+    const days = [];
+    const firstDay = startOfDay(new Date(rawData[0].time));
+    for (let i = 0; i < 16; i++) {
+        const d = addDays(firstDay, i);
+        if (d.getTime() > rawData[rawData.length-1].time) break;
+        days.push({
+            label: isSameDay(d, now) ? "AUJ." : format(d, 'EEE d', { locale: fr }).toUpperCase(),
             start: startOfDay(d).getTime(),
             end: endOfDay(d).getTime(),
         });
     }
-    return transitions;
+    return days;
+  }, [rawData, now]);
+
+  const dataKeys = useMemo(() => {
+    if (rawData.length === 0) return [];
+    const forbidden = ['time', 'timestamp', 'waterTemp', 'dissolvedOxygen', 'turbidityNTU', 'confidence'];
+    return Object.keys(rawData[0]).filter(k => !forbidden.includes(k));
   }, [rawData]);
 
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (viewMode !== 'standard') return;
+    const target = e.currentTarget;
+    const scrollMax = target.scrollWidth - target.clientWidth;
+    if (scrollMax <= 0) return;
+    const scrollPercent = target.scrollLeft / scrollMax;
+    const totalTimeSpan = rawData[rawData.length - 1].time - rawData[0].time - windowWidthMs;
+    const newStart = rawData[0].time + (totalTimeSpan * scrollPercent);
+    setViewStart(newStart);
+  };
+
   useEffect(() => {
-    if (!svgRef.current || displayData.length === 0 || dimensions.width === 0) return;
+    if (!svgRef.current || rawData.length === 0 || dimensions.width === 0 || viewStart === 0) return;
 
     const width = dimensions.width - margin.left - margin.right;
     const height = dimensions.height - margin.top - margin.bottom;
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
-    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
 
-    // --- ECHELLES ---
-    const xScale = d3.scaleTime().domain(d3.extent(displayData, (d: any) => new Date(d.time)) as [Date, Date]).range([0, width]);
+    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+    const xScale = d3.scaleTime().domain([new Date(viewStart), new Date(viewStart + windowWidthMs)]).range([0, width]);
     const yScaleBio = d3.scaleLinear().domain([0, 100]).range([height, 0]);
 
-    // Échelle Hydro (Gère le mode null)
-    let yScaleHydro = d3.scaleLinear().domain([0, 100]).range([height, 0]);
-    if (activeHydro) {
-        const hVals = displayData.map((d: any) => d[activeHydro] || 0);
-        const hMin = d3.min(hVals) as number;
-        const hMax = d3.max(hVals) as number;
-        yScaleHydro = d3.scaleLinear().domain([Math.max(0, hMin - (hMax - hMin || 1) * 0.2), hMax + (hMax - hMin || 1) * 0.2]).range([height, 0]);
-    }
+    // Michael : Aura Watermark Centré
+    const watermarkText = viewMode === 'macro' ? 'VUE 14J' : viewMode === 'focus' ? 'VUE 24H' : 'VUE 84H';
+    g.append("text")
+        .attr("x", width / 2).attr("y", 15)
+        .attr("text-anchor", "middle")
+        .attr("fill", isActuallyNight ? "#4f46e5" : "#6366f1").attr("opacity", 0.15)
+        .style("font-size", "18px").style("font-weight", "900")
+        .text(watermarkText);
 
-    // --- MASTER TIMELINE ---
-    g.append("text").attr("x", 0).attr("y", -40).text("H-12H").attr("fill", "#78716c").style("font-size", "8px").style("font-weight", "900");
-    g.append("text").attr("x", width).attr("y", -40).attr("text-anchor", "end").text("H+72H").attr("fill", "#78716c").style("font-size", "8px").style("font-weight", "900");
+    // Michael : Moteur d'opacité glissante (Evanescence)
+    const getGlobalOpacity = (time: number) => {
+        const progress = (time - now.getTime()) / (14 * 24 * 3600 * 1000);
+        return progress <= 0 ? 1 : Math.max(0.15, 1 - (progress * 0.85));
+    };
 
-    // Unités Conditionnelles
-    g.append("text").attr("x", -5).attr("y", -10).text("%").attr("fill", isActuallyNight ? "#78716c" : "#57534e").style("font-size", "9px").style("font-weight", "bold");
-    if (activeHydro && !isComparisonMode) {
-        g.append("text").attr("x", width + 5).attr("y", -10).attr("text-anchor", "start").text(HYDRO_META[activeHydro].unit).attr("fill", HYDRO_META[activeHydro].color).style("font-size", "9px").style("font-weight", "bold");
-    }
+    // --- DEFS : GRADIENTS (Restauration Fading) ---
+    const defs = svg.append("defs");
+    dataKeys.forEach((key, i) => {
+        const color = SPECIES_CONFIG[key]?.color || SECTOR_COLORS[i % SECTOR_COLORS.length];
+        const lineGrad = defs.append("linearGradient").attr("id", `line-grad-${i}`).attr("x1", "0%").attr("y1", "0%").attr("x2", "100%").attr("y2", "0%");
+        lineGrad.append("stop").attr("offset", "0%").attr("stop-color", color).attr("stop-opacity", getGlobalOpacity(viewStart));
+        lineGrad.append("stop").attr("offset", "100%").attr("stop-color", color).attr("stop-opacity", getGlobalOpacity(viewStart + windowWidthMs));
+    });
 
-    const xDomain = xScale.domain().map(d => d.getTime());
+    // --- RENDU PHASES & ASTRES (Nuits Bleutées & Lune Jaune) ---
     dayTransitions.forEach(day => {
         const sr = setHours(new Date(day.start), 7).getTime();
         const ss = setHours(new Date(day.start), 19).getTime();
         const phases = [{ s: day.start, e: sr, t: 'n' }, { s: sr, e: ss, t: 'd' }, { s: ss, e: day.end, t: 'n' }];
-
         phases.forEach((p, idx) => {
-            const sX = xScale(new Date(Math.max(p.s, xDomain[0])));
-            const eX = xScale(new Date(Math.min(p.e, xDomain[1])));
-            if (eX > sX) {
-                g.append("rect").attr("x", sX).attr("y", -margin.top).attr("width", eX - sX).attr("height", height + margin.top)
-                    .attr("fill", p.t === 'n' ? (isActuallyNight ? "#0c0a09" : "#f8fafc") : "transparent").attr("opacity", 0.6);
+            const sX = xScale(new Date(p.s));
+            const eX = xScale(new Date(p.e));
+            if (eX > 0 && sX < width) {
+                const drawX = Math.max(0, sX);
+                const drawW = Math.min(width, eX) - drawX;
+                const nightColor = isActuallyNight ? "#172554" : "#eff6ff";
 
-                const cX = sX + (eX - sX) / 2;
-                if (eX - sX > 25) {
-                    const iconG = g.append("g").attr("transform", `translate(${cX-8},-42)`).attr("opacity", 0.6);
+                g.append("rect").attr("x", drawX).attr("y", -margin.top).attr("width", drawW).attr("height", height + margin.top)
+                    .attr("fill", p.t === 'n' ? nightColor : "transparent").attr("opacity", 0.5);
+
+                if (drawW > 30 && viewMode !== 'macro') {
+                    const iconX = drawX + drawW/2;
                     if (p.t === 'd') {
-                        iconG.append("circle").attr("cx", 8).attr("cy", 8).attr("r", 3.2).attr("fill", "#f59e0b");
+                        // Soleil XL
+                        const sunG = g.append("g");
+                        sunG.append("circle").attr("cx", iconX).attr("cy", -28).attr("r", 4.5).attr("fill", "#f59e0b");
                         for(let a=0; a<360; a+=45) {
-                            const rad = a * Math.PI / 180;
-                            iconG.append("line").attr("x1", 8+Math.cos(rad)*4.5).attr("y1", 8+Math.sin(rad)*4.2).attr("x2", 8+Math.cos(rad)*8).attr("y2", 8+Math.sin(rad)*8).attr("stroke", "#f59e0b").attr("stroke-width", 1.5);
+                            const r = a * Math.PI / 180;
+                            sunG.append("line").attr("x1", iconX + Math.cos(r)*6).attr("y1", -28 + Math.sin(r)*6).attr("x2", iconX + Math.cos(r)*11).attr("y2", -28 + Math.sin(r)*11).attr("stroke", "#f59e0b").attr("stroke-width", 1.5);
                         }
                     } else if (idx === 0) { 
-                        iconG.append("path").attr("d", "M11 4a5 5 0 1 0 2 9 6 6 0 1 1-2-9Z").attr("fill", "#818cf8");
+                        // Michael : Lune Jaune Clair (Saphir Edition)
+                        g.append("path").attr("d", "M-4 -4 a5 5 0 1 0 6 9 6 6 0 1 1-6-9Z")
+                         .attr("transform", `translate(${iconX}, -28) scale(1.1)`)
+                         .attr("fill", "#fef3c7").attr("opacity", 0.9);
                     }
                 }
             }
         });
     });
 
+    // --- LEGENDE INTEGREE Michael (Z-Order Clean) ---
+    const legendG = g.append("g").attr("class", "legend-container");
+    let legendX = 0;
+    const legendYOffset = viewMode === 'macro' ? -30 : -50;
+    dataKeys.forEach((key, i) => {
+        const color = SPECIES_CONFIG[key]?.color || SECTOR_COLORS[i % SECTOR_COLORS.length];
+        const cleanLabel = key.split(' (')[0].toUpperCase();
+        const item = legendG.append("g").attr("transform", `translate(${legendX}, ${legendYOffset})`);
+        item.append("circle").attr("r", 3).attr("fill", color);
+        item.append("text").attr("x", 8).attr("y", 3.5).attr("fill", isActuallyNight ? "#94a3b8" : "#64748b").style("font-size", "8px").style("font-weight", "900").text(cleanLabel);
+        legendX += cleanLabel.length * 6 + 25;
+    });
+    legendG.attr("transform", `translate(${(width - (legendX - 25)) / 2}, 0)`);
+
     // --- AXES ---
-    g.append("g").call(d3.axisLeft(yScaleBio).ticks(5).tickFormat(d => d.toString())).attr("color", "#444").style("font-size", "9px");
-    
-    // Axe Hydro (Ligne visible, labels conditionnels)
-    const hAxis = g.append("g").attr("transform", `translate(${width}, 0)`)
-        .call(d3.axisRight(yScaleHydro).ticks(activeHydro ? 5 : 0).tickFormat(d => activeHydro ? d.toString() : ""));
-    hAxis.attr("color", activeHydro ? HYDRO_META[activeHydro].color : "#444").style("font-size", "9px");
+    const tFormat = viewMode === 'macro' ? (d: any) => format(d, 'EEE d', { locale: fr }) : (d: any) => format(d, 'HH:mm', { locale: fr });
+    g.append("g").attr("transform", `translate(0,${height})`).call(d3.axisBottom(xScale).ticks(width / 80).tickFormat(tFormat))
+        .attr("color", isActuallyNight ? "#333" : "#cbd5e1").style("font-size", "9px").selectAll("text").attr("fill", "#666").attr("dy", "1.2em");
 
-    g.append("g").attr("transform", `translate(0,${height})`).call(d3.axisBottom(xScale).ticks(width / 80).tickFormat((d: any) => format(d, 'HH:mm')))
-        .attr("color", "#444").style("font-size", "9px");
+    g.append("g").call(d3.axisLeft(yScaleBio).ticks(5).tickFormat(d => d + "%"))
+        .attr("color", isActuallyNight ? "#333" : "#e2e8f0").style("font-size", "8px").selectAll("text").attr("fill", "#666");
 
-    // --- COURBES & AIRES ---
-    if (activeHydro && !isComparisonMode) {
-        const lineH = d3.line().x((d: any) => xScale(new Date(d.time))).y((d: any) => yScaleHydro(d[activeHydro] || 0)).curve(d3.curveMonotoneX);
-        g.append("path").datum(displayData).attr("fill", "none").attr("stroke", HYDRO_META[activeHydro].color).attr("stroke-width", 2.5).attr("opacity", 0.4).attr("d", lineH as any);
+    // --- COURBES BIO (Slim-Fit 2.8) ---
+    dataKeys.forEach((key, i) => {
+        const color = SPECIES_CONFIG[key]?.color || SECTOR_COLORS[i % SECTOR_COLORS.length];
+        const lineGen = d3.line<any>().x(d => xScale(new Date(d.time))).y(d => yScaleBio(d[key] || 0)).curve(d3.curveBasis);
+        const visibleData = rawData.filter(d => d.time >= viewStart - windowWidthMs/4 && d.time <= viewStart + windowWidthMs + windowWidthMs/4);
+        g.append("path").datum(visibleData).attr("fill", "none").attr("stroke", `url(#line-grad-${i})`).attr("stroke-width", 2.8).attr("stroke-linecap", "round").attr("d", lineGen as any);
+    });
+
+    if (activeHydro) {
+        const hVals = rawData.map(d => d[activeHydro]);
+        const yScaleHydro = d3.scaleLinear().domain([d3.min(hVals) * 0.95, d3.max(hVals) * 1.05]).range([height, 0]);
+        g.append("g").attr("transform", `translate(${width}, 0)`).call(d3.axisRight(yScaleHydro).ticks(5))
+         .attr("color", HYDRO_META[activeHydro].color).style("font-size", "8px").selectAll("text").attr("fill", HYDRO_META[activeHydro].color);
+        const lineH = d3.line<any>().x(d => xScale(new Date(d.time))).y(d => yScaleHydro(d[activeHydro] || 0)).curve(d3.curveBasis);
+        g.append("path").datum(rawData.filter(d => d.time >= viewStart - 3600000 && d.time <= viewStart + windowWidthMs + 3600000))
+            .attr("fill", "none").attr("stroke", HYDRO_META[activeHydro].color).attr("stroke-width", 1.8).attr("opacity", 0.4).attr("stroke-dasharray", "4,2").attr("d", lineH as any);
     }
 
-    dataKeys.forEach((key, i) => {
-        const color = isComparisonMode ? SECTOR_COLORS[i % SECTOR_COLORS.length] : (SPECIES_CONFIG[key]?.color || '#ccc');
-        const fillColor = isComparisonMode ? SECTOR_FILLS[i % SECTOR_FILLS.length] : color;
-        const gradId = `grad-${key.replace(/\s+/g, '-').replace(/[()]/g, '')}`;
-        
-        const grad = svg.append("defs").append("linearGradient").attr("id", gradId).attr("x1", "0%").attr("y1", "0%").attr("x2", "0%").attr("y2", "100%");
-        // Michael: Pastel renforcé (Opacité 0.45 jour / 0.25 nuit)
-        grad.append("stop").attr("offset", "0%").attr("stop-color", fillColor).attr("stop-opacity", isActuallyNight ? 0.25 : 0.45);
-        grad.append("stop").attr("offset", "100%").attr("stop-color", fillColor).attr("stop-opacity", 0);
+    // --- TRACKER DYNAMIQUE Michael ---
+    const trackerGroup = g.append("g").style("display", "none");
+    const vLine = trackerGroup.append("line").attr("y1", 0).attr("y2", height).attr("stroke", isActuallyNight ? "#444" : "#ddd").attr("stroke-width", 1).attr("stroke-dasharray", "4,4");
+    const dots = dataKeys.map((key, i) => trackerGroup.append("circle").attr("r", 4.5).attr("fill", "white").attr("stroke", SPECIES_CONFIG[key]?.color || SECTOR_COLORS[i % SECTOR_COLORS.length]).attr("stroke-width", 2));
 
-        const area = d3.area().x((d: any) => xScale(new Date(d.time))).y0(height).y1((d: any) => yScaleBio(d[key] || 0)).curve(d3.curveMonotoneX);
-        const line = d3.line().x((d: any) => xScale(new Date(d.time))).y((d: any) => yScaleBio(d[key] || 0)).curve(d3.curveMonotoneX);
-        
-        g.append("path").datum(displayData).attr("fill", `url(#${gradId})`).attr("d", area as any);
-        const past = displayData.filter((d: any) => d.time <= nowTime);
-        const future = displayData.filter((d: any) => d.time >= nowTime);
-        if (past.length) g.append("path").datum(past).attr("fill", "none").attr("stroke", color).attr("stroke-width", 3).attr("d", line as any);
-        if (future.length) g.append("path").datum(future).attr("fill", "none").attr("stroke", color).attr("stroke-width", 2.5).attr("stroke-dasharray", "6,4").attr("d", line as any);
-    });
-
-    // Interaction Line
-    const hLine = g.append("line").attr("y1", -15).attr("y2", height).attr("stroke", isActuallyNight ? "#444" : "#ddd").attr("stroke-width", 1).attr("stroke-dasharray", "4,4").style("opacity", 0);
     const overlay = g.append("rect").attr("width", width).attr("height", height).attr("fill", "transparent").style("pointer-events", "all");
-    overlay.on("pointermove", (event) => {
+    overlay.on("pointermove touchmove", (event) => {
         const [mX] = d3.pointer(event);
-        const d = displayData[d3.bisector((d: any) => d.time).left(displayData, xScale.invert(mX).getTime(), 1) - 1];
-        if (d) { 
+        const d = rawData[d3.bisector((d: any) => d.time).center(rawData, xScale.invert(mX).getTime())];
+        if (d && mX >= 0 && mX <= width) { 
+            trackerGroup.style("display", null);
+            const xPos = xScale(new Date(d.time));
+            vLine.attr("x1", xPos).attr("x2", xPos);
+            dots.forEach((dot, i) => dot.attr("cx", xPos).attr("cy", yScaleBio(d[dataKeys[i]] || 0)));
             setHoverData(d); setTooltipPos({ x: event.clientX, y: event.clientY }); 
-            hLine.attr("x1", xScale(new Date(d.time))).attr("x2", xScale(new Date(d.time))).style("opacity", 1);
         }
     });
-    overlay.on("mouseleave touchend", () => { setHoverData(null); hLine.style("opacity", 0); });
+    overlay.on("mouseleave touchend", () => { trackerGroup.style("display", "none"); setHoverData(null); });
 
-    // Navigator
-    const navY = height + 45;
-    const navG = g.append("g").attr("transform", `translate(0, ${navY})`);
-    dayTransitions.forEach(day => {
-        const sX = xScale(new Date(Math.max(day.start, xDomain[0])));
-        const eX = xScale(new Date(Math.min(day.end, xDomain[1])));
-        if (eX > sX) {
-            const isActive = zoomRange?.label === day.label;
-            const btn = navG.append("g").attr("class", "cursor-pointer").on("click", () => isActive ? setZoomRange(null) : setZoomRange({ start: day.start, end: day.end, label: day.label }));
-            btn.append("rect").attr("x", sX).attr("y", -15).attr("width", Math.max(0, eX - sX - 4)).attr("height", 30).attr("rx", 10).attr("fill", isActive ? "#4f46e5" : (isActuallyNight ? "#292524" : "#f5f5f4"));
-            btn.append("text").attr("x", sX + (eX - sX) / 2).attr("y", 4).attr("text-anchor", "middle").text(day.label.split(' ')[0]).attr("fill", isActive ? "white" : (isActuallyNight ? "#a8a29e" : "#57534e")).style("font-size", "8px").style("font-weight", "900");
-        }
-    });
-
-  }, [displayData, isActuallyNight, activeHydro, dataKeys, dayTransitions, nowTime, zoomRange, dimensions, isComparisonMode]);
+  }, [rawData, viewStart, activeHydro, dimensions, isActuallyNight, now, dataKeys, viewMode, windowWidthMs]);
 
   return (
-    <div ref={containerRef} className={`w-full rounded-2xl border transition-all duration-500 overflow-hidden relative select-none ${isActuallyNight ? 'bg-[#1c1917] border-stone-800' : 'bg-white border-stone-100 shadow-sm'}`}>
-      <div className="p-3 flex justify-between items-start border-b border-stone-800/30">
-        <div className="flex-1">
-          <h3 className={`text-[9px] font-black uppercase tracking-[0.2em] italic ${isActuallyNight ? 'text-indigo-400' : 'text-stone-800'}`}>{title || "ORACLE VISION"}</h3>
-          <div className="flex gap-4 mt-1 text-[8px] font-black uppercase tracking-tight">
-            <span className="text-amber-500">Bio-Probabilité</span>
-            {activeHydro && !isComparisonMode && <span className="text-blue-500">{HYDRO_META[activeHydro].label}</span>}
-          </div>
+    <div ref={containerRef} className={`w-full rounded-3xl border transition-all duration-500 overflow-hidden relative select-none flex flex-col ${isActuallyNight ? 'bg-[#0c0a09] border-stone-800' : 'bg-white border-stone-100 shadow-xl'}`}>
+      
+      <div className="p-4 flex justify-between items-center border-b border-stone-800/20 gap-3">
+        <div className={`flex p-0.5 rounded-lg border ${isActuallyNight ? 'bg-stone-900 border-stone-800' : 'bg-stone-50 border-stone-100'}`}>
+            {(['waterTemp', 'dissolvedOxygen', 'turbidityNTU'] as HydroMetric[]).map(m => {
+                const Icon = HYDRO_META[m].icon;
+                return <button key={m} onClick={() => setActiveHydro(activeHydro === m ? null : m)} className={`p-1.5 rounded-md transition-all ${activeHydro === m ? 'bg-indigo-600 text-white shadow-lg' : 'text-stone-400 hover:text-stone-500'}`}><Icon size={12} /></button>;
+            })}
         </div>
-        
-        <div className="flex items-center gap-2">
-            {zoomRange && (
-                <button onClick={() => setZoomRange(null)} className="oracle-btn-press px-2 py-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center gap-1.5 text-[8px] font-black uppercase">
-                    <RefreshCw size={12} /> Prévisions 72H
-                </button>
-            )}
-            {!isComparisonMode && (
-                <div className={`flex p-0.5 rounded-lg border ${isActuallyNight ? 'bg-stone-900 border-stone-800' : 'bg-stone-50 border-stone-100'}`}>
-                    {(['waterTemp', 'dissolvedOxygen', 'turbidityNTU'] as HydroMetric[]).map(m => {
-                        const Icon = HYDRO_META[m].icon;
-                        const isActive = activeHydro === m;
-                        return <button key={m} onClick={() => setActiveHydro(isActive ? null : m)} className={`oracle-btn-press p-1.5 rounded-md transition-all ${isActive ? 'bg-indigo-600 text-white shadow-lg' : 'text-stone-500'}`}><Icon size={12} /></button>;
-                    })}
-                </div>
-            )}
+
+        <h3 className={`text-[10px] font-black uppercase tracking-[0.2em] italic ${isActuallyNight ? 'text-indigo-400' : 'text-stone-800'}`}>{title || "ORACLE VISION"}</h3>
+
+        <div className={`flex p-0.5 rounded-full border ${isActuallyNight ? 'bg-stone-900 border-stone-800' : 'bg-stone-100 border-stone-200'}`}>
+            <button onClick={() => { setViewMode('standard'); setViewStart(addHours(now, -12).getTime()); }} className={`px-3 py-1 rounded-full text-[9px] font-black transition-all ${viewMode !== 'macro' ? 'bg-indigo-600 text-white shadow-lg' : 'text-stone-400'}`}>84H</button>
+            <button onClick={() => { setViewMode('macro'); setViewStart(rawData[0].time); }} className={`px-3 py-1 rounded-full text-[9px] font-black transition-all ${viewMode === 'macro' ? 'bg-indigo-600 text-white shadow-lg' : 'text-stone-400'}`}>14J</button>
         </div>
       </div>
 
-      <svg ref={svgRef} width="100%" height={dimensions.height} className="block overflow-visible touch-none" style={{ touchAction: 'none' }} />
+      <div className="flex-1 relative pt-4">
+        <svg ref={svgRef} width="100%" height={dimensions.height} className="block overflow-visible touch-none" />
+      </div>
+
+      {viewMode !== 'macro' && (
+        <div className="px-4 pb-6 mt-2">
+            <div ref={scrollRef} onScroll={handleScroll} className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide no-scrollbar items-center cursor-ew-resize">
+                {dayTransitions.map((day, idx) => {
+                    const center = viewStart + (windowWidthMs / 2);
+                    const isActive = center >= day.start && center <= day.end;
+                    return (
+                        <button key={idx} onClick={() => { setViewMode('focus'); setViewStart(day.start); }} className={`flex-shrink-0 min-w-[105px] py-3 rounded-2xl text-[10px] font-black uppercase transition-all border-2 text-center shadow-sm ${
+                            isActive ? 'bg-indigo-600 border-indigo-400 text-white shadow-indigo-500/40 scale-105 z-10' : (isActuallyNight ? 'bg-stone-900 border-stone-800 text-stone-500' : 'bg-stone-50 border-stone-100 text-stone-400')
+                        }`}>
+                            {day.label}
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+      )}
 
       {hoverData && (
-        <div className="fixed pointer-events-none z-50" style={{ left: tooltipPos.x + 15, top: tooltipPos.y - 180 }}>
-          <div className={`p-4 rounded-2xl border backdrop-blur-3xl shadow-2xl min-w-[200px] ${isActuallyNight ? 'bg-stone-900/95 border-stone-700 text-stone-100' : 'bg-white/95 border-stone-200 text-stone-800'}`}>
-            <div className="flex justify-between items-end mb-3 border-b border-stone-700/50 pb-2">
-                <div className="flex flex-col">
-                    <span className="text-[13px] font-black text-indigo-400">{format(new Date(hoverData.time), 'HH:mm')}</span>
-                    <span className="text-[8px] font-bold text-stone-500 uppercase">{format(new Date(hoverData.time), 'EEEE d MMMM', { locale: fr })}</span>
-                </div>
+        <div 
+            className="fixed pointer-events-none z-[100] transition-transform duration-100" 
+            style={{ 
+                left: tooltipPos.x, top: tooltipPos.y - 180,
+                transform: tooltipPos.x > (dimensions.width / 2) ? 'translateX(-115%)' : 'translateX(25px)'
+            }}
+        >
+          <div className={`p-4 rounded-3xl border-2 backdrop-blur-3xl shadow-2xl min-w-[180px] ${isActuallyNight ? 'bg-stone-900/95 border-indigo-500/30 text-stone-100' : 'bg-white/95 border-indigo-100 text-stone-800'}`}>
+            <div className="flex justify-between items-center mb-2">
+                <span className="text-sm font-black text-indigo-500">{format(new Date(hoverData.time), 'HH:mm')}</span>
+                <span className="text-[9px] font-bold opacity-50 uppercase">{format(new Date(hoverData.time), 'EEE d MMM', { locale: fr })}</span>
             </div>
-            <div className="space-y-2.5">
+            <div className="space-y-1.5">
               {dataKeys.map((key, i) => (
                 <div key={key} className="flex justify-between items-center text-[10px] font-black uppercase">
-                  <span style={{ color: isComparisonMode ? SECTOR_COLORS[i % SECTOR_COLORS.length] : (SPECIES_CONFIG[key]?.color || '#ccc') }}>{key.split(' (')[0]}</span>
+                  <span style={{ color: SPECIES_CONFIG[key]?.color || SECTOR_COLORS[i % SECTOR_COLORS.length] }}>{key.split(' (')[0]}</span>
                   <span>{Math.round(hoverData[key])}%</span>
                 </div>
               ))}
-              <div className="mt-4 pt-3 border-t border-stone-700/50 grid grid-cols-3 gap-2 text-center text-[9px] font-black">
-                  <div className="flex flex-col"><span className="text-stone-500 text-[7px]">EAU</span><span className="text-blue-400">{hoverData.waterTemp}°</span></div>
-                  <div className="flex flex-col"><span className="text-stone-500 text-[7px]">O2</span><span className="text-emerald-400">{hoverData.dissolvedOxygen}</span></div>
-                  <div className="flex flex-col"><span className="text-stone-500 text-[7px]">NTU</span><span className="text-stone-400">{hoverData.turbidityNTU}</span></div>
-              </div>
             </div>
           </div>
         </div>

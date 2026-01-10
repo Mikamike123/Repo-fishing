@@ -6,7 +6,7 @@ import { WeatherSnapshot } from '../types';
  */
 export const fetchUniversalWeather = async (lat: number, lng: number): Promise<WeatherSnapshot | null> => {
     if (lat === undefined || lng === undefined) return null;
-    const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,surface_pressure,cloud_cover,wind_speed_10m,wind_direction_10m,precipitation,weathercode&timezone=Europe%2FParis&forecast_days=1`;
+    const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,surface_pressure,cloud_cover,wind_speed_10m,wind_direction_10m,precipitation,weathercode&timezone=Europe%2FParis&forecast_days=14`;
 
     try {
         const response = await fetch(apiUrl);
@@ -95,7 +95,7 @@ export const fetchHistoricalWeatherContext = async (lat: number, lng: number, da
     if (IS_RECENT) {
         // --- MODE FORECAST (Pour le récent/live) ---
         console.log(`📡 [Hybrid Router] Mode FORECAST activé pour ${dateStr} (Diff: ${diffDays}j)`);
-        url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&past_days=${DAYS_HISTORY_NEEDED + 2}&forecast_days=2&hourly=temperature_2m,surface_pressure,precipitation,cloud_cover,wind_speed_10m,wind_direction_10m,weathercode&timezone=Europe%2FParis`;
+        url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&past_days=${DAYS_HISTORY_NEEDED + 2}&forecast_days=14&hourly=temperature_2m,surface_pressure,precipitation,cloud_cover,wind_speed_10m,wind_direction_10m,weathercode&timezone=Europe%2FParis`;
     } else {
         // --- MODE ARCHIVE (Pour le passé lointain) ---
         console.log(`📜 [Hybrid Router] Mode ARCHIVE activé pour ${dateStr}`);

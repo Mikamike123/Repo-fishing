@@ -19,7 +19,7 @@ import {
 } from '../types';
 
 // Michael : Constantes de gestion du cache
-const CACHE_KEY_PREFIX = 'oracle_cache_v8_'; 
+const CACHE_KEY_PREFIX = 'oracle_cache_v14_'; 
 const CACHE_DURATION_MS = 30 * 60 * 1000; // 30 minutes
 const MAX_CACHE_AGE_MS = 24 * 60 * 60 * 1000; // 24 heures
 
@@ -155,7 +155,7 @@ export const fetchOracleChartData = async (
         const surface = morphology?.surfaceArea || 100000; 
         const shape = morphology?.shapeFactor || 1.2;
 
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,surface_pressure,cloud_cover,wind_speed_10m,wind_direction_10m,precipitation,weathercode&timezone=Europe%2FParis&past_days=45&forecast_days=4`;
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,surface_pressure,cloud_cover,wind_speed_10m,wind_direction_10m,precipitation,weathercode&timezone=Europe%2FParis&past_days=45&forecast_days=14`;
         
         const response = await fetch(url);
         if (!response.ok) throw new Error('Météo indisponible');
@@ -165,7 +165,7 @@ export const fetchOracleChartData = async (
         const points: OracleDataPoint[] = [];
         const nowTs = Date.now();
         const startGraph = nowTs - (12 * 3600 * 1000); 
-        const endGraph = nowTs + (72 * 3600 * 1000);   
+        const endGraph = nowTs + (14 * 24 * 3600 * 1000);   
 
         // État initial (Cold Start à J-45)
         let soilSaturation = 15; 
