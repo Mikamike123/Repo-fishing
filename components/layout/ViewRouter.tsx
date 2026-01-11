@@ -97,7 +97,8 @@ export const ViewRouter = ({ engine }: { engine: any }) => {
         handleLogout, handleResetCollection, currentLiveSnapshot,
         user, authLoading, isWhitelisted, firestoreError, handleCreateProfile,
         usersRegistry,
-        lastSavedSessionId, setLastSavedSessionId 
+        lastSavedSessionId, setLastSavedSessionId,
+        unreadFeedCount, handleMarkSessionAsRead, handleHideSessionFromFeed // Michael : Les nouveaux câbles
     } = engine;
 
     if (authLoading || (!userProfile && currentUserId !== "guest" && firestoreError !== "DOC_NOT_FOUND")) {
@@ -133,6 +134,9 @@ export const ViewRouter = ({ engine }: { engine: any }) => {
                     userProfile={userProfile} 
                     usersRegistry={usersRegistry} 
                     isActuallyNight={isActuallyNight}
+                    unreadFeedCount={unreadFeedCount} // Injection du compteur
+                    onMarkAsRead={handleMarkSessionAsRead} // Connexion de la lecture
+                    onHideSession={handleHideSessionFromFeed} // Connexion de la poubelle
                     onNavigateToSession={(id) => {
                         // Michael : Double action - on change de vue ET on focus la session
                         setLastSavedSessionId(id);

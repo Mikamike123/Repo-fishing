@@ -1,15 +1,15 @@
-// hooks/useAppEngine.ts - Version 11.0.0 (FEED Engine & Notification Logic)
+// hooks/useAppEngine.ts - Version 12.0.0 (Stateless Notification Hub)
 import { useState, useEffect, useMemo } from 'react';
 import { 
     onSnapshot, query, orderBy, 
-    addDoc, deleteDoc, doc, Timestamp, updateDoc, collection, getDoc 
+    addDoc, deleteDoc, doc, Timestamp, updateDoc, collection, getDoc, arrayUnion 
 } from 'firebase/firestore'; 
 import { onAuthStateChanged, signInWithPopup, signOut, User as FirebaseUser } from 'firebase/auth';
 import { db, sessionsCollection, auth, googleProvider, clearChatHistory } from '../lib/firebase'; 
 import { getUserProfile, createUserProfile } from '../lib/user-service'; 
 import { useArsenal } from '../lib/useArsenal'; 
 import { getOrFetchOracleData, cleanupOracleCache } from '../lib/oracle-service'; 
-import { Session, UserProfile, WeatherSnapshot, OracleDataPoint, SCHEMA_VERSION } from '../types';
+import { Session, UserProfile, WeatherSnapshot, OracleDataPoint } from '../types';
 
 export const useAppEngine = () => {
     const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -25,7 +25,6 @@ export const useAppEngine = () => {
     const [currentView, setCurrentView] = useState<any>('dashboard'); 
     const [sessions, setSessions] = useState<Session[]>([]); 
     
-    // Michael : Mise à jour du type pour exclure 'activity' (Phase Sablage Dashboard TERMINEE)
     const [activeDashboardTab, setActiveDashboardTab] = useState<'live' | 'tactics' | 'experience'>('live');
     
     const [isLoading, setIsLoading] = useState(true); 
@@ -46,36 +45,46 @@ export const useAppEngine = () => {
     const [usersRegistry, setUsersRegistry] = useState<Record<string, UserProfile>>({});
     const [lastSavedSessionId, setLastSavedSessionId] = useState<string | null>(null);
 
-    // Michael : Moteur de Notification FEED (Phase C)
-    const [lastSeenFeedTimestamp, setLastSeenFeedTimestamp] = useState<number>(() => 
-        Number(localStorage.getItem('oracle_last_seen_feed') || 0)
-    );
-
     const currentUserId = user?.uid || "guest"; 
 
     const triggerHaptic = (pattern = [30, 50, 30]) => {
         if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(pattern);
     };
 
-    // --- LOGIQUE DE NOTIFICATION (Pastille FEED) ---
-    const hasNewFeed = useMemo(() => {
-        if (!sessions.length) return false;
-        // On cherche le timestamp de création le plus récent parmi toutes les sessions
-        const latestTs = sessions.reduce((max, s) => {
-            const ts = s.createdAt?.seconds ? s.createdAt.seconds * 1000 : 0;
-            return ts > max ? ts : max;
-        }, 0);
-        return latestTs > lastSeenFeedTimestamp;
-    }, [sessions, lastSeenFeedTimestamp]);
+    // --- LOGIQUE DE NOTIFICATION STATELESS (Pastille avec chiffre) ---
+    const unreadFeedCount = useMemo(() => {
+        if (!sessions.length || currentUserId === "guest") return 0;
+        
+        // Michael : On ne regarde que les 20 sessions les plus récentes pour ne pas noyer un nouvel utilisateur
+        const recentSessions = sessions.slice(0, 20);
+        
+        return recentSessions.filter(s => {
+            const isRead = s.readBy?.includes(currentUserId);
+            const isHidden = s.hiddenBy?.includes(currentUserId);
+            return !isRead && !isHidden;
+        }).length;
+    }, [sessions, currentUserId]);
 
-    // Michael : Reset de la pastille quand on entre dans la vue 'feed'
-    useEffect(() => {
-        if (currentView === 'feed') {
-            const now = Date.now();
-            setLastSeenFeedTimestamp(now);
-            localStorage.setItem('oracle_last_seen_feed', now.toString());
-        }
-    }, [currentView]);
+    const handleMarkSessionAsRead = async (sessionId: string) => {
+        if (currentUserId === "guest") return;
+        try {
+            const sessionRef = doc(db, 'sessions', sessionId);
+            await updateDoc(sessionRef, {
+                readBy: arrayUnion(currentUserId)
+            });
+        } catch (e) { console.error("Erreur lecture session Firestore:", e); }
+    };
+
+    const handleHideSessionFromFeed = async (sessionId: string) => {
+        if (currentUserId === "guest") return;
+        try {
+            triggerHaptic([40]);
+            const sessionRef = doc(db, 'sessions', sessionId);
+            await updateDoc(sessionRef, {
+                hiddenBy: arrayUnion(currentUserId)
+            });
+        } catch (e) { console.error("Erreur purge session Firestore:", e); }
+    };
 
     // --- LOGIQUE DU REGISTRE ---
     useEffect(() => {
@@ -310,9 +319,11 @@ export const useAppEngine = () => {
                 ...dataToSave, 
                 date: Timestamp.fromDate(new Date(date as string)), 
                 userId: currentUserId, 
-                userPseudo: userProfile?.pseudo || 'Inconnu', 
+                userPseudo: userProfile?.pseudo || 'Michael', 
                 createdAt: Timestamp.now(), 
-                active: true 
+                active: true,
+                readBy: [currentUserId], // Michael : L'auteur a déjà lu sa session
+                hiddenBy: []
             });
             savedId = docRef.id;
             setMagicDraft(null); 
@@ -342,14 +353,16 @@ export const useAppEngine = () => {
         isOracleLoading: isOracleLoading || isWeatherLoading, activeLocation, arsenalData, displayedWeather,
         isOnline, triggerHaptic, isWhitelisted, firestoreError, handleCreateProfile,
         usersRegistry, lastSavedSessionId, setLastSavedSessionId,
-        hasNewFeed, // Michael : On expose la pastille FEED pour l'AppLayout
-        hasNewMenuContent: false, // Michael : Prêt pour une extension future
+        unreadFeedCount, // Michael : Nouveau compteur dynamique stateless
+        hasNewMenuContent: false, 
         handleLogin: () => signInWithPopup(auth, googleProvider),
         handleLogout: () => { signOut(auth); setCurrentView('dashboard'); setIsMenuOpen(false); },
         handleSaveSession, handleEditRequest: (s: Session) => { setEditingSession(s); setCurrentView('session'); },
         handleDeleteSession: async (id: string) => { await deleteDoc(doc(db, 'sessions', id)); },
         handleMagicDiscovery: (d: any) => { triggerHaptic([50, 20, 50]); setMagicDraft(d); setCurrentView('session'); },
         handleAddItem, handleDeleteItem, handleEditItem, handleMoveItem, handleToggleLocationFavorite,
-        targetLocationId, setTargetLocationId, lastCatchDefaults, currentLiveSnapshot, handleConsumeLevelUp, navigateFromMenu, handleResetCollection
+        targetLocationId, setTargetLocationId, lastCatchDefaults, currentLiveSnapshot, handleConsumeLevelUp, 
+        navigateFromMenu, handleResetCollection,
+        handleMarkSessionAsRead, handleHideSessionFromFeed
     };
 };

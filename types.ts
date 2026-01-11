@@ -218,6 +218,8 @@ export interface Session extends BaseEntity {
   misses: Miss[];
   techniquesUsed: string[];
   envSnapshot?: FullEnvironmentalSnapshot | null;
+  readBy?: string[];   // Michael : Liste des UIDs ayant lu la session
+  hiddenBy?: string[]; // Michael : Liste des UIDs ayant purgé la session du feed
 }
 
 // --- APPLICATION ---

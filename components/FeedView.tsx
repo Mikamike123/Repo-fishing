@@ -1,5 +1,5 @@
-// components/FeedView.tsx - Version 11.9.0 (Arena Duel & Audit Edition)
-import React, { useState, useMemo, useEffect } from 'react';
+// components/FeedView.tsx - Version 12.1.0 (Stateless & Event-Only Notification)
+import React, { useState, useMemo } from 'react';
 import { 
     Zap, Swords, Trophy, ChevronRight, Fish, Calendar, Clock, ChevronDown, ChevronUp, Trash2, User, Medal, ListFilter
 } from 'lucide-react';
@@ -13,25 +13,18 @@ interface FeedViewProps {
     usersRegistry: Record<string, UserProfile>;
     isActuallyNight?: boolean;
     onNavigateToSession: (sessionId: string) => void;
+    unreadFeedCount: number; // Michael : Piloté par useAppEngine (Stateless)
+    onMarkAsRead: (id: string) => void;
+    onHideSession: (id: string) => void;
 }
 
 const FeedView: React.FC<FeedViewProps> = ({ 
-    sessions, currentUserId, userProfile, usersRegistry, isActuallyNight, onNavigateToSession 
+    sessions, currentUserId, userProfile, usersRegistry, isActuallyNight, 
+    onNavigateToSession, unreadFeedCount, onMarkAsRead, onHideSession
 }) => {
     const [activeSubTab, setActiveSubTab] = useState<'events' | 'duel'>('events');
     const [expandedYears, setExpandedYears] = useState<Record<number, boolean>>({ [new Date().getFullYear()]: true });
     
-    // --- PERSISTANCE ET ÉTAT (ZÉRO RÉGRESSION) ---
-    const [readSessions, setReadSessions] = useState<string[]>(() => 
-        JSON.parse(localStorage.getItem('oracle_read_v15') || '[]')
-    );
-    const [purgedSessions, setPurgedSessions] = useState<string[]>(() => 
-        JSON.parse(localStorage.getItem('oracle_purged_v15') || '[]')
-    );
-
-    useEffect(() => { localStorage.setItem('oracle_read_v15', JSON.stringify(readSessions)); }, [readSessions]);
-    useEffect(() => { localStorage.setItem('oracle_purged_v15', JSON.stringify(purgedSessions)); }, [purgedSessions]);
-
     const triggerHaptic = (i = 10) => window.navigator?.vibrate?.(i);
 
     const getTime = (dateVal: any): number => {
@@ -41,11 +34,6 @@ const FeedView: React.FC<FeedViewProps> = ({
         }
         return new Date(dateVal).getTime();
     };
-
-    // --- LOGIQUE DE NOTIFICATION (SYNC SUR LES DEUX TABS) ---
-    const unreadEventsCount = useMemo(() => {
-        return sessions.filter(s => !purgedSessions.includes(s.id) && !readSessions.includes(s.id)).length;
-    }, [sessions, purgedSessions, readSessions]);
 
     // --- LOGIQUE DUEL : CALCUL DES RANGS, PODIUMS & AUDIT PRISES ---
     const speciesHierarchy: SpeciesType[] = ['Brochet', 'Sandre', 'Perche', 'Black-Bass'];
@@ -120,8 +108,10 @@ const FeedView: React.FC<FeedViewProps> = ({
 
     const warLog = useMemo(() => {
         const logs: any[] = [];
-        const sortedSessions = [...sessions]
-            .filter(s => !purgedSessions.includes(s.id))
+        // Michael : On filtre les sessions purgées (hiddenBy) via Firestore
+        const filteredSessions = sessions.filter(s => !s.hiddenBy?.includes(currentUserId));
+        
+        const sortedSessions = [...filteredSessions]
             .sort((a, b) => getTime(b.date) - getTime(a.date));
 
         sortedSessions.forEach(s => {
@@ -129,24 +119,24 @@ const FeedView: React.FC<FeedViewProps> = ({
             const seed = s.id.charCodeAt(s.id.length - 1);
             
             if (s.catches.length === 0 && s.misses.length === 0) {
-                logs.push({ type: 'skunk', text: SARDONIC_PHRASES.skunk[seed % SARDONIC_PHRASES.skunk.length].replace('{avatar}', avatar), sessionId: s.id, date: s.date, userId: s.userId });
+                logs.push({ type: 'skunk', text: SARDONIC_PHRASES.skunk[seed % SARDONIC_PHRASES.skunk.length].replace('{avatar}', avatar), sessionId: s.id, date: s.date, userId: s.userId, readBy: s.readBy });
             }
             s.catches.forEach((c, i) => {
                 const g = getSpeciesGrammar(c.species);
-                logs.push({ type: 'catch', text: SARDONIC_PHRASES.catch[(seed + i) % SARDONIC_PHRASES.catch.length].replace('{avatar}', avatar).replace('{species}', c.species).replace('{article}', g.article).replace('{status}', g.v).replace('{size}', c.size.toString()), sessionId: s.id, date: s.date, userId: s.userId });
+                logs.push({ type: 'catch', text: SARDONIC_PHRASES.catch[(seed + i) % SARDONIC_PHRASES.catch.length].replace('{avatar}', avatar).replace('{species}', c.species).replace('{article}', g.article).replace('{status}', g.v).replace('{size}', c.size.toString()), sessionId: s.id, date: s.date, userId: s.userId, readBy: s.readBy });
             });
             s.misses.forEach((m, i) => {
-                logs.push({ type: 'fail', text: SARDONIC_PHRASES.fail[(seed + i) % SARDONIC_PHRASES.fail.length].replace('{avatar}', avatar), sessionId: s.id, date: s.date, userId: s.userId });
+                const seedAdjusted = seed + i + 5;
+                logs.push({ type: 'fail', text: SARDONIC_PHRASES.fail[seedAdjusted % SARDONIC_PHRASES.fail.length].replace('{avatar}', avatar), sessionId: s.id, date: s.date, userId: s.userId, readBy: s.readBy });
             });
         });
+        // Michael : Tri chronologique final pour le log
         return logs.sort((a, b) => getTime(b.date) - getTime(a.date)).slice(0, 25);
-    }, [sessions, purgedSessions]);
+    }, [sessions, currentUserId]);
 
-    const handleViewSession = (id: string) => {
+    const handleAction = (id: string) => {
         triggerHaptic();
-        const newRead = [...new Set([...readSessions, id])];
-        setReadSessions(newRead);
-        localStorage.setItem('oracle_read_v15', JSON.stringify(newRead));
+        onMarkAsRead(id);
         onNavigateToSession(id);
     };
 
@@ -155,18 +145,17 @@ const FeedView: React.FC<FeedViewProps> = ({
     return (
         <div className="flex flex-col gap-6 animate-in fade-in duration-500 max-w-4xl mx-auto w-full">
             
-            {/* TABS AVEC NOTIFICATIONS PASTILLES SYNC */}
+            {/* TABS AVEC NOTIFICATION SUR ÉVÉNEMENTS UNIQUEMENT */}
             <div className={`flex p-1.5 rounded-3xl border mx-4 ${isActuallyNight ? 'bg-stone-950 border-stone-800' : 'bg-stone-200/50 border-stone-200'}`}>
                 <button 
                     onClick={() => { triggerHaptic(); setActiveSubTab('events'); }} 
                     className={`relative flex-1 py-3.5 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 ${activeSubTab === 'events' ? (isActuallyNight ? 'bg-stone-800 text-amber-500 shadow-lg' : 'bg-white text-amber-600 shadow-md') : 'text-stone-500'}`}
                 >
                     <Zap size={16} /> Événements
-                    {unreadEventsCount > 0 && (
-                        <span className="absolute top-2 right-4 flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                        </span>
+                    {unreadFeedCount > 0 && (
+                        <div className="absolute -top-1 -right-1 flex h-5 min-w-[20px] px-1 items-center justify-center rounded-full bg-emerald-500 text-[10px] font-black text-white shadow-lg animate-in zoom-in duration-300">
+                            {unreadFeedCount}
+                        </div>
                     )}
                 </button>
                 <button 
@@ -174,26 +163,22 @@ const FeedView: React.FC<FeedViewProps> = ({
                     className={`relative flex-1 py-3.5 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 ${activeSubTab === 'duel' ? (isActuallyNight ? 'bg-stone-800 text-amber-500 shadow-lg' : 'bg-white text-amber-600 shadow-md') : 'text-stone-500'}`}
                 >
                     <Swords size={16} /> Duel
-                    {unreadEventsCount > 0 && (
-                        <span className="absolute top-2 right-4 flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 shadow-[0_0_5px_#10b981]"></span>
-                        </span>
-                    )}
+                    {/* Michael : Pastille Duel supprimée selon changement d'avis */}
                 </button>
             </div>
 
             <div className="px-4 pb-32">
                 {activeSubTab === 'events' ? (
+                    /* --- VUE ÉVÈNEMENTS --- */
                     <div className="relative pl-10 space-y-6">
                         <div className={`absolute left-[51px] top-2 bottom-2 w-0.5 ${isActuallyNight ? 'bg-indigo-500/10' : 'bg-stone-100'}`} />
                         {warLog.map((log, idx) => {
-                            const isRead = readSessions.includes(log.sessionId);
+                            const isRead = log.readBy?.includes(currentUserId);
                             const avatar = usersRegistry[log.userId]?.avatarUrl || (log.userId === currentUserId ? userProfile?.avatarUrl : null);
                             return (
                                 <div key={`${log.sessionId}-${idx}`} className="relative group animate-in slide-in-from-left duration-300">
                                     <div className={`absolute -left-[58px] top-5 w-4 h-4 rounded-full border-2 z-10 transition-all duration-700 ${isRead ? 'bg-stone-800 border-stone-900 opacity-20 scale-75' : log.type === 'catch' ? 'bg-emerald-500 border-emerald-900 shadow-[0_0_15px_rgba(16,185,129,0.5)]' : log.type === 'fail' ? 'bg-rose-500 border-rose-900 shadow-[0_0_15px_rgba(244,63,94,0.3)]' : 'bg-stone-500 border-stone-900'}`} />
-                                    <div className={`${cardClass} rounded-[2rem] p-6 border flex items-start gap-5 cursor-pointer active:scale-[0.98] transition-all group`} onClick={() => handleViewSession(log.sessionId)}>
+                                    <div className={`${cardClass} rounded-[2rem] p-6 border flex items-start gap-5 cursor-pointer active:scale-[0.98] transition-all group`} onClick={() => handleAction(log.sessionId)}>
                                         <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 bg-stone-800 border border-stone-500/20 shadow-inner">
                                             {avatar ? <img src={avatar} className={`w-full h-full object-cover transition-all duration-500 ${isRead ? 'grayscale opacity-30' : ''}`} alt="" /> : <div className="w-full h-full flex items-center justify-center text-stone-600 bg-stone-900"><User size={24} /></div>}
                                         </div>
@@ -202,7 +187,7 @@ const FeedView: React.FC<FeedViewProps> = ({
                                             <div className="flex justify-between items-center mt-4">
                                                 <span className="text-[10px] opacity-30 font-black uppercase flex items-center gap-1.5 tracking-tighter"><Clock size={12} /> {new Date(getTime(log.date)).toLocaleDateString('fr-FR', {day:'numeric', month:'short'})} • {new Date(getTime(log.date)).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})}</span>
                                                 <div className="flex items-center gap-5">
-                                                    <button onClick={(e) => { e.stopPropagation(); triggerHaptic(40); setPurgedSessions(p => [...p, log.sessionId]); }} className="p-2 text-stone-500 hover:text-rose-500 transition-colors"><Trash2 size={16} /></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); onHideSession(log.sessionId); }} className="p-2 text-stone-500 hover:text-rose-500 transition-colors"><Trash2 size={16} /></button>
                                                     <span className={`text-[11px] font-black uppercase flex items-center gap-1 ${isRead ? 'text-stone-600' : 'text-amber-500'}`}>Voir <ChevronRight size={14} /></span>
                                                 </div>
                                             </div>
@@ -213,6 +198,7 @@ const FeedView: React.FC<FeedViewProps> = ({
                         })}
                     </div>
                 ) : (
+                    /* --- VUE DUEL (ARENA) --- */
                     <div className="space-y-10">
                         {Object.keys(leaderboardData).sort((a, b) => Number(b) - Number(a)).map(yearStr => {
                             const y = Number(yearStr);
@@ -221,7 +207,6 @@ const FeedView: React.FC<FeedViewProps> = ({
 
                             return (
                                 <div key={y} className="space-y-6">
-                                    {/* HEADER SAISON */}
                                     <button 
                                         onClick={() => { triggerHaptic(); setExpandedYears(p => ({...p, [y]: !p[y]})); }} 
                                         className={`w-full flex flex-col p-8 rounded-[2.5rem] border transition-all ${cardClass} ${isExp ? 'ring-2 ring-amber-500/30' : ''}`}
@@ -282,7 +267,7 @@ const FeedView: React.FC<FeedViewProps> = ({
                                                                 const mPassed = new Date().getMonth() + 1;
                                                                 const projection = Math.round(s.count + ( (s.count / mPassed) * (12 - mPassed) ));
                                                                 
-                                                                // Michael : Audit des captures du mois trié par taille
+                                                                // Michael : Audit des captures du mois trié par taille (descending)
                                                                 const sortedMonthCatches = [...s.monthCatches].sort((a,b) => b.size - a.size);
 
                                                                 return (
@@ -307,7 +292,7 @@ const FeedView: React.FC<FeedViewProps> = ({
                                                                                 </div>
                                                                             </div>
                                                                             {s.bestSessionId && (
-                                                                                <button onClick={() => handleViewSession(s.bestSessionId)} className="p-4 bg-amber-500/10 rounded-2xl hover:bg-amber-500 text-amber-500 hover:text-white transition-all shadow-lg active:scale-90">
+                                                                                <button onClick={() => handleAction(s.bestSessionId)} className="p-4 bg-amber-500/10 rounded-2xl hover:bg-amber-500 text-amber-500 hover:text-white transition-all shadow-lg active:scale-90">
                                                                                     <Trophy size={20} />
                                                                                 </button>
                                                                             )}
@@ -318,7 +303,7 @@ const FeedView: React.FC<FeedViewProps> = ({
                                                                                 <div className="h-full bg-gradient-to-r from-amber-600 via-amber-400 to-orange-500 transition-all duration-1500 ease-out shadow-[0_0_20px_rgba(245,158,11,0.4)]" style={{ width: `${Math.min(100, (ptsY / 5000) * 100)}%` }} />
                                                                             </div>
 
-                                                                            {/* Michael : Liste d'Audit des Prises (Unité visuelle) */}
+                                                                            {/* Michael : Audit des prises trié par taille (SANS RÉGRESSION) */}
                                                                             {sortedMonthCatches.length > 0 && (
                                                                                 <div className="bg-stone-500/5 rounded-2xl p-4 border border-stone-500/10">
                                                                                     <h5 className="text-[9px] font-black uppercase text-stone-400 mb-3 flex items-center gap-2"><ListFilter size={12}/> Journal de {currentMonthLabel}</h5>
