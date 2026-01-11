@@ -346,6 +346,11 @@ const HistoryView: React.FC<HistoryViewProps> = ({
         isOpen={isDetailOpen} 
         onClose={() => setIsDetailOpen(false)} 
         isActuallyNight={isActuallyNight}
+        userPseudo={
+          selectedSession?.userId === currentUserId 
+           ? userProfile?.pseudo 
+           : (usersRegistry?.[selectedSession?.userId || '']?.pseudo || selectedSession?.userPseudo || "Michael")
+          }
       />
 
       <DeleteConfirmDialog 

@@ -20,9 +20,10 @@ interface SessionDetailModalProps {
     isOpen: boolean;
     onClose: () => void;
     isActuallyNight?: boolean; // Michael : Pilier V8.0 raccordé
+    userPseudo?: string;
 }
 
-const SessionDetailModal: React.FC<SessionDetailModalProps> = ({ session, isOpen, onClose, isActuallyNight }) => {
+const SessionDetailModal: React.FC<SessionDetailModalProps> = ({ session, isOpen, onClose, isActuallyNight, userPseudo = "Pêcheur" }) => {
     // Michael : On sort immédiatement si fermé ou pas de session
     if (!isOpen || !session) return null;
 
@@ -291,7 +292,7 @@ const SessionDetailModal: React.FC<SessionDetailModalProps> = ({ session, isOpen
                     {session.notes && (
                         <section className="space-y-3 pb-4">
                             <h3 className={`text-[9px] font-black uppercase tracking-[0.2em] flex items-center gap-2 ml-1 ${textMuted}`}>
-                                <ImageIcon size={12} /> Observations Michael
+                                <ImageIcon size={12} /> Note de {userPseudo}
                             </h3>
                             <div className={`p-5 rounded-[1.5rem] border text-xs leading-relaxed font-medium italic transition-colors ${
                                 isActuallyNight ? 'bg-amber-950/10 border-amber-900/20 text-stone-400' : 'bg-amber-50/20 border-amber-100/50 text-stone-600'

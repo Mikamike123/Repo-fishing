@@ -164,11 +164,11 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                                 <div className={`px-2 py-0.5 border rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-1 ${
                                     isActuallyNight ? 'bg-emerald-950/30 text-emerald-400 border-emerald-900/50' : 'bg-emerald-50 text-emerald-700 border-emerald-100'
                                 }`}>
-                                    <MapPin size={10} /> {session.locationName || "Secteur Inconnu"}
+                                    <MapPin size={14} /> {session.locationName || "Secteur Inconnu"}
                                 </div>
                                 {!isOwner && <span className={`text-[10px] font-bold italic ${isActuallyNight ? 'text-stone-500' : 'text-stone-400'}`}>par {session.userPseudo}</span>}
                             </div>
-                            <h3 className={`text-lg font-black uppercase tracking-tight leading-tight ${isActuallyNight ? 'text-stone-100' : 'text-stone-800'}`}>
+                            <h3 className={`text-[14px] font-black uppercase tracking-tight leading-tight ${isActuallyNight ? 'text-stone-100' : 'text-stone-800'}`}>
                                 {session.spotName}
                             </h3>
                         </div>
@@ -277,7 +277,7 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, onDelete, onEdit, on
                     }`}>
                         <div className={`absolute -top-2.5 left-6 px-3 text-[9px] font-black uppercase tracking-widest border rounded-full shadow-sm ${
                             isActuallyNight ? 'bg-stone-900 text-amber-500 border-amber-900/50' : 'bg-white text-amber-600 border-amber-100'
-                        }`}>Note Michael</div>
+                        }`}>Note de {session.userPseudo || 'Michael'}</div>
                         "{session.notes}"
                     </div>
                 )}
