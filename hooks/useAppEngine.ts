@@ -1,10 +1,17 @@
-// hooks/useAppEngine.ts - Version 12.0.0 (Stateless Notification Hub)
+// hooks/useAppEngine.ts - Version 12.1.0 (Hybrid Auth & Apple Ready)
 import { useState, useEffect, useMemo } from 'react';
 import { 
     onSnapshot, query, orderBy, 
     addDoc, deleteDoc, doc, Timestamp, updateDoc, collection, getDoc, arrayUnion 
 } from 'firebase/firestore'; 
-import { onAuthStateChanged, signInWithPopup, signOut, User as FirebaseUser } from 'firebase/auth';
+import { 
+    onAuthStateChanged, 
+    signInWithPopup, 
+    signOut, 
+    signInWithEmailAndPassword, 
+    createUserWithEmailAndPassword, 
+    User as FirebaseUser 
+} from 'firebase/auth';
 import { db, sessionsCollection, auth, googleProvider, clearChatHistory } from '../lib/firebase'; 
 import { getUserProfile, createUserProfile } from '../lib/user-service'; 
 import { useArsenal } from '../lib/useArsenal'; 
@@ -51,13 +58,10 @@ export const useAppEngine = () => {
         if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(pattern);
     };
 
-    // --- LOGIQUE DE NOTIFICATION STATELESS (Pastille avec chiffre) ---
+    // --- LOGIQUE DE NOTIFICATION STATELESS ---
     const unreadFeedCount = useMemo(() => {
         if (!sessions.length || currentUserId === "guest") return 0;
-        
-        // Michael : On ne regarde que les 20 sessions les plus récentes pour ne pas noyer un nouvel utilisateur
         const recentSessions = sessions.slice(0, 20);
-        
         return recentSessions.filter(s => {
             const isRead = s.readBy?.includes(currentUserId);
             const isHidden = s.hiddenBy?.includes(currentUserId);
@@ -84,6 +88,25 @@ export const useAppEngine = () => {
                 hiddenBy: arrayUnion(currentUserId)
             });
         } catch (e) { console.error("Erreur purge session Firestore:", e); }
+    };
+
+    // --- AUTH : CONNEXION EMAIL (Michael : Le nouveau moteur hybride) ---
+    const handleEmailLogin = async (email, password) => {
+        try {
+            // Tentative de connexion
+            await signInWithEmailAndPassword(auth, email, password);
+        } catch (error: any) {
+            // Si l'utilisateur n'existe pas, on tente de le créer (Michael : "Auto-Register")
+            if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+                try {
+                    await createUserWithEmailAndPassword(auth, email, password);
+                } catch (signUpError: any) {
+                    throw signUpError;
+                }
+            } else {
+                throw error;
+            }
+        }
     };
 
     // --- LOGIQUE DU REGISTRE ---
@@ -143,7 +166,9 @@ export const useAppEngine = () => {
                     if (whitelistDoc.exists()) { 
                         setUser(firebaseUser); 
                         setIsWhitelisted(true); 
-                    } else { setIsWhitelisted(false); }
+                    } else { 
+                        setIsWhitelisted(false); 
+                    }
                 } catch (error) {
                     console.error("🔥 Erreur Whitelist:", error);
                     setIsWhitelisted(false);
@@ -322,7 +347,7 @@ export const useAppEngine = () => {
                 userPseudo: userProfile?.pseudo || 'Michael', 
                 createdAt: Timestamp.now(), 
                 active: true,
-                readBy: [currentUserId], // Michael : L'auteur a déjà lu sa session
+                readBy: [currentUserId],
                 hiddenBy: []
             });
             savedId = docRef.id;
@@ -353,9 +378,10 @@ export const useAppEngine = () => {
         isOracleLoading: isOracleLoading || isWeatherLoading, activeLocation, arsenalData, displayedWeather,
         isOnline, triggerHaptic, isWhitelisted, firestoreError, handleCreateProfile,
         usersRegistry, lastSavedSessionId, setLastSavedSessionId,
-        unreadFeedCount, // Michael : Nouveau compteur dynamique stateless
+        unreadFeedCount,
         hasNewMenuContent: false, 
         handleLogin: () => signInWithPopup(auth, googleProvider),
+        handleEmailLogin, // Michael : Export de la nouvelle fonction
         handleLogout: () => { signOut(auth); setCurrentView('dashboard'); setIsMenuOpen(false); },
         handleSaveSession, handleEditRequest: (s: Session) => { setEditingSession(s); setCurrentView('session'); },
         handleDeleteSession: async (id: string) => { await deleteDoc(doc(db, 'sessions', id)); },

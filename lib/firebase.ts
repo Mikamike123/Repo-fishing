@@ -10,7 +10,14 @@ import {
 } from "firebase/firestore"; 
 import { getFunctions } from "firebase/functions"; 
 import { getStorage } from "firebase/storage"; 
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { 
+    getAuth, 
+    GoogleAuthProvider, 
+    signInWithEmailAndPassword, 
+    createUserWithEmailAndPassword, 
+    signOut, 
+    onAuthStateChanged 
+} from "firebase/auth";
 
 const getEnvVar = (key: string): string | undefined => {
     // @ts-ignore
@@ -77,6 +84,14 @@ export const clearChatHistory = async (userId: string) => {
     
     await Promise.all(deletePromises);
     console.log(`Historique effacé pour ${userId}`);
+};
+
+// Exports des méthodes d'authentification pour l'usage dans les composants (Michael, c'est ici qu'on ouvre la porte à l'email)
+export { 
+    signInWithEmailAndPassword, 
+    createUserWithEmailAndPassword, 
+    signOut, 
+    onAuthStateChanged 
 };
 
 export { app };
