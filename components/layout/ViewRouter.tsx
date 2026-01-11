@@ -6,6 +6,7 @@ import ArsenalView from '../ArsenalView';
 import CoachView from '../CoachView';
 import ProfileView from '../ProfileView';
 import SessionForm from '../SessionForm';
+import FeedView from '../FeedView';
 import LocationsManager from '../LocationsManager';
 import { Waves } from 'lucide-react';
 
@@ -123,6 +124,23 @@ export const ViewRouter = ({ engine }: { engine: any }) => {
         
         case 'dashboard':
             return withTransition(<Dashboard userProfile={userProfile} usersRegistry={usersRegistry} activeTab={activeDashboardTab} onTabChange={setActiveDashboardTab} userName={userProfile?.pseudo || 'Pêcheur'} currentUserId={currentUserId} sessions={sessions} oracleData={oraclePoints} isOracleLoading={isOracleLoading} activeLocationLabel={activeLocation?.label || "Sélectionner"} activeLocationId={activeLocationId} availableLocations={arsenalData.locations.filter((l: any) => l.active && l.isFavorite)} onLocationClick={() => { if (activeLocationId) setTargetLocationId(activeLocationId); setCurrentView('locations'); }} onLocationSelect={setActiveLocationId} setActiveLocationId={setActiveLocationId} onEditSession={handleEditRequest} onDeleteSession={handleDeleteSession} onMagicDiscovery={handleMagicDiscovery} lureTypes={arsenalData.lureTypes} colors={arsenalData.colors} locations={arsenalData.locations} arsenalData={arsenalData} displayedWeather={displayedWeather} lastSyncTimestamp={lastSyncTimestamp} isActuallyNight={isActuallyNight} />);
+
+        case 'feed': // Michael : Nouvelle entrée royale pour la War Room
+            return withTransition(
+                <FeedView 
+                    sessions={sessions} 
+                    currentUserId={currentUserId} 
+                    userProfile={userProfile} 
+                    usersRegistry={usersRegistry} 
+                    isActuallyNight={isActuallyNight}
+                    onNavigateToSession={(id) => {
+                        // Michael : Double action - on change de vue ET on focus la session
+                        setLastSavedSessionId(id);
+                        setCurrentView('history');
+                    }}
+                />
+            );
+
 
         case 'history':
             return withTransition(<HistoryView sessions={sessions} onDeleteSession={handleDeleteSession} onEditSession={handleEditRequest} currentUserId={currentUserId} userProfile={userProfile} usersRegistry={usersRegistry} isActuallyNight={isActuallyNight} highlightSessionId={lastSavedSessionId} onClearHighlight={() => setLastSavedSessionId(null)} />);

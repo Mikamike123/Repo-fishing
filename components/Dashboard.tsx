@@ -1,24 +1,25 @@
-// components/Dashboard.tsx - Version 10.5.0 (Multi-User Registry Support)
+// components/Dashboard.tsx - Version 11.0.0 (Clean & Focused Edition)
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
-    Activity, Target, ScrollText, MapPin, ChevronDown, Flame, Trophy, RefreshCw
-} from 'lucide-react';
+    Activity, Target, MapPin, ChevronDown, Flame, Trophy, RefreshCw
+} from 'lucide-react'; // Michael : ScrollText supprimé (lié à l'onglet Actu)
 import { Session, RefLureType, RefColor, Location, WeatherSnapshot, AppData, UserProfile, OracleDataPoint } from '../types';
 import { buildUserHistory } from '../lib/gamification';
 
 import { DashboardLiveTab } from './DashboardLiveTab';
 import { DashboardTacticsTab } from './DashboardTacticsTab';
-import { DashboardActivityTab } from './DashboardActivityTab';
+// Michael : DashboardActivityTab n'est plus importé ici, il va devenir une vue racine (FEED)
 import { RecordsGrid } from './RecordsGrid'; 
 import { ExperienceBar } from './ExperienceBar';
 
-type DashboardTab = 'live' | 'tactics' | 'activity' | 'experience';
+// Michael : Le type DashboardTab est recentré sur l'essentiel
+type DashboardTab = 'live' | 'tactics' | 'experience';
 
 interface DashboardProps {
-    activeTab?: 'live' | 'tactics' | 'activity' | 'experience';
-    onTabChange?: (tab: 'live' | 'tactics' | 'activity' | 'experience') => void;
+    activeTab?: 'live' | 'tactics' | 'experience';
+    onTabChange?: (tab: 'live' | 'tactics' | 'experience') => void;
     userProfile: UserProfile | null;
-    usersRegistry: Record<string, UserProfile>; // Michael : Ajout du registre pour la Phase de Normalisation v10.6
+    usersRegistry: Record<string, UserProfile>; 
     sessions: Session[];
     onDeleteSession: (id: string) => void;
     onEditSession: (session: Session) => void;
@@ -110,12 +111,12 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
 
     return (
         <div className="space-y-4 animate-in fade-in duration-500 pb-20">
+            {/* Michael : Barre d'onglets épurée à 3 rubriques */}
             <div className={`flex p-1.5 rounded-[2rem] border mx-1 transition-all duration-500 ${
                 isActuallyNight ? 'bg-stone-900/50 border-stone-800' : 'bg-stone-200/50 border-stone-200'
             }`}>
                 <TabButton active={activeTab === 'live'} onClick={() => handleTabChange('live')} icon={<Activity size={20} />} label="Live" color="amber" isActuallyNight={isActuallyNight} />
                 <TabButton active={activeTab === 'tactics'} onClick={() => handleTabChange('tactics')} icon={<Target size={20} />} label="Tactique" color="emerald" isActuallyNight={isActuallyNight} />
-                <TabButton active={activeTab === 'activity'} onClick={() => handleTabChange('activity')} icon={<ScrollText size={20} />} label="Actu" color="indigo" isActuallyNight={isActuallyNight} />
                 <TabButton active={activeTab === 'experience'} onClick={() => handleTabChange('experience')} icon={<Trophy size={20} />} label="Exp" color="rose" isActuallyNight={isActuallyNight} />
             </div>
 
@@ -153,18 +154,6 @@ const Dashboard: React.FC<DashboardProps> = (props) => {
                         currentUserId={currentUserId} 
                         arsenalData={arsenalData} 
                         isActuallyNight={isActuallyNight} 
-                    />
-                )}
-
-                {activeTab === 'activity' && (
-                    <DashboardActivityTab 
-                        sessions={sessions} 
-                        currentUserId={currentUserId} 
-                        onDeleteSession={onDeleteSession} 
-                        onEditSession={onEditSession}
-                        isActuallyNight={isActuallyNight}
-                        userProfile={userProfile} 
-                        usersRegistry={usersRegistry} // Michael : Le registre arrive enfin à destination
                     />
                 )}
 
@@ -247,7 +236,6 @@ const TabButton = ({ active, onClick, icon, label, color, isActuallyNight }: any
     const themes: any = {
         amber: active ? (isActuallyNight ? "bg-stone-800 text-amber-500 shadow-lg" : "bg-white text-amber-600 shadow-md") : (isActuallyNight ? "text-stone-500" : "text-stone-500"),
         emerald: active ? (isActuallyNight ? "bg-stone-800 text-emerald-500 shadow-lg" : "bg-white text-emerald-600 shadow-md") : (isActuallyNight ? "text-stone-500" : "text-stone-500"),
-        indigo: active ? (isActuallyNight ? "bg-stone-800 text-indigo-400 shadow-lg" : "bg-white text-indigo-600 shadow-md") : (isActuallyNight ? "text-stone-500" : "text-stone-500"),
         rose: active ? (isActuallyNight ? "bg-stone-800 text-rose-400 shadow-lg" : "bg-white text-rose-600 shadow-md") : (isActuallyNight ? "text-stone-500" : "text-stone-500"),
     };
     return (

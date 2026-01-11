@@ -1,4 +1,4 @@
-// components/HistoryView.tsx - Version 8.7.0 (Turbo Virtualization & Performance Edition)
+// components/HistoryView.tsx - Version 8.9.2 (Precision Deep-Link & TS Safety)
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { ScrollText, Users, User, Search, Clock, Calendar, ChevronDown, ChevronUp, Fish, Filter } from 'lucide-react';
 import { Session, UserProfile } from '../types';
@@ -14,21 +14,16 @@ interface HistoryViewProps {
   userProfile: UserProfile | null;
   usersRegistry: Record<string, UserProfile>;
   isActuallyNight?: boolean; 
-  highlightSessionId?: string | null; // Michael : ID de la session à mettre en avant
-  onClearHighlight?: () => void;      // Michael : Nettoyeur de focus
+  highlightSessionId?: string | null; 
+  onClearHighlight?: () => void;      
 }
 
-/**
- * Michael : Composant Interne de Virtualisation (Wrapper)
- * Il utilise l'IntersectionObserver pour ne rendre le contenu lourd
- * que lorsqu'il approche de l'écran.
- */
 const VirtualSessionWrapper = ({ children, id, isHighlighted }: { children: React.ReactNode, id: string, isHighlighted: boolean }) => {
     const [isVisible, setIsVisible] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        // Michael : Si c'est la session "Focus", on force l'affichage immédiat
+        // Michael : Si c'est la session Focus, on la rend immédiatement sans attendre l'IntersectionObserver
         if (isHighlighted) {
             setIsVisible(true);
             return;
@@ -36,15 +31,13 @@ const VirtualSessionWrapper = ({ children, id, isHighlighted }: { children: Reac
 
         const observer = new IntersectionObserver(
             ([entry]) => {
-                // On charge la carte 600px avant qu'elle n'entre à l'écran pour un scroll fluide
                 if (entry.isIntersecting) {
                     setIsVisible(true);
                 } else {
-                    // On libère la mémoire si on est très loin (1000px)
                     setIsVisible(false);
                 }
             },
-            { rootMargin: '600px' } 
+            { rootMargin: '800px' } 
         );
 
         if (containerRef.current) observer.observe(containerRef.current);
@@ -52,12 +45,11 @@ const VirtualSessionWrapper = ({ children, id, isHighlighted }: { children: Reac
     }, [isHighlighted]);
 
     return (
-        <div ref={containerRef} id={id} className="min-h-[160px] w-full">
+        <div ref={containerRef} id={id} className="min-h-[160px] w-full transition-all duration-300">
             {isVisible ? (
                 children
             ) : (
-                /* Michael : Espace fantôme transparent pour garder la structure du scroll */
-                <div className="w-full h-[160px] rounded-[2.5rem] bg-stone-500/5" />
+                <div className="w-full h-[160px] rounded-[2.5rem] bg-stone-500/5 border border-transparent" />
             )}
         </div>
     );
@@ -86,57 +78,66 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   const [showOnlySuccess, setShowOnlySuccess] = useState(false);
   const [expandedYears, setExpandedYears] = useState<Record<string, boolean>>({});
 
-  // --- LOGIQUE DE FOCUS (Plan d'action v10.8) ---
+  // Michael : Utilitaire robuste pour extraire le timestamp sans pleurs de TypeScript
+  const safeGetTs = (dateVal: any): number => {
+    if (!dateVal) return 0;
+    if (typeof dateVal === 'object' && dateVal !== null) {
+      return (dateVal.seconds || dateVal._seconds || 0) * 1000;
+    }
+    const parsed = new Date(dateVal).getTime();
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
+  // Michael : Détection de l'année cible pour neutraliser content-visibility
+  const targetYear = useMemo(() => {
+    if (!highlightSessionId) return null;
+    const s = sessions.find(sess => sess.id === highlightSessionId);
+    if (!s) return null;
+    return new Date(safeGetTs(s.date)).getFullYear().toString();
+  }, [highlightSessionId, sessions]);
+
+  // --- LOGIQUE DE FOCUS STRATÉGIQUE (v8.9.2) ---
   useEffect(() => {
-    if (highlightSessionId) {
+    if (highlightSessionId && targetYear) {
       const targetSession = sessions.find(s => s.id === highlightSessionId);
       if (targetSession) {
-        const getTs = (dateVal: any): number => {
-            if (!dateVal) return 0;
-            if (typeof dateVal === 'object') return (dateVal.seconds || dateVal._seconds || 0) * 1000;
-            const parsed = new Date(dateVal).getTime();
-            return isNaN(parsed) ? 0 : parsed;
-        };
-        const year = new Date(getTs(targetSession.date)).getFullYear().toString();
         
-        setExpandedYears(prev => ({ ...prev, [year]: true }));
-
+        // 1. Préparation de l'UI (Expand + Reset Filters)
+        setExpandedYears(prev => ({ ...prev, [targetYear]: true }));
         if (targetSession.userId !== currentUserId && showOnlyMine) setShowOnlyMine(false);
-        
-        // Michael : FIX FILTRE - On vérifie la longueur réelle de l'array catches
         if ((targetSession.catches?.length || 0) === 0 && showOnlySuccess) setShowOnlySuccess(false);
         if (searchTerm !== '') setSearchTerm('');
 
+        // 2. Séquence de scroll haute précision
+        // Le délai de 500ms permet à React de déplier l'année et au navigateur de calculer les hauteurs 'visible'
         const timer = setTimeout(() => {
           const element = document.getElementById(`session-${highlightSessionId}`);
           if (element) {
-            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Premier saut "invisible" pour caler le moteur de scroll
+            element.scrollIntoView({ behavior: 'auto', block: 'center' });
             
-            setTimeout(() => {
+            // Second scroll fluide pour l'utilisateur, après stabilisation du layout
+            requestAnimationFrame(() => {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            });
+
+            // On libère le focus après l'animation
+            const clearTimer = setTimeout(() => {
                 if (onClearHighlight) onClearHighlight();
             }, 3000);
+            return () => clearTimeout(clearTimer);
           }
-        }, 600);
+        }, 500);
 
         return () => clearTimeout(timer);
       }
     }
-  }, [highlightSessionId, sessions, currentUserId, onClearHighlight, showOnlyMine, showOnlySuccess, searchTerm]);
+  }, [highlightSessionId, sessions, currentUserId, onClearHighlight, showOnlyMine, showOnlySuccess, searchTerm, targetYear]);
 
-  // --- LOGIQUE DE FILTRAGE & GROUPEMENT ---
   const groupedSessions = useMemo(() => {
-    const getTs = (dateVal: any): number => {
-      if (!dateVal) return 0;
-      if (typeof dateVal === 'object') return (dateVal.seconds || dateVal._seconds || 0) * 1000;
-      const parsed = new Date(dateVal).getTime();
-      return isNaN(parsed) ? 0 : parsed;
-    };
-
     const filtered = sessions.filter(session => {
       const matchesUser = showOnlyMine ? session.userId === currentUserId : true;
       const searchLower = searchTerm.toLowerCase();
-      
-      // Michael : FIX FILTRE - On vérifie la longueur réelle de l'array catches
       const actualCatchCount = session.catches?.length || 0;
       const matchesSuccess = showOnlySuccess ? actualCatchCount > 0 : true;
 
@@ -151,7 +152,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
 
     const groups: Record<string, { sessions: Session[], totalCatches: number }> = {};
     filtered.forEach(s => {
-      const ts = getTs(s.date);
+      const ts = safeGetTs(s.date);
       const year = new Date(ts).getFullYear().toString();
       if (!groups[year]) groups[year] = { sessions: [], totalCatches: 0 };
       groups[year].sessions.push(s);
@@ -159,7 +160,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     });
 
     Object.keys(groups).forEach(y => {
-      groups[y].sessions.sort((a, b) => getTs(b.date) - getTs(a.date));
+      groups[y].sessions.sort((a, b) => safeGetTs(b.date) - safeGetTs(a.date));
     });
 
     return groups;
@@ -190,10 +191,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   const inputBg = isActuallyNight ? "bg-stone-900 border-stone-800 text-stone-200" : "bg-stone-50 border-stone-100 text-stone-800";
 
   return (
-    <div className="space-y-6 pb-24 animate-in fade-in duration-500">
+    <div className="space-y-6 pb-24 animate-in fade-in duration-500 max-w-4xl mx-auto w-full">
       
       {/* HEADER & FILTRES */}
-      <div className={`${cardClass} rounded-[2.5rem] p-6 space-y-4 transition-colors duration-500 oracle-card-press`}>
+      <div className={`${cardClass} rounded-[2.5rem] p-6 space-y-4 transition-colors duration-500`}>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h2 className={`text-2xl font-black uppercase tracking-tighter flex items-center gap-3 italic ${textTitle}`}>
@@ -211,7 +212,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                     if (window.navigator?.vibrate) window.navigator.vibrate(10);
                     setShowOnlySuccess(!showOnlySuccess);
                 }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-[10px] font-black uppercase transition-all oracle-btn-press ${
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-[10px] font-black uppercase transition-all ${
                     showOnlySuccess 
                         ? (isActuallyNight ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' : 'bg-emerald-100 border-emerald-300 text-emerald-700 shadow-inner')
                         : (isActuallyNight ? 'bg-stone-900 border-stone-800 text-stone-500' : 'bg-stone-50 border-stone-100 text-stone-400')
@@ -224,13 +225,13 @@ const HistoryView: React.FC<HistoryViewProps> = ({
             <div className={`flex p-1 rounded-xl border shadow-inner ${isActuallyNight ? 'bg-stone-900 border-stone-800' : 'bg-stone-100 border-stone-200'}`}>
                 <button 
                     onClick={() => setShowOnlyMine(false)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all oracle-btn-press ${!showOnlyMine ? (isActuallyNight ? 'bg-stone-800 text-stone-100' : 'bg-white text-stone-800 shadow-sm') : 'text-stone-400 hover:text-stone-50'}`}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${!showOnlyMine ? (isActuallyNight ? 'bg-stone-800 text-stone-100' : 'bg-white text-stone-800 shadow-sm') : 'text-stone-400'}`}
                 >
                     <Users size={14} /> Tous
                 </button>
                 <button 
                     onClick={() => setShowOnlyMine(true)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all oracle-btn-press ${showOnlyMine ? (isActuallyNight ? 'bg-amber-900/40 text-amber-500 shadow-sm border border-amber-900/20' : 'bg-white text-amber-600 shadow-sm') : 'text-stone-400 hover:text-stone-500'}`}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${showOnlyMine ? (isActuallyNight ? 'bg-amber-900/40 text-amber-500 shadow-sm border border-amber-900/20' : 'bg-white text-amber-600 shadow-sm') : 'text-stone-400'}`}
                 >
                     <User size={14} /> Moi
                 </button>
@@ -238,7 +239,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
           </div>
         </div>
 
-        <div className="relative group transition-all oracle-btn-press">
+        <div className="relative group transition-all">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 group-focus-within:text-amber-500 transition-colors" size={18} />
           <input 
             type="text"
@@ -257,12 +258,21 @@ const HistoryView: React.FC<HistoryViewProps> = ({
             const yearData = groupedSessions[year];
             const isExpanded = expandedYears[year] !== false; 
             
+            // Michael : Stabilisation critique - On force l'année cible en rendu visible pour que le scrollIntoView soit exact
+            const isTargetYear = year === targetYear;
+
             return (
-              /* Michael : Ajout de content-visibility pour un boost de performance natif du navigateur */
-              <div key={year} className="space-y-3" style={{ contentVisibility: 'auto', containIntrinsicSize: '1px 500px' }}>
+              <div 
+                key={year} 
+                className="space-y-3" 
+                style={{ 
+                    contentVisibility: isTargetYear ? 'visible' : 'auto', 
+                    containIntrinsicSize: '1px 500px' 
+                }}
+              >
                 <button 
                     onClick={() => toggleYear(year)}
-                    className={`w-full flex items-center justify-between px-6 py-4 border rounded-2xl transition-all oracle-btn-press ${
+                    className={`w-full flex items-center justify-between px-6 py-4 border rounded-2xl transition-all ${
                         isActuallyNight ? 'bg-stone-900/40 border-stone-800 hover:bg-stone-900/60' : 'bg-white border-stone-100 shadow-sm hover:bg-stone-50'
                     }`}
                 >
@@ -292,7 +302,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                       const isHighlighted = session.id === highlightSessionId;
 
                       return (
-                        /* Michael : Application du Wrapper de Virtualisation */
                         <VirtualSessionWrapper 
                             key={session.id} 
                             id={`session-${session.id}`}
@@ -302,7 +311,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                                 deletingId === session.id ? 'opacity-0 scale-95 -translate-y-4 pointer-events-none' : 'opacity-100 scale-100'
                             } ${
                                 isHighlighted 
-                                ? 'ring-4 ring-amber-500/50 rounded-[2.5rem] shadow-2xl scale-[1.02] z-10' 
+                                ? 'ring-4 ring-amber-500/50 rounded-[2.5rem] shadow-2xl scale-[1.01] z-10' 
                                 : ''
                             }`}>
                                 <SessionCard 

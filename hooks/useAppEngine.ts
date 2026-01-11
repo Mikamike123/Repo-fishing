@@ -1,4 +1,4 @@
-// hooks/useAppEngine.ts - Version 8.1.6 (Smooth Post-Save Navigation)
+// hooks/useAppEngine.ts - Version 11.0.0 (FEED Engine & Notification Logic)
 import { useState, useEffect, useMemo } from 'react';
 import { 
     onSnapshot, query, orderBy, 
@@ -17,14 +17,17 @@ export const useAppEngine = () => {
     const [authLoading, setAuthLoading] = useState(true);
     const [themeMode, setThemeMode] = useState<'light' | 'night' | 'auto'>('auto'); 
     const [isActuallyNight, setIsActuallyNight] = useState(false);
-    // Michael : On initialise à 0 pour éviter le "faux frais" au chargement
+    
     const [lastSyncTimestamp, setLastSyncTimestamp] = useState<number>(0);
     const [lastCoachLocationId, setLastCoachLocationId] = useState<string>("");
     const [isOnline, setIsOnline] = useState(navigator.onLine);
 
     const [currentView, setCurrentView] = useState<any>('dashboard'); 
     const [sessions, setSessions] = useState<Session[]>([]); 
-    const [activeDashboardTab, setActiveDashboardTab] = useState<'live' | 'tactics' | 'activity' | 'experience'>('live');
+    
+    // Michael : Mise à jour du type pour exclure 'activity' (Phase Sablage Dashboard TERMINEE)
+    const [activeDashboardTab, setActiveDashboardTab] = useState<'live' | 'tactics' | 'experience'>('live');
+    
     const [isLoading, setIsLoading] = useState(true); 
     const [editingSession, setEditingSession] = useState<Session | null>(null);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -40,11 +43,13 @@ export const useAppEngine = () => {
     const [displayedWeather, setDisplayedWeather] = useState<WeatherSnapshot | null>(null);
     const [isWeatherLoading, setIsWeatherLoading] = useState(false);
 
-    // Michael : Le Registre Multi-Utilisateurs (Cache L1 des profils tiers)
     const [usersRegistry, setUsersRegistry] = useState<Record<string, UserProfile>>({});
-
-    // Michael : État de suivi pour le focus post-sauvegarde (Plan d'action v10.8)
     const [lastSavedSessionId, setLastSavedSessionId] = useState<string | null>(null);
+
+    // Michael : Moteur de Notification FEED (Phase C)
+    const [lastSeenFeedTimestamp, setLastSeenFeedTimestamp] = useState<number>(() => 
+        Number(localStorage.getItem('oracle_last_seen_feed') || 0)
+    );
 
     const currentUserId = user?.uid || "guest"; 
 
@@ -52,49 +57,49 @@ export const useAppEngine = () => {
         if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(pattern);
     };
 
-    // --- LOGIQUE DU REGISTRE (Multi-User v10.6) ---
+    // --- LOGIQUE DE NOTIFICATION (Pastille FEED) ---
+    const hasNewFeed = useMemo(() => {
+        if (!sessions.length) return false;
+        // On cherche le timestamp de création le plus récent parmi toutes les sessions
+        const latestTs = sessions.reduce((max, s) => {
+            const ts = s.createdAt?.seconds ? s.createdAt.seconds * 1000 : 0;
+            return ts > max ? ts : max;
+        }, 0);
+        return latestTs > lastSeenFeedTimestamp;
+    }, [sessions, lastSeenFeedTimestamp]);
+
+    // Michael : Reset de la pastille quand on entre dans la vue 'feed'
+    useEffect(() => {
+        if (currentView === 'feed') {
+            const now = Date.now();
+            setLastSeenFeedTimestamp(now);
+            localStorage.setItem('oracle_last_seen_feed', now.toString());
+        }
+    }, [currentView]);
+
+    // --- LOGIQUE DU REGISTRE ---
     useEffect(() => {
         if (!sessions.length) return;
-
         const fetchMissingProfiles = async () => {
-            // 1. On liste tous les IDs uniques présents dans les sessions affichées
             const uniqueUserIds = Array.from(new Set(sessions.map(s => s.userId)));
-            
-            // 2. On filtre ceux qu'on ne connaît pas encore (et qui ne sont pas Michael)
             const missingIds = uniqueUserIds.filter(id => 
-                id !== currentUserId && 
-                id !== "guest" && 
-                !usersRegistry[id]
+                id !== currentUserId && id !== "guest" && !usersRegistry[id]
             );
-
             if (missingIds.length === 0) return;
-
-            console.log(`🔍 [Registry Oracle] Découverte de ${missingIds.length} nouveaux profils...`);
-            
             const fetchedEntries: Record<string, UserProfile> = {};
             let hasUpdates = false;
-
-            // Michael : Récupération asynchrone des profils manquants
             for (const id of missingIds) {
                 try {
                     const profile = await getUserProfile(id);
-                    if (profile) {
-                        fetchedEntries[id] = profile;
-                        hasUpdates = true;
-                    }
-                } catch (e) {
-                    console.error(`Erreur de reconnaissance pour l'ID ${id}:`, e);
-                }
+                    if (profile) { fetchedEntries[id] = profile; hasUpdates = true; }
+                } catch (e) { console.error(`Erreur registre ID ${id}:`, e); }
             }
-
-            if (hasUpdates) {
-                setUsersRegistry(prev => ({ ...prev, ...fetchedEntries }));
-            }
+            if (hasUpdates) { setUsersRegistry(prev => ({ ...prev, ...fetchedEntries })); }
         };
-
         fetchMissingProfiles();
     }, [sessions, currentUserId, usersRegistry]);
 
+    // --- GESTION THEME & RESEAU ---
     useEffect(() => {
         const checkTheme = () => {
             if (themeMode === 'auto') {
@@ -118,6 +123,7 @@ export const useAppEngine = () => {
         };
     }, []);
 
+    // --- AUTH & WHITELIST ---
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             setAuthLoading(true);
@@ -128,9 +134,7 @@ export const useAppEngine = () => {
                     if (whitelistDoc.exists()) { 
                         setUser(firebaseUser); 
                         setIsWhitelisted(true); 
-                    } else { 
-                        setIsWhitelisted(false); 
-                    }
+                    } else { setIsWhitelisted(false); }
                 } catch (error) {
                     console.error("🔥 Erreur Whitelist:", error);
                     setIsWhitelisted(false);
@@ -176,7 +180,6 @@ export const useAppEngine = () => {
     useEffect(() => {
         if (activeLocation?.lastSnapshot) {
             setDisplayedWeather(activeLocation.lastSnapshot.weather);
-            // Michael : On hydrate le timestamp depuis le snapshot existant pour être honnête dès le load
             const snapDate = new Date(activeLocation.lastSnapshot.metadata.calculationDate).getTime();
             setLastSyncTimestamp(snapDate);
         }
@@ -210,49 +213,29 @@ export const useAppEngine = () => {
     useEffect(() => {
         const syncEnvironment = async () => {
             if (!activeLocation?.coordinates) return;
-
             const hasExistingData = oraclePoints.length > 0 || activeLocation.lastSnapshot;
-            if (!hasExistingData) {
-                setIsOracleLoading(true); 
-                setIsWeatherLoading(true);
-            }
-
+            if (!hasExistingData) { setIsOracleLoading(true); setIsWeatherLoading(true); }
             try {
                 const { points, snapshot } = await getOrFetchOracleData(
-                    activeLocation.coordinates.lat, 
-                    activeLocation.coordinates.lng, 
-                    activeLocation.id, 
-                    activeLocation.morphology
+                    activeLocation.coordinates.lat, activeLocation.coordinates.lng, 
+                    activeLocation.id, activeLocation.morphology
                 );
-
                 setOraclePoints(points);
-                
                 if (snapshot) {
                     setDisplayedWeather(snapshot.weather);
-                    
                     const snapDate = new Date(snapshot.metadata.calculationDate).getTime();
-                    // Michael : On cale l'UI sur la date réelle de calcul du snapshot, pas sur maintenant
                     setLastSyncTimestamp(snapDate);
-
-                    // On ne commite sur Firestore que si c'est un nouveau calcul (< 1 min)
                     if (Date.now() - snapDate < 60000 && activeLocation.id) {
-                         // Diagnostic 100% : Update direct pour bypasser la signature string de handleEditItem
                          await updateDoc(doc(db, 'locations', activeLocation.id), {
                             lastSnapshot: snapshot,
                             lastCalculatedTemp: snapshot.hydro.waterTemp,
                             lastSyncDate: snapshot.metadata.calculationDate
                         });
-                        console.log(`✅ [Sync Cloud] Snapshot v${snapshot.metadata.schemaVersion} persisté pour ${activeLocation.label}.`);
                     }
                 }
-            } catch (err) { 
-                console.error("🔥 Sync Error:", err); 
-            } finally { 
-                setIsOracleLoading(false); 
-                setIsWeatherLoading(false); 
-            }
+            } catch (err) { console.error("🔥 Sync Error:", err); }
+            finally { setIsOracleLoading(false); setIsWeatherLoading(false); }
         };
-
         syncEnvironment();
         const interval = setInterval(syncEnvironment, 30 * 60 * 1000);
         return () => clearInterval(interval);
@@ -267,32 +250,27 @@ export const useAppEngine = () => {
         }
     }, [activeLocationId, lastCoachLocationId, currentUserId]);
 
+    // --- PROFILE SYNC ---
     useEffect(() => {
         if (!user || !isWhitelisted) return;
         setIsProfileLoading(true);
         setFirestoreError(null); 
-        
         const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data() as UserProfile;
                 setUserProfile({ ...data, id: docSnap.id }); 
                 if ((data as any).themePreference) setThemeMode((data as any).themePreference);
                 setFirestoreError(null); 
-            } else {
-                setFirestoreError("DOC_NOT_FOUND");
-            }
+            } else { setFirestoreError("DOC_NOT_FOUND"); }
             setIsProfileLoading(false);
         }, (err) => {
-            setFirestoreError(err.message); 
-            setIsProfileLoading(false);
+            setFirestoreError(err.message); setIsProfileLoading(false);
         });
         return () => unsubscribe();
     }, [user, isWhitelisted]);
 
     useEffect(() => {
-        if (firestoreError === "DOC_NOT_FOUND") {
-            setCurrentView('profile');
-        }
+        if (firestoreError === "DOC_NOT_FOUND") { setCurrentView('profile'); }
     }, [firestoreError]);
 
     const handleCreateProfile = async (pseudo: string) => {
@@ -301,11 +279,10 @@ export const useAppEngine = () => {
             triggerHaptic([50, 50, 50]);
             await createUserProfile(user.uid, pseudo);
             setCurrentView('dashboard');
-        } catch (e) {
-            console.error("Erreur création profil Michael :", e);
-        }
+        } catch (e) { console.error("Erreur création profil Michael :", e); }
     };
 
+    // --- SESSIONS SNAPSHOT ---
     useEffect(() => {
         if (!user || !isWhitelisted) return;
         const q = query(sessionsCollection, orderBy('date', 'desc')); 
@@ -323,14 +300,12 @@ export const useAppEngine = () => {
     const handleSaveSession = async (session: Session) => {
         triggerHaptic();
         let savedId = session.id;
-
         if (session.id) {
             const { date, id, ...data } = session;
             await updateDoc(doc(db, 'sessions', id), { ...data, date: Timestamp.fromDate(new Date(date as string)) });
             setEditingSession(null); 
         } else {
             const { id, date, ...dataToSave } = session;
-            // Michael : Phase Normalisation v10.6 - On retire définitivement userAvatar du document session
             const docRef = await addDoc(collection(db, 'sessions'), { 
                 ...dataToSave, 
                 date: Timestamp.fromDate(new Date(date as string)), 
@@ -339,11 +314,9 @@ export const useAppEngine = () => {
                 createdAt: Timestamp.now(), 
                 active: true 
             });
-            savedId = docRef.id; // Michael : On récupère l'ID généré pour le focus
+            savedId = docRef.id;
             setMagicDraft(null); 
         }
-
-        // Michael : Phase Focus v10.8 - On mémorise l'ID et on redirige systématiquement vers l'historique
         setLastSavedSessionId(savedId || null);
         setCurrentView('history');
     };
@@ -368,8 +341,9 @@ export const useAppEngine = () => {
         userProfile, setUserProfile, activeLocationId, setActiveLocationId, oraclePoints,
         isOracleLoading: isOracleLoading || isWeatherLoading, activeLocation, arsenalData, displayedWeather,
         isOnline, triggerHaptic, isWhitelisted, firestoreError, handleCreateProfile,
-        usersRegistry, 
-        lastSavedSessionId, setLastSavedSessionId, // Michael : On expose les nouveaux contrôleurs
+        usersRegistry, lastSavedSessionId, setLastSavedSessionId,
+        hasNewFeed, // Michael : On expose la pastille FEED pour l'AppLayout
+        hasNewMenuContent: false, // Michael : Prêt pour une extension future
         handleLogin: () => signInWithPopup(auth, googleProvider),
         handleLogout: () => { signOut(auth); setCurrentView('dashboard'); setIsMenuOpen(false); },
         handleSaveSession, handleEditRequest: (s: Session) => { setEditingSession(s); setCurrentView('session'); },
