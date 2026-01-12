@@ -1,4 +1,4 @@
-// hooks/useAppEngine.ts - Version 12.2.0 (Foreground Notifications Enabled)
+// hooks/useAppEngine.ts - Version 13.0.0 (Fishing Vibes & Interaction Engine)
 import { useState, useEffect, useMemo } from 'react';
 import { 
     onSnapshot, query, orderBy, 
@@ -108,6 +108,32 @@ export const useAppEngine = () => {
                 hiddenBy: arrayUnion(currentUserId)
             });
         } catch (e) { console.error("Erreur purge session Firestore:", e); }
+    };
+
+    /**
+     * Michael : Moteur des Fishing Vibes (Reactions)
+     * Permet de liker (Net), saler (Salt) ou enflammer (Fire) un événement.
+     */
+    const handleToggleReaction = async (sessionId: string, reactionKey: string) => {
+        if (currentUserId === "guest") return;
+        const session = sessions.find(s => s.id === sessionId);
+        if (!session) return;
+
+        const currentReactions = session.reactions?.[reactionKey] || [];
+        const hasReacted = currentReactions.includes(currentUserId);
+        
+        const newReactions = hasReacted 
+            ? currentReactions.filter(id => id !== currentUserId)
+            : [...currentReactions, currentUserId];
+
+        try {
+            triggerHaptic([20]);
+            const sessionRef = doc(db, 'sessions', sessionId);
+            // On utilise la notation pointée pour mettre à jour uniquement la clé spécifique de la Map Firestore
+            await updateDoc(sessionRef, {
+                [`reactions.${reactionKey}`]: newReactions
+            });
+        } catch (e) { console.error("Erreur Reaction Michael :", e); }
     };
 
     // --- AUTH : CONNEXION EMAIL ---
@@ -426,6 +452,7 @@ export const useAppEngine = () => {
         targetLocationId, setTargetLocationId, lastCatchDefaults, currentLiveSnapshot, handleConsumeLevelUp, 
         navigateFromMenu, handleResetCollection,
         handleMarkSessionAsRead, handleHideSessionFromFeed,
+        handleToggleReaction, // Michael : Nouveau câble pour les vibes !
         onResetTechniques: (defaults: any[], current: any[]) => handleResetCollection('techniques', defaults, current),
         onResetLureTypes: (defaults: any[], current: any[]) => handleResetCollection('ref_lure_types', defaults, current), 
         onResetColors: (defaults: any[], current: any[]) => handleResetCollection('ref_colors', defaults, current),

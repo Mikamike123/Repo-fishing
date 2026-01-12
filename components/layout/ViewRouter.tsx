@@ -1,4 +1,4 @@
-// components/layout/ViewRouter.tsx - Version 10.9.0 (Anchor Support Integrated)
+// components/layout/ViewRouter.tsx - Version 11.0.0 (Fishing Vibes Wiring)
 import React, { useEffect } from 'react';
 import Dashboard from '../Dashboard';
 import HistoryView from '../HistoryView';
@@ -89,7 +89,7 @@ export const ViewRouter = ({ engine }: { engine: any }) => {
     const { 
         currentView, currentUserId, targetLocationId, setTargetLocationId, arsenalData, 
         handleAddItem, handleEditItem, handleDeleteItem, handleToggleLocationFavorite, 
-        handleMoveItem, handleUpdateUserAnchor, setCurrentView, userProfile, activeDashboardTab, setActiveDashboardTab, 
+        handleMoveItem, handleUpdateUserAnchor, handleToggleReaction, setCurrentView, userProfile, activeDashboardTab, setActiveDashboardTab, 
         sessions, oraclePoints, isOracleLoading, activeLocation, activeLocationId, 
         setActiveLocationId, handleMagicDiscovery, displayedWeather, lastSyncTimestamp, 
         isActuallyNight, handleDeleteSession, handleEditRequest, handleSaveSession, 
@@ -136,6 +136,7 @@ export const ViewRouter = ({ engine }: { engine: any }) => {
                     unreadFeedCount={unreadFeedCount} // Injection du compteur
                     onMarkAsRead={handleMarkSessionAsRead} // Connexion de la lecture
                     onHideSession={handleHideSessionFromFeed} // Connexion de la poubelle
+                    onToggleReaction={handleToggleReaction} // Michael : Connexion des Fishing Vibes
                     onNavigateToSession={(id) => {
                         // Michael : Double action - on change de vue ET on focus la session
                         setLastSavedSessionId(id);

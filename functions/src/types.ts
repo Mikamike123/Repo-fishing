@@ -220,6 +220,7 @@ export interface Session extends BaseEntity {
   envSnapshot?: FullEnvironmentalSnapshot | null;
   readBy?: string[];   // Michael : Liste des UIDs ayant lu la session
   hiddenBy?: string[]; // Michael : Liste des UIDs ayant purgé la session du feed
+  reactions?: Record<string, string[]>; // Michael : { 'net': ['uid1', 'uid2'], 'salt': ['uid3'] }
 }
 
 // --- APPLICATION ---
