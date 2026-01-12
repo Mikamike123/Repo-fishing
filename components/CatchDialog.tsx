@@ -1,4 +1,4 @@
-// components/CatchDialog.tsx - Version 10.0.2 (Portal Edition & Precision Centering)
+// components/CatchDialog.tsx - Version 10.0.3 (Shield Edition & Precision Centering)
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom'; // Michael : Import indispensable pour le fix "envolée"
 import { 
@@ -317,9 +317,11 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 p-4 h-[100dvh] w-full overflow-hidden">
             <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
             
-            {/* Michael : h-fit + max-h-[90dvh] pour garantir que la modal reste au centre et scrollable si contenu trop long */}
-            <div className={`relative w-full max-w-lg h-fit max-h-[90dvh] rounded-3xl shadow-2xl p-6 space-y-4 border overflow-y-auto custom-scrollbar transition-colors duration-500 ${
-                isActuallyNight ? 'bg-[#1c1917] border-stone-800' : 'bg-[#FAF9F6] border-white/50'
+            {/* Michael : Ajout de stopPropagation pour isoler les clics de la modale */}
+            <div 
+                onClick={(e) => e.stopPropagation()}
+                className={`relative w-full max-w-lg h-fit max-h-[90dvh] rounded-3xl shadow-2xl p-6 space-y-4 border overflow-y-auto custom-scrollbar transition-colors duration-500 ${
+                    isActuallyNight ? 'bg-[#1c1917] border-stone-800' : 'bg-[#FAF9F6] border-white/50'
             }`}>
                 
                 <div className={`flex justify-between items-center border-b pb-4 ${isActuallyNight ? 'border-stone-800' : 'border-stone-100'}`}>
@@ -387,7 +389,8 @@ const CatchDialog: React.FC<CatchDialogProps> = ({
 
                 {error && <div className="bg-rose-950/20 text-rose-500 p-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-rose-900/30">{error}</div>}
 
-                <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Michael : On stoppe la propagation du submit pour ne pas déclencher le SessionFormUI parent */}
+                <form onSubmit={(e) => { e.stopPropagation(); handleSubmit(e); }} className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
                             <label className={`text-[10px] font-black uppercase ml-1 ${textMuted}`}>Espèce</label>
