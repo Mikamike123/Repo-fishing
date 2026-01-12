@@ -80,10 +80,11 @@ export const useAppEngine = () => {
     // --- LOGIQUE DE NOTIFICATION STATELESS ---
     const unreadFeedCount = useMemo(() => {
         if (!sessions.length || currentUserId === "guest") return 0;
-        const recentSessions = sessions.slice(0, 20); // [cite: 416, 819]
+        const recentSessions = sessions.slice(0, 20); 
         return recentSessions.filter(s => {
             const isRead = s.readBy?.includes(currentUserId);
             const isHidden = s.hiddenBy?.includes(currentUserId);
+            // Michael : On compte tout ce qui n'est pas lu, y compris nos propres envois
             return !isRead && !isHidden;
         }).length;
     }, [sessions, currentUserId]);
@@ -370,7 +371,7 @@ export const useAppEngine = () => {
                 userPseudo: userProfile?.pseudo || 'Michael', 
                 createdAt: Timestamp.now(), 
                 active: true,
-                readBy: [currentUserId],
+                readBy: [],
                 hiddenBy: []
             });
             savedId = docRef.id;
@@ -402,7 +403,8 @@ export const useAppEngine = () => {
         isOnline, triggerHaptic, isWhitelisted, firestoreError, handleCreateProfile,
         usersRegistry, lastSavedSessionId, setLastSavedSessionId,
         unreadFeedCount,
-        hasNewMenuContent: false, 
+        hasNewFeed: unreadFeedCount > 0, // Michael : Câblage pour AppLayout
+        hasNewMenuContent: false,
         handleLogin: () => signInWithPopup(auth, googleProvider),
         handleEmailLogin, 
         handleLogout: () => { signOut(auth); setCurrentView('dashboard'); setIsMenuOpen(false); },
