@@ -80,8 +80,8 @@ export const useAppEngine = () => {
     // --- LOGIQUE DE NOTIFICATION STATELESS ---
     const unreadFeedCount = useMemo(() => {
         if (!sessions.length || currentUserId === "guest") return 0;
-        const recentSessions = sessions.slice(0, 20); 
-        return recentSessions.filter(s => {
+         
+        return sessions.filter(s => {
             const isRead = s.readBy?.includes(currentUserId);
             const isHidden = s.hiddenBy?.includes(currentUserId);
             // Michael : On compte tout ce qui n'est pas lu, y compris nos propres envois
