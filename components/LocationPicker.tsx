@@ -1,37 +1,44 @@
-// components/LocationPicker.tsx - Version 8.2.0 (Portal Edition & Precision Centering)
+// components/LocationPicker.tsx - Version 8.3.0 (Home Anchor Awareness)
 /// <reference types="vite/client" />
 import React, { useState, useCallback } from 'react';
-import { createPortal } from 'react-dom'; // Michael : Import indispensable pour le fix "envolée"
+import { createPortal } from 'react-dom'; 
 import { APIProvider, Map, AdvancedMarker, Pin, MapCameraChangedEvent } from '@vis.gl/react-google-maps';
 import { X, Check, MapPin, Crosshair, Move } from 'lucide-react';
 
 interface LocationPickerProps {
     initialLat?: number;
     initialLng?: number;
+    defaultCenter?: { lat: number; lng: number }; // Michael : La boussole de Seb
     onValidate: (coords: { lat: number; lng: number }) => void;
     onCancel: () => void;
 }
 
-const LocationPicker: React.FC<LocationPickerProps> = ({ initialLat, initialLng, onValidate, onCancel }) => {
-    // Coordonnées par défaut (Nanterre) si rien n'est fourni
-    const defaultCenter = { lat: 48.8924, lng: 2.2071 }; 
+const LocationPicker: React.FC<LocationPickerProps> = ({ 
+    initialLat, 
+    initialLng, 
+    defaultCenter: userDefaultCenter, 
+    onValidate, 
+    onCancel 
+}) => {
+    // Coordonnées de secours absolu (Nanterre) uniquement si rien d'autre n'existe
+    const fallbackCenter = { lat: 48.8924, lng: 2.2071 }; 
     
-    // Michael : Vérification stricte pour éviter le fallback Nanterre si coords = 0 ou null
-    const [markerPosition, setMarkerPosition] = useState<{ lat: number; lng: number }>(
-        (initialLat !== undefined && initialLng !== undefined) ? { lat: initialLat, lng: initialLng } : defaultCenter
-    );
+    // Michael : Logique de priorité : 
+    // 1. Coordonnées d'édition (si existantes)
+    // 2. Ancre de l'utilisateur (si définie)
+    // 3. Nanterre (dernier recours)
+    const getStartingCenter = () => {
+        if (initialLat !== undefined && initialLng !== undefined && initialLat !== 0) {
+            return { lat: initialLat, lng: initialLng };
+        }
+        return userDefaultCenter || fallbackCenter;
+    };
 
-    const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>(
-             (initialLat !== undefined && initialLng !== undefined) ? { lat: initialLat, lng: initialLng } : defaultCenter
-    );
+    const [markerPosition, setMarkerPosition] = useState<{ lat: number; lng: number }>(getStartingCenter());
+    const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>(getStartingCenter());
 
-    // Helper de formatage (4 décimales)
     const formatCoord = (val: number) => Number(val.toFixed(4));
 
-    /**
-     * Diagnostic 100% : Utilisation d'un type étendu pour éviter l'erreur de namespace 
-     * si @types/google.maps n'est pas encore détecté.
-     */
     const handleMarkerDragEnd = (e: any) => {
         if (e.latLng) {
             setMarkerPosition({ 
@@ -41,13 +48,11 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ initialLat, initialLng,
         }
     };
 
-    // Gestion du mouvement de la carte (Caméra)
     const handleCameraChange = useCallback((ev: MapCameraChangedEvent) => {
         setMapCenter(ev.detail.center);
         setMarkerPosition(ev.detail.center);
     }, []);
 
-    // Action : Téléporter le marqueur au centre de l'écran
     const handleMoveMarkerToCenter = () => {
         setMarkerPosition({
             lat: formatCoord(mapCenter.lat),
@@ -55,14 +60,10 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ initialLat, initialLng,
         });
     };
 
-    // Michael : Préparation du contenu pour la téléportation
     const pickerContent = (
-        /* Michael : Correction h-full -> h-[100dvh] et z-index poussé pour passer au-dessus de tout */
         <div className="fixed inset-0 z-[999] bg-stone-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in h-[100dvh] w-full overflow-hidden">
-            {/* Michael : h-[80dvh] pour un centrage parfait qui respecte les barres mobiles */}
             <div className="bg-white w-full max-w-lg h-[80dvh] rounded-[2rem] overflow-hidden flex flex-col shadow-2xl relative">
                 
-                {/* Header Flottant */}
                 <div className="absolute top-4 left-4 right-4 z-10 flex justify-between items-start pointer-events-none">
                     <div className="bg-white/90 backdrop-blur px-4 py-2 rounded-xl shadow-sm border border-stone-100 pointer-events-auto">
                         <h3 className="font-bold text-stone-800 flex items-center gap-2">
@@ -76,19 +77,18 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ initialLat, initialLng,
                     </button>
                 </div>
 
-                {/* CARTE GOOGLE MAPS */}
                 <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""}>
                     <div className="w-full h-full relative">
                         <Map
-                            defaultCenter={(initialLat !== undefined && initialLng !== undefined) ? { lat: initialLat, lng: initialLng } : defaultCenter}
+                            defaultCenter={getStartingCenter()}
                             defaultZoom={13}
-                            mapId="DEMO_MAP_ID" // Nécessaire pour AdvancedMarker
+                            mapId="DEMO_MAP_ID" 
                             disableDefaultUI={true}
                             zoomControl={true}
                             streetViewControl={false}
                             mapTypeControl={false}
                             gestureHandling={'greedy'}
-                            onCameraChanged={handleCameraChange} // Suivi de la caméra
+                            onCameraChanged={handleCameraChange} 
                         >
                             <AdvancedMarker
                                 position={markerPosition}
@@ -99,12 +99,10 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ initialLat, initialLng,
                             </AdvancedMarker>
                         </Map>
 
-                        {/* VISEUR CENTRAL (Visuel uniquement) */}
                         <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-30 text-stone-800">
                             <Crosshair size={24} strokeWidth={1} />
                         </div>
 
-                        {/* BOUTON D'ACTION FLOTTANT : RAMENER LE POINT */}
                         <div className="absolute bottom-28 right-4 flex flex-col gap-2 pointer-events-auto">
                             <button 
                                 onClick={handleMoveMarkerToCenter}
@@ -118,7 +116,6 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ initialLat, initialLng,
                     </div>
                 </APIProvider>
 
-                {/* Footer Validation */}
                 <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/20 to-transparent pointer-events-none flex justify-center">
                     <button 
                         onClick={() => onValidate(markerPosition)}
@@ -127,7 +124,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ initialLat, initialLng,
                         <Check size={20} />
                         VALIDER LA POSITION
                         <span className="text-[10px] font-normal opacity-70 bg-stone-700 px-2 py-0.5 rounded font-mono">
-                            {markerPosition.lat}, {markerPosition.lng}
+                            {markerPosition.lat.toFixed(4)}, {markerPosition.lng.toFixed(4)}
                         </span>
                     </button>
                 </div>
@@ -135,7 +132,6 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ initialLat, initialLng,
         </div>
     );
 
-    // Michael : Téléportation au corps du document pour ignorer les transforms du parent
     return createPortal(pickerContent, document.body);
 };
 

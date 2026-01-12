@@ -250,6 +250,7 @@ export interface UserProfile {
   notificationsEnabled?: boolean;              // Michael : État des alertes push
   fcmToken?: string;                           // Michael : Le jeton unique du téléphone
   lastTokenUpdate?: string;                    // Michael : Date de dernière mise à jour
+  homeAnchor?: { lat: number; lng: number };  // Michael : Point d'ancrage GPS personnel
 }
 
 export interface BioConditions {

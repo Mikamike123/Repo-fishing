@@ -26,10 +26,24 @@ export const createUserProfile = async (userId: string, pseudo: string): Promise
   };
   
   await setDoc(doc(db, "users", userId), newProfile);
-  return { id: userId, pseudo, createdAt: new Date() }; // Retour optimiste
+  return { id: userId, pseudo, createdAt: new Date() } as UserProfile; // Retour optimiste
 };
 
 export const updateUserPseudo = async (userId: string, pseudo: string): Promise<void> => {
   const docRef = doc(db, "users", userId);
   await updateDoc(docRef, { pseudo });
+};
+
+/**
+ * Michael : Nouvelle fonction pour ancrer Seb (ou n'importe qui) sur la carte du monde.
+ * Cette fonction met à jour le point d'ancrage par défaut de l'utilisateur.
+ */
+export const updateUserAnchor = async (userId: string, anchor: { lat: number; lng: number }): Promise<void> => {
+  try {
+    const docRef = doc(db, "users", userId);
+    await updateDoc(docRef, { homeAnchor: anchor });
+  } catch (error) {
+    console.error("Erreur mise à jour point d'ancrage:", error);
+    throw error;
+  }
 };

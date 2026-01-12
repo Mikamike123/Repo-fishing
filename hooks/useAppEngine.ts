@@ -15,7 +15,7 @@ import {
 // Michael : Import de onMessage pour l'écoute au premier plan
 import { onMessage } from 'firebase/messaging';
 import { db, sessionsCollection, auth, googleProvider, clearChatHistory, messaging } from '../lib/firebase'; 
-import { getUserProfile, createUserProfile } from '../lib/user-service'; 
+import { getUserProfile, createUserProfile, updateUserAnchor } from '../lib/user-service'; 
 import { useArsenal } from '../lib/useArsenal'; 
 import { getOrFetchOracleData, cleanupOracleCache } from '../lib/oracle-service'; 
 import { Session, UserProfile, WeatherSnapshot, OracleDataPoint } from '../types';
@@ -140,7 +140,7 @@ export const useAppEngine = () => {
             let hasUpdates = false;
             for (const id of missingIds) {
                 try {
-                    const profile = await getUserProfile(id); // [cite: 36]
+                    const profile = await getUserProfile(id); //
                     if (profile) { fetchedEntries[id] = profile; hasUpdates = true; }
                 } catch (e) { console.error(`Erreur registre ID ${id}:`, e); }
             }
@@ -205,7 +205,7 @@ export const useAppEngine = () => {
     // --- LOGIQUE DE RESET (Michael : Version Multi-User Ready) ---
     const handleResetCollection = async (collectionName: string, defaultItems: any[], currentItems: any[]) => {
         try {
-            const deletePromises = currentItems.map(item => deleteDoc(doc(db, collectionName, item.id))); // [cite: 520, 805]
+            const deletePromises = currentItems.map(item => deleteDoc(doc(db, collectionName, item.id))); //
             await Promise.all(deletePromises);
             
             for (const item of defaultItems) {
@@ -340,6 +340,17 @@ export const useAppEngine = () => {
         } catch (e) { console.error("Erreur création profil Michael :", e); }
     };
 
+    /**
+     * Michael : Nouvelle fonction pour ancrer Seb sur la carte du monde.
+     */
+    const handleUpdateUserAnchor = async (anchor: { lat: number; lng: number }) => {
+        if (!user) return;
+        try {
+            await updateUserAnchor(user.uid, anchor);
+            triggerHaptic([30, 30]);
+        } catch (e) { console.error("Erreur mise à jour ancre Michael :", e); }
+    };
+
     // --- SESSIONS SNAPSHOT ---
     useEffect(() => {
         if (!user || !isWhitelisted) return;
@@ -411,7 +422,7 @@ export const useAppEngine = () => {
         handleSaveSession, handleEditRequest: (s: Session) => { setEditingSession(s); setCurrentView('session'); },
         handleDeleteSession: async (id: string) => { await deleteDoc(doc(db, 'sessions', id)); },
         handleMagicDiscovery: (d: any) => { triggerHaptic([50, 20, 50]); setMagicDraft(d); setCurrentView('session'); },
-        handleAddItem, handleDeleteItem, handleEditItem, handleMoveItem, handleToggleLocationFavorite,
+        handleAddItem, handleDeleteItem, handleEditItem, handleMoveItem, handleUpdateUserAnchor, handleToggleLocationFavorite,
         targetLocationId, setTargetLocationId, lastCatchDefaults, currentLiveSnapshot, handleConsumeLevelUp, 
         navigateFromMenu, handleResetCollection,
         handleMarkSessionAsRead, handleHideSessionFromFeed,

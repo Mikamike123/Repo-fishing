@@ -1,4 +1,4 @@
-// components/layout/ViewRouter.tsx - Version 10.8.1 (Fixed Modal Positioning)
+// components/layout/ViewRouter.tsx - Version 10.9.0 (Anchor Support Integrated)
 import React, { useEffect } from 'react';
 import Dashboard from '../Dashboard';
 import HistoryView from '../HistoryView';
@@ -89,7 +89,7 @@ export const ViewRouter = ({ engine }: { engine: any }) => {
     const { 
         currentView, currentUserId, targetLocationId, setTargetLocationId, arsenalData, 
         handleAddItem, handleEditItem, handleDeleteItem, handleToggleLocationFavorite, 
-        handleMoveItem, setCurrentView, userProfile, activeDashboardTab, setActiveDashboardTab, 
+        handleMoveItem, handleUpdateUserAnchor, setCurrentView, userProfile, activeDashboardTab, setActiveDashboardTab, 
         sessions, oraclePoints, isOracleLoading, activeLocation, activeLocationId, 
         setActiveLocationId, handleMagicDiscovery, displayedWeather, lastSyncTimestamp, 
         isActuallyNight, handleDeleteSession, handleEditRequest, handleSaveSession, 
@@ -121,8 +121,7 @@ export const ViewRouter = ({ engine }: { engine: any }) => {
 
     switch (currentView) {
         case 'locations':
-            return withTransition(<LocationsManager userId={currentUserId} initialOpenLocationId={targetLocationId} locations={arsenalData.locations} spots={arsenalData.spots} isActuallyNight={isActuallyNight} onAddLocation={(label: string, coords: any) => handleAddItem('locations', label, coords ? { coordinates: coords } : undefined)} onEditLocation={(id: string, label: string, extra?: any) => handleEditItem('locations', id, label, extra)} onDeleteLocation={(id: string) => handleDeleteItem('locations', id)} onToggleFavorite={handleToggleLocationFavorite} onMoveLocation={(id: string, dir: 'up' | 'down') => handleMoveItem('locations', id, dir)} onAddSpot={(label: string, locId: string) => handleAddItem('zones', label, { locationId: locId })} onDeleteSpot={(id: string) => handleDeleteItem('zones', id)} onEditSpot={(id: string, label: string) => handleEditItem('zones', id, label)} onBack={() => { setTargetLocationId(null); setCurrentView('dashboard'); }} />);
-        
+            return withTransition(<LocationsManager locations={arsenalData.locations} spots={arsenalData.spots} userId={currentUserId} userProfile={userProfile} onUpdateUserAnchor={handleUpdateUserAnchor} onAddLocation={handleAddItem('locations')} onEditLocation={handleEditItem('locations')} onDeleteLocation={handleDeleteItem('locations')} onToggleFavorite={handleToggleLocationFavorite} onMoveLocation={handleMoveItem('locations')} onAddSpot={(label, locId) => handleAddItem('spots')(label, { locationId: locId })} onDeleteSpot={handleDeleteItem('spots')} onEditSpot={handleEditItem('spots')} onBack={() => setCurrentView('dashboard')} initialOpenLocationId={targetLocationId} isActuallyNight={isActuallyNight} />);
         case 'dashboard':
             return withTransition(<Dashboard userProfile={userProfile} usersRegistry={usersRegistry} activeTab={activeDashboardTab} onTabChange={setActiveDashboardTab} userName={userProfile?.pseudo || 'Pêcheur'} currentUserId={currentUserId} sessions={sessions} oracleData={oraclePoints} isOracleLoading={isOracleLoading} activeLocationLabel={activeLocation?.label || "Sélectionner"} activeLocationId={activeLocationId} availableLocations={arsenalData.locations.filter((l: any) => l.active && l.isFavorite)} onLocationClick={() => { if (activeLocationId) setTargetLocationId(activeLocationId); setCurrentView('locations'); }} onLocationSelect={setActiveLocationId} setActiveLocationId={setActiveLocationId} onEditSession={handleEditRequest} onDeleteSession={handleDeleteSession} onMagicDiscovery={handleMagicDiscovery} lureTypes={arsenalData.lureTypes} colors={arsenalData.colors} locations={arsenalData.locations} arsenalData={arsenalData} displayedWeather={displayedWeather} lastSyncTimestamp={lastSyncTimestamp} isActuallyNight={isActuallyNight} />);
 
