@@ -1,4 +1,4 @@
-// components/CoachView.tsx - Version 4.8.25 (Species Filtering & Strategic Context)
+// components/CoachView.tsx - Version 4.8.26 (User Identity Fix)
 import React, { useState, useEffect, useRef } from 'react';
 import { Bot, Send, Loader, CornerDownLeft } from 'lucide-react';
 // Michael : Import des nouvelles fonctions dynamiques
@@ -98,30 +98,36 @@ const CoachView: React.FC<CoachViewProps> = ({
         setIsCoachTyping(true);
 
         try {
-            // 1. Filtrage des données Michael
+            // 1. Filtrage des données de l'utilisateur actuel
             const userSessions = sessions.filter(s => s.userId === currentUserId);
             const narrative = generateFishingNarrative(userSessions, arsenalData);
-            const insights = calculateDeepKPIs(sessions, currentUserId, arsenalData);
+            const insights = calculateDeepKPIs(userSessions, currentUserId, arsenalData);
             
             // 2. Michael : Identification des espèces autorisées pour ce secteur spécifique
             const currentLocation = arsenalData.locations.find(l => l.label === liveSnapshot?.locationName);
-            const allowedSpecies = currentLocation?.speciesIds || []; // Liste ex: ["Sandre", "Perche", "Brochet"]
+            const allowedSpecies = currentLocation?.speciesIds || []; 
 
             const env = liveSnapshot?.env;
             const scores = liveSnapshot?.scores || {};
 
             // 3. Michael : Construction dynamique de la chaîne des scores filtrés
-            // On ne montre à l'IA que les scores des espèces affichées sur le Live
             const filteredScoresText = allowedSpecies
                 .map(sp => {
-                    const key = sp.toLowerCase().replace('-', ''); // Normalisation des clés
+                    const key = sp.toLowerCase().replace('-', ''); 
                     const score = scores[key];
                     return score !== undefined ? `${sp}: ${score.toFixed(0)}` : null;
                 })
                 .filter(Boolean)
                 .join(', ');
 
+            /**
+             * Michael : Injection du contexte Live et de l'identité du pêcheur.
+             * On ajoute explicitement l'identité pour écraser tout biais "Michael".
+             */
             const liveText = `
+                --- IDENTITÉ DU PÊCHEUR ---
+                NOM DE L'UTILISATEUR: ${userPseudo}
+                
                 --- SITUATION LIVE (PRÉSENT) ---
                 LIEU: ${liveSnapshot?.locationName || 'Inconnu'}
                 
@@ -136,8 +142,9 @@ const CoachView: React.FC<CoachViewProps> = ({
                 --- CONSIGNES DE STYLE ET STRATÉGIE ---
                 1. FORMAT DES DATES : Interdiction d'utiliser YYYY-MM-DD. Utilise "le 12 novembre 2025".
                 2. FILTRE ESPÈCES : Tu n'as le droit de parler QUE des espèces suivantes : ${allowedSpecies.join(', ')}. 
-                3. INTERDICTION : Ne mentionne jamais le Black-Bass ou toute autre espèce absente de cette liste pour ce secteur, même en été.
+                3. INTERDICTION : Ne mentionne jamais le Black-Bass ou toute autre espèce absente de cette liste pour ce secteur.
                 4. TON : Direct et tactique.
+                5. IDENTITÉ : Tu t'adresses à ${userPseudo}. Ne l'appelle JAMAIS "Michael".
             `;
 
             const locationCoords = liveSnapshot?.coordinates || { lat: 48.8566, lng: 2.3522 }; 
@@ -181,6 +188,17 @@ const CoachView: React.FC<CoachViewProps> = ({
                         </div>
                     </div>
                 ))}
+                {isCoachTyping && (
+                    <div className="flex justify-start">
+                        <div className={`px-5 py-3 rounded-2xl rounded-tl-none border animate-pulse ${coachBubble}`}>
+                            <div className="flex gap-1">
+                                <div className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce" />
+                                <div className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce [animation-delay:0.2s]" />
+                                <div className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce [animation-delay:0.4s]" />
+                            </div>
+                        </div>
+                    </div>
+                )}
                 <div ref={messagesEndRef} />
             </div>
 

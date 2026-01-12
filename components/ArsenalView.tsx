@@ -1,4 +1,4 @@
-// components/ArsenalView.tsx - Version 3.6.0 (Tactile Arsenal Upgrade)
+// components/ArsenalView.tsx - Version 3.6.1 (Reset Logic Fix)
 import React, { useState, useMemo } from 'react';
 import { 
     Anchor, Crosshair, Plus, Edit2, Check, Palette, Ruler, Scale, 
@@ -9,18 +9,18 @@ import { Setup, Technique, RefLureType, RefColor, RefSize, RefWeight } from '../
 import ARSENAL_DEFAULTS from '../constants/referentials_for_ai.json';
 
 interface ArsenalViewProps {
-    setups: Setup[]; onAddSetup: (l: string) => void; onDeleteSetup: (id: string) => void; onEditSetup: (id: string, l: string) => void; onMoveSetup: (id: string, d: 'up' | 'down') => void; onResetSetups: (items: any[]) => void;
-    techniques: Technique[]; onAddTechnique: (l: string) => void; onDeleteTechnique: (id: string) => void; onEditTechnique: (id: string, l: string) => void; onMoveTechnique: (id: string, d: 'up' | 'down') => void; onResetTechniques: (items: any[]) => void;
-    lureTypes: RefLureType[]; onAddLureType: (l: string) => void; onDeleteLureType: (id: string) => void; onEditLureType: (id: string, l: string) => void; onMoveLureType: (id: string, d: 'up' | 'down') => void; onResetLureTypes: (items: any[]) => void;
-    colors: RefColor[]; onAddColor: (l: string) => void; onDeleteColor: (id: string) => void; onEditColor: (id: string, l: string) => void; onMoveColor: (id: string, d: 'up' | 'down') => void; onResetColors: (items: any[]) => void;
-    sizes: RefSize[]; onAddSize: (l: string) => void; onDeleteSize: (id: string) => void; onEditSize: (id: string, l: string) => void; onMoveSize: (id: string, d: 'up' | 'down') => void; onResetSizes: (items: any[]) => void;
-    weights: RefWeight[]; onAddWeight: (l: string) => void; onDeleteWeight: (id: string) => void; onEditWeight: (id: string, l: string) => void; onMoveWeight: (id: string, d: 'up' | 'down') => void; onResetWeights: (items: any[]) => void;
+    setups: Setup[]; onAddSetup: (l: string) => void; onDeleteSetup: (id: string) => void; onEditSetup: (id: string, l: string) => void; onMoveSetup: (id: string, d: 'up' | 'down') => void; onResetSetups: (defaults: any[], current: any[]) => void;
+    techniques: Technique[]; onAddTechnique: (l: string) => void; onDeleteTechnique: (id: string) => void; onEditTechnique: (id: string, l: string) => void; onMoveTechnique: (id: string, d: 'up' | 'down') => void; onResetTechniques: (defaults: any[], current: any[]) => void;
+    lureTypes: RefLureType[]; onAddLureType: (l: string) => void; onDeleteLureType: (id: string) => void; onEditLureType: (id: string, l: string) => void; onMoveLureType: (id: string, d: 'up' | 'down') => void; onResetLureTypes: (defaults: any[], current: any[]) => void;
+    colors: RefColor[]; onAddColor: (l: string) => void; onDeleteColor: (id: string) => void; onEditColor: (id: string, l: string) => void; onMoveColor: (id: string, d: 'up' | 'down') => void; onResetColors: (defaults: any[], current: any[]) => void;
+    sizes: RefSize[]; onAddSize: (l: string) => void; onDeleteSize: (id: string) => void; onEditSize: (id: string, l: string) => void; onMoveSize: (id: string, d: 'up' | 'down') => void; onResetSizes: (defaults: any[], current: any[]) => void;
+    weights: RefWeight[]; onAddWeight: (l: string) => void; onDeleteWeight: (id: string) => void; onEditWeight: (id: string, l: string) => void; onMoveWeight: (id: string, d: 'up' | 'down') => void; onResetWeights: (defaults: any[], current: any[]) => void;
     currentUserId: string; 
 }
 
 const ConfigSection: React.FC<{
     title: string; icon: React.ReactNode; items: any[]; onAdd: (l: string) => void; onDelete: (id: string) => void; onEdit: (id: string, l: string) => void; onMove: (id: string, d: 'up' | 'down') => void;
-    onReset: (items: any[]) => void; defaultItems: any[]; placeholder: string; colorClass: string; isReadOnly: boolean;
+    onReset: (defaults: any[], current: any[]) => void; defaultItems: any[]; placeholder: string; colorClass: string; isReadOnly: boolean;
 }> = ({ title, icon, items, onAdd, onDelete, onEdit, onMove, onReset, defaultItems, placeholder, colorClass, isReadOnly }) => {
     const [newItemLabel, setNewItemLabel] = useState('');
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -30,14 +30,6 @@ const ConfigSection: React.FC<{
     const sortedItems = useMemo(() => {
         return [...items].sort((a, b) => (a.displayOrder ?? 999) - (b.displayOrder ?? 999) || (a.label || '').localeCompare(b.label || ''));
     }, [items]);
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (newItemLabel.trim()) {
-            onAdd(newItemLabel.trim());
-            setNewItemLabel('');
-        }
-    };
 
     return (
         <div className="bg-white rounded-[2.5rem] p-6 lg:p-8 shadow-sm border border-stone-100 relative overflow-hidden h-full flex flex-col transition-all duration-300 oracle-card-press">
@@ -96,7 +88,7 @@ const ConfigSection: React.FC<{
                 </form>
             )}
 
-            {/* Michael : Pop-in de confirmation de reset */}
+            {/* Michael : Pop-in de confirmation de reset corrigée */}
             {isConfirmOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm animate-in fade-in duration-300">
                     <div className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl border border-stone-100 animate-in zoom-in-95 duration-300 oracle-card-press">
@@ -116,7 +108,11 @@ const ConfigSection: React.FC<{
                                 Annuler
                             </button>
                             <button 
-                                onClick={() => { onReset(defaultItems); setIsConfirmOpen(false); }} 
+                                onClick={() => { 
+                                    // Michael : On passe bien les DEUX arguments : defaults et current items
+                                    onReset(defaultItems, items); 
+                                    setIsConfirmOpen(false); 
+                                }} 
                                 className="py-3.5 px-4 bg-amber-500 text-white font-black rounded-2xl hover:bg-amber-600 shadow-lg shadow-amber-200 transition-all oracle-btn-press"
                             >
                                 Remplacer

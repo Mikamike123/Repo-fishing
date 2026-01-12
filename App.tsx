@@ -4,6 +4,8 @@ import { User, Mail, Lock, Chrome } from 'lucide-react';
 import { useAppEngine } from './hooks/useAppEngine';
 import { AppLayout } from './components/layout/AppLayout';
 import { ViewRouter } from './components/layout/ViewRouter';
+// Michael : Import du composant de synchronisation de version
+import ReloadPrompt from './components/ReloadPrompt';
 
 const App: React.FC = () => {
     const engine = useAppEngine();
@@ -16,7 +18,6 @@ const App: React.FC = () => {
         e.preventDefault();
         setError(null);
         try {
-            // Michael : On suppose que handleEmailLogin sera ajouté à ton hook useAppEngine
             await engine.handleEmailLogin(email, password);
         } catch (err: any) {
             setError("Erreur d'authentification. Vérifie tes accès.");
@@ -34,7 +35,7 @@ const App: React.FC = () => {
     if (!engine.user) {
         return (
             <div className="flex h-screen flex-col items-center justify-center bg-[#FDFBF7] p-6 text-center animate-in fade-in duration-500">
-                <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl border border-stone-100 max-w-sm w-full">
+                <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl border border-stone-100 max-w-sm w-full relative">
                     <div className="w-24 h-24 bg-stone-800 rounded-3xl flex items-center justify-center mx-auto mb-8 rotate-3 shadow-xl overflow-hidden p-4">
                         <img src="/logo192.png" alt="Oracle Fish" className="w-full h-full object-contain" />
                     </div>
@@ -100,16 +101,23 @@ const App: React.FC = () => {
                         </form>
                     )}
                     
-                    <p className="mt-8 text-[11px] text-stone-300 uppercase font-black tracking-widest">Version Elite 5.0.0</p>
+                    <p className="mt-8 text-[11px] text-stone-300 uppercase font-black tracking-widest">Version Elite 8.8.0</p>
                 </div>
+                {/* Michael : On l'affiche aussi sur l'écran de login pour être sûr */}
+                <ReloadPrompt isActuallyNight={engine.isActuallyNight} />
             </div>
         );
     }
 
     return ( 
-        <AppLayout engine={engine}>
-            <ViewRouter engine={engine} />
-        </AppLayout>
+        <>
+            <AppLayout engine={engine}>
+                <ViewRouter engine={engine} />
+            </AppLayout>
+            
+            {/* Michael : L'emplacement final idéal, par-dessus tout le reste */}
+            <ReloadPrompt isActuallyNight={engine.isActuallyNight} />
+        </>
     );
 };
 

@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => {
             react(),
             VitePWA({
                 registerType: 'autoUpdate',
-                includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'logo192.png'],
+                includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'logo192.png', 'firebase-messaging-sw.js'],
                 manifest: {
                     name: 'OracleFish',
                     short_name: 'Oracle',

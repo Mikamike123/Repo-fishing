@@ -1,17 +1,19 @@
-// components/ProfileView.tsx - Version 10.7.0 (Data Dashboard Only)
+// components/ProfileView.tsx - Version 10.8.0 (Push Notifications Ready)
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
     User, Calendar, Fish, 
     AlertOctagon, Anchor, Target,
-    Waves, ChevronDown
+    Waves, ChevronDown, Bell, BellOff, ShieldCheck
 } from 'lucide-react';
 import { Session, UserProfile, AppData } from '../types';
 import { buildUserHistory } from '../lib/gamification';
+import { db, messaging, getToken } from '../lib/firebase'; // Michael : On importe les outils de messagerie
+import { doc, updateDoc } from 'firebase/firestore';
 
 // IMPORTS MODULAIRES
 import { RecordsGrid } from './RecordsGrid';
 import StrategicIntelligence from './StrategicIntelligence';
-import { ProfileEditor } from './ProfileEditor'; // Michael : On importe le nouveau gardien
+import { ProfileEditor } from './ProfileEditor';
 
 interface ProfileViewProps {
   userProfile: UserProfile | null;
@@ -32,6 +34,47 @@ const ProfileView: React.FC<ProfileViewProps> = ({
   const [newPseudo, setNewPseudo] = useState('');
   const [expandedYear, setExpandedYear] = useState<number | null>(new Date().getFullYear());
   const [showStrategic, setShowStrategic] = useState(true); 
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifError, setNotifError] = useState<string | null>(null);
+
+  // --- LOGIQUE PUSH NOTIFICATIONS (Michael : Le nouveau moteur d'alerte) ---
+  const handleEnableNotifications = async () => {
+    if (!messaging || !userProfile) return;
+    
+    setNotifLoading(true);
+    setNotifError(null);
+
+    try {
+        // 1. Demande de permission au navigateur (Android & iOS)
+        const permission = await Notification.requestPermission();
+        
+        if (permission === 'granted') {
+            // 2. Récupération du Token unique du téléphone
+            // Michael : REMPLACE 'TON_VAPID_KEY_ICI' par ta clé générée en console Firebase
+            const token = await getToken(messaging, { 
+                vapidKey: 'BJYwmMKojZdVWfnS64OCqOMzbmGRlZxnO_gwKgxuWp1Ip9vls42Ie_c9E_Gk-Qqkcvlpgc9KKUef6MC-RC23ms0' 
+            });
+
+            if (token) {
+                // 3. Sauvegarde du token dans le profil utilisateur Firestore
+                const userRef = doc(db, 'users', userProfile.id);
+                await updateDoc(userRef, {
+                    fcmToken: token,
+                    notificationsEnabled: true,
+                    lastTokenUpdate: new Date().toISOString()
+                });
+                console.log("🚀 Token Oracle enregistré avec succès !");
+            }
+        } else {
+            setNotifError("Permission refusée. Vérifie les réglages de ton téléphone.");
+        }
+    } catch (err) {
+        console.error("🔥 Erreur Push Michael :", err);
+        setNotifError("Impossible d'activer les alertes.");
+    } finally {
+        setNotifLoading(false);
+    }
+  };
 
   // --- SONDE DE DIAGNOSTIC ---
   useEffect(() => {
@@ -40,7 +83,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
     }
   }, [userProfile]);
 
-  // --- LOGIQUE ONBOARDING (Michael : On garde ça ici car c'est un état global de la vue) ---
+  // --- LOGIQUE ONBOARDING ---
   if (isNewUser || !userProfile) {
       return (
           <div className={`fixed inset-0 z-[100] flex flex-col items-center justify-center px-10 overflow-y-auto animate-in fade-in duration-700 ${isActuallyNight ? 'bg-[#1c1917]' : 'bg-[#FAFAF9]'}`}>
@@ -102,7 +145,6 @@ const ProfileView: React.FC<ProfileViewProps> = ({
 
   return (
     <div className="pb-24 animate-in fade-in duration-300 space-y-8 px-4">
-      {/* Michael : La zone d'édition est désormais déportée */}
       <ProfileEditor 
         userProfile={userProfile}
         onUpdateProfile={onUpdateProfile}
@@ -110,6 +152,46 @@ const ProfileView: React.FC<ProfileViewProps> = ({
         themeMode={themeMode}
         isActuallyNight={isActuallyNight}
       />
+
+      {/* Michael : Nouvelle Carte de Contrôle des Notifications */}
+      <div className={`rounded-[2.5rem] p-8 border-2 ${isActuallyNight ? 'bg-stone-900/40 border-stone-800' : 'bg-white border-stone-100 shadow-lg'}`}>
+        <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+                <div className={`p-3 rounded-2xl ${userProfile.notificationsEnabled ? 'bg-emerald-500/10 text-emerald-500' : 'bg-stone-100 text-stone-400'}`}>
+                    {userProfile.notificationsEnabled ? <Bell size={24} /> : <BellOff size={24} />}
+                </div>
+                <div>
+                    <h3 className={`font-black uppercase tracking-tight ${isActuallyNight ? 'text-white' : 'text-stone-800'}`}>
+                        Alertes Oracle
+                    </h3>
+                    <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                        {userProfile.notificationsEnabled ? 'Notifications Actives' : 'Notifications Désactivées'}
+                    </p>
+                </div>
+            </div>
+            
+            <button 
+                onClick={handleEnableNotifications}
+                disabled={notifLoading}
+                className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 ${
+                    userProfile.notificationsEnabled 
+                    ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' 
+                    : 'bg-stone-800 text-white'
+                }`}
+            >
+                {notifLoading ? 'Calcul...' : (userProfile.notificationsEnabled ? 'Actualiser' : 'Activer')}
+            </button>
+        </div>
+        {notifError && <p className="mt-4 text-[9px] font-black text-rose-500 uppercase tracking-widest text-center">{notifError}</p>}
+        {!userProfile.notificationsEnabled && (
+            <div className="mt-4 p-4 bg-amber-500/5 rounded-2xl border border-amber-500/10">
+                <p className={`text-[10px] font-medium leading-relaxed ${isActuallyNight ? 'text-stone-400' : 'text-stone-600'}`}>
+                    <ShieldCheck size={12} className="inline mr-1 text-amber-500" />
+                    Michael, pour Android et iPhone, l'app doit être sur l'écran d'accueil pour recevoir les alertes de l'Oracle.
+                </p>
+            </div>
+        )}
+      </div>
 
       {/* HALL OF FAME */}
       <div className={`rounded-[3rem] p-10 border-2 relative overflow-hidden ${isActuallyNight ? 'bg-[#1c1917] border-amber-900/30' : 'bg-[#FFFDF9] border-amber-100 shadow-xl'}`}>

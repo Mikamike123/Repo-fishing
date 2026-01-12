@@ -3,7 +3,6 @@ import React, { useRef, useState } from 'react';
 import { Wand2, Loader2 } from 'lucide-react';
 import { extractSessionDraft } from '../lib/discovery-service';
 import { httpsCallable } from 'firebase/functions';
-// Michael : On retire USER_ID de l'import car il est désormais dynamique
 import { functions, storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -12,7 +11,7 @@ interface MagicScanButtonProps {
     userPseudo: string;
     lureTypes: any[]; 
     colors: any[];    
-    userId: string; // Michael : Ajout indispensable pour le multi-user
+    userId: string; 
 }
 
 const MagicScanButton: React.FC<MagicScanButtonProps> = ({ 
@@ -20,12 +19,11 @@ const MagicScanButton: React.FC<MagicScanButtonProps> = ({
     userPseudo, 
     lureTypes, 
     colors,
-    userId // Michael : Récupération du userId passé par le parent
+    userId 
 }) => {
     const [isLoading, setIsLoading] = useState(false);
     const fileRef = useRef<HTMLInputElement>(null);
 
-    // Michael : Nouvelle fonction de compression optimisée à 1600px / 0.7
     const compressImage = (file: File): Promise<{ base64: string, blob: Blob }> => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -35,7 +33,7 @@ const MagicScanButton: React.FC<MagicScanButtonProps> = ({
                 img.src = event.target?.result as string;
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 1600; // Michael : résolution cible demandée
+                    const MAX_WIDTH = 1600; 
                     let width = img.width;
                     let height = img.height;
 
@@ -56,14 +54,14 @@ const MagicScanButton: React.FC<MagicScanButtonProps> = ({
                     const ctx = canvas.getContext('2d');
                     ctx?.drawImage(img, 0, 0, width, height);
 
-                    const base64 = canvas.toDataURL('image/webp', 0.7).split(',')[1];
+                    // Michael : On repasse en image/jpeg pour matcher le backend
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                    const base64 = dataUrl.split(',')[1];
+                    
                     canvas.toBlob((blob) => {
-                        if (blob) {
-                            resolve({ base64, blob });
-                        } else {
-                            reject(new Error("Erreur lors de la création du Blob de compression"));
-                        }
-                    }, 'image/webp', 0.7);
+                        if (blob) resolve({ base64, blob });
+                        else reject(new Error("Erreur Blob"));
+                    }, 'image/jpeg', 0.8);
                 };
             };
             reader.onerror = (error) => reject(error);
@@ -76,27 +74,22 @@ const MagicScanButton: React.FC<MagicScanButtonProps> = ({
 
         setIsLoading(true);
         try {
-            // 1. Extraction Temporelle (EXIF) - On garde le fichier original ici pour les tags
             const draft: any = await extractSessionDraft(file);
-
-            // 2. Compression Michael-Proof (Résolution 1600px / Qualité 0.7)
             const { base64, blob } = await compressImage(file);
 
-            // 3. Construction de l'objet referentials pour l'IA Oracle Vision
             const referentials = {
                 lureTypes: lureTypes.map(l => ({ id: l.id, label: l.label })),
                 colors: colors.map(c => ({ id: c.id, label: c.label }))
             };
 
-            // 4. Appel Cloud Function avec l'image compressée
+            // Appel Cloud Function
             const analyzePromise = httpsCallable(functions, 'analyzeCatchImage')({ 
                 image: base64, 
                 userPseudo, 
                 referentials 
             });
 
-            // 5. Upload Storage du fichier compressé (Blob) pour économiser de la bande passante
-            // Michael : Le dossier de stockage est désormais lié à l'UID réel de l'utilisateur connecté
+            // Upload Storage lié à l'utilisateur réel
             const storageRef = ref(storage, `catches/${userId}/magic_${Date.now()}_${file.name.replace(/\s/g, '_')}`);
             const uploadPromise = uploadBytes(storageRef, blob);
 
@@ -104,7 +97,6 @@ const MagicScanButton: React.FC<MagicScanButtonProps> = ({
             const downloadUrl = await getDownloadURL(uploadResult.ref);
             const aiData: any = aiResult.data;
 
-            // 6. On complète le brouillon avec la prise analysée
             draft.initialCatch = {
                 id: `magic_${Date.now()}`,
                 species: aiData.species || 'Inconnu',
@@ -112,13 +104,13 @@ const MagicScanButton: React.FC<MagicScanButtonProps> = ({
                 lureTypeId: aiData.lureTypeId || '',
                 lureColorId: aiData.lureColorId || '',
                 photoUrls: [downloadUrl],
-                time: draft.startTime, // Par défaut au début de session
+                time: draft.startTime,
                 lureName: 'Identifié par Oracle Vision'
             };
 
             onDiscoveryComplete(draft);
         } catch (err) {
-            console.error("Échec du Magic Scan Michael :", err);
+            console.error("Échec du Magic Scan :", err);
             alert("L'Oracle a eu un problème technique. Vérifie ta connexion.");
         } finally {
             setIsLoading(false);
@@ -132,8 +124,7 @@ const MagicScanButton: React.FC<MagicScanButtonProps> = ({
             <button 
                 type="button"
                 onClick={() => !isLoading && fileRef.current?.click()}
-                className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-lg shadow-orange-200 flex items-center justify-center active:scale-95 transition-all"
-                title="Scanner une photo"
+                className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-lg flex items-center justify-center active:scale-95 transition-all"
             >
                 {isLoading ? <Loader2 className="animate-spin" size={24} /> : <Wand2 size={24} />}
             </button>

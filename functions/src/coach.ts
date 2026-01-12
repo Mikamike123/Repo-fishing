@@ -8,7 +8,7 @@ import { z } from "zod"; // Michael : Import Zod pour la sécurisation MEP
 // Michael : Accès sécurisé à la clé via Google Secret Manager
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 
-const MODEL_NAME = "gemini-2.5-flash"; 
+const MODEL_NAME = "gemini-2.0-flash"; 
 const CONTEXT_READ_LIMIT = 15;
 
 // --- SCHÉMA DE VALIDATION Michael ---
@@ -64,7 +64,7 @@ export const askFishingCoach = onCall({
 }, async (request: CallableRequest) => {
     // 1. Vérification de l'Auth
     if (!request.auth) {
-        throw new HttpsError("unauthenticated", "Michael, l'Oracle ne parle pas aux inconnus.");
+        throw new HttpsError("unauthenticated", "L'Oracle ne parle pas aux inconnus.");
     }
 
     // 2. VALIDATION Michael : Sécurisation du payload d'entrée
@@ -96,7 +96,7 @@ export const askFishingCoach = onCall({
         const techKeywords = ["météo", "eau", "condition", "température", "vent", "courant", "pression", "ntu", "oxygène", "stats", "kpi"];
         const wantsTechInfo = techKeywords.some(key => userMessage.toLowerCase().includes(key));
 
-        // --- Construction des Instructions Système (Strictement identique à ton existant) ---
+        // --- Construction des Instructions Système ---
         let structureInstruction = "";
         if (isFirstInteraction) {
             structureInstruction = `
@@ -105,7 +105,7 @@ export const askFishingCoach = onCall({
                 2. LE COIN PÉDAGO : Bloc final avec les data brutes (Eau, O2, NTU, Flow %, Vagues cm, BioScore).`;
         } else if (wantsTechInfo) {
             structureInstruction = `
-                MODE TECHNIQUE : Réponds sur l'environnement ou les statistiques de Michael.
+                MODE TECHNIQUE : Réponds sur l'environnement ou les statistiques de ${userName}.
                 - Utilise le "PROFIL DE PERFORMANCE" pour prouver tes dires.
                 - Reste concis (90 mots max).
                 - LE COIN PÉDAGO : Ajoute le bloc des data brutes du moment.`;
@@ -114,7 +114,7 @@ export const askFishingCoach = onCall({
                 MODE TACTIQUE FLUIDE : 
                 - Réponse courte (60 mots max).
                 - Pas de chiffres bruts. Pas de section pédagogique.
-                - Cite une archive de Michael uniquement si elle valide ton conseil.`;
+                - Cite une archive de ${userName} uniquement si elle valide ton conseil.`;
         }
 
         const systemInstruction = `

@@ -1,4 +1,4 @@
-// hooks/useAppEngine.ts - Version 12.1.0 (Hybrid Auth & Apple Ready)
+// hooks/useAppEngine.ts - Version 12.2.0 (Foreground Notifications Enabled)
 import { useState, useEffect, useMemo } from 'react';
 import { 
     onSnapshot, query, orderBy, 
@@ -12,7 +12,9 @@ import {
     createUserWithEmailAndPassword, 
     User as FirebaseUser 
 } from 'firebase/auth';
-import { db, sessionsCollection, auth, googleProvider, clearChatHistory } from '../lib/firebase'; 
+// Michael : Import de onMessage pour l'écoute au premier plan
+import { onMessage } from 'firebase/messaging';
+import { db, sessionsCollection, auth, googleProvider, clearChatHistory, messaging } from '../lib/firebase'; 
 import { getUserProfile, createUserProfile } from '../lib/user-service'; 
 import { useArsenal } from '../lib/useArsenal'; 
 import { getOrFetchOracleData, cleanupOracleCache } from '../lib/oracle-service'; 
@@ -58,10 +60,27 @@ export const useAppEngine = () => {
         if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(pattern);
     };
 
+    // --- Michael : Écouteur de Notifications au Premier Plan (Foreground) ---
+    useEffect(() => {
+        if (!messaging) return;
+
+        const unsubscribe = onMessage(messaging, (payload) => {
+            console.log("🚨 [Oracle Push] Message reçu alors que l'app est OUVERTE :", payload);
+            
+            // Michael : Optionnel - On peut déclencher une vibration ou une petite alerte custom
+            triggerHaptic([100, 50, 100]);
+            
+            // Si tu as une librairie de toast, c'est ici qu'il faut l'appeler.
+            // Sinon, l'arrivée de la session dans le flux Firestore mettra l'UI à jour.
+        });
+
+        return () => unsubscribe();
+    }, [messaging]);
+
     // --- LOGIQUE DE NOTIFICATION STATELESS ---
     const unreadFeedCount = useMemo(() => {
         if (!sessions.length || currentUserId === "guest") return 0;
-        const recentSessions = sessions.slice(0, 20);
+        const recentSessions = sessions.slice(0, 20); // [cite: 416, 819]
         return recentSessions.filter(s => {
             const isRead = s.readBy?.includes(currentUserId);
             const isHidden = s.hiddenBy?.includes(currentUserId);
@@ -90,13 +109,11 @@ export const useAppEngine = () => {
         } catch (e) { console.error("Erreur purge session Firestore:", e); }
     };
 
-    // --- AUTH : CONNEXION EMAIL (Michael : Le nouveau moteur hybride) ---
+    // --- AUTH : CONNEXION EMAIL ---
     const handleEmailLogin = async (email, password) => {
         try {
-            // Tentative de connexion
             await signInWithEmailAndPassword(auth, email, password);
         } catch (error: any) {
-            // Si l'utilisateur n'existe pas, on tente de le créer (Michael : "Auto-Register")
             if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
                 try {
                     await createUserWithEmailAndPassword(auth, email, password);
@@ -122,7 +139,7 @@ export const useAppEngine = () => {
             let hasUpdates = false;
             for (const id of missingIds) {
                 try {
-                    const profile = await getUserProfile(id);
+                    const profile = await getUserProfile(id); // [cite: 36]
                     if (profile) { fetchedEntries[id] = profile; hasUpdates = true; }
                 } catch (e) { console.error(`Erreur registre ID ${id}:`, e); }
             }
@@ -184,16 +201,22 @@ export const useAppEngine = () => {
 
     const { arsenalData, handleAddItem, handleDeleteItem, handleEditItem, handleMoveItem, handleToggleLocationFavorite } = useArsenal(currentUserId);
 
+    // --- LOGIQUE DE RESET (Michael : Version Multi-User Ready) ---
     const handleResetCollection = async (collectionName: string, defaultItems: any[], currentItems: any[]) => {
         try {
-            const deletePromises = currentItems.map(item => deleteDoc(doc(db, collectionName, item.id)));
+            const deletePromises = currentItems.map(item => deleteDoc(doc(db, collectionName, item.id))); // [cite: 520, 805]
             await Promise.all(deletePromises);
+            
             for (const item of defaultItems) {
                 await addDoc(collection(db, collectionName), {
-                    label: item.label, displayOrder: item.displayOrder || 0,
-                    userId: currentUserId, active: true, createdAt: Timestamp.now()
+                    label: item.label, 
+                    displayOrder: item.displayOrder || 0,
+                    userId: currentUserId, 
+                    active: true, 
+                    createdAt: Timestamp.now()
                 });
             }
+            triggerHaptic([30, 10, 30]);
         } catch (e) { console.error(`Erreur Reset Michael :`, e); }
     };
 
@@ -381,7 +404,7 @@ export const useAppEngine = () => {
         unreadFeedCount,
         hasNewMenuContent: false, 
         handleLogin: () => signInWithPopup(auth, googleProvider),
-        handleEmailLogin, // Michael : Export de la nouvelle fonction
+        handleEmailLogin, 
         handleLogout: () => { signOut(auth); setCurrentView('dashboard'); setIsMenuOpen(false); },
         handleSaveSession, handleEditRequest: (s: Session) => { setEditingSession(s); setCurrentView('session'); },
         handleDeleteSession: async (id: string) => { await deleteDoc(doc(db, 'sessions', id)); },
@@ -389,6 +412,12 @@ export const useAppEngine = () => {
         handleAddItem, handleDeleteItem, handleEditItem, handleMoveItem, handleToggleLocationFavorite,
         targetLocationId, setTargetLocationId, lastCatchDefaults, currentLiveSnapshot, handleConsumeLevelUp, 
         navigateFromMenu, handleResetCollection,
-        handleMarkSessionAsRead, handleHideSessionFromFeed
+        handleMarkSessionAsRead, handleHideSessionFromFeed,
+        onResetTechniques: (defaults: any[], current: any[]) => handleResetCollection('techniques', defaults, current),
+        onResetLureTypes: (defaults: any[], current: any[]) => handleResetCollection('ref_lure_types', defaults, current), 
+        onResetColors: (defaults: any[], current: any[]) => handleResetCollection('ref_colors', defaults, current),
+        onResetSizes: (defaults: any[], current: any[]) => handleResetCollection('ref_sizes', defaults, current),
+        onResetWeights: (defaults: any[], current: any[]) => handleResetCollection('ref_weights', defaults, current),
+        onResetSetups: (defaults: any[], current: any[]) => handleResetCollection('setups', defaults, current)
     };
 };

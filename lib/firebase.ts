@@ -1,12 +1,13 @@
 // lib/firebase.ts
 import { initializeApp } from "firebase/app";
 import { 
-    getFirestore, 
+    initializeFirestore, // Michael : Nouveau moteur d'initialisation
+    persistentLocalCache, 
+    persistentMultipleTabManager,
     collection, 
     doc, 
     getDocs, 
-    deleteDoc, 
-    enableMultiTabIndexedDbPersistence 
+    deleteDoc
 } from "firebase/firestore"; 
 import { getFunctions } from "firebase/functions"; 
 import { getStorage } from "firebase/storage"; 
@@ -18,6 +19,8 @@ import {
     signOut, 
     onAuthStateChanged 
 } from "firebase/auth";
+// Michael : Importation du module de messagerie pour les notifications push
+import { getMessaging, getToken } from "firebase/messaging"; 
 
 const getEnvVar = (key: string): string | undefined => {
     // @ts-ignore
@@ -32,34 +35,41 @@ const getEnvVar = (key: string): string | undefined => {
     return undefined;
 };
 
+/**
+ * Michael : Configuration Firebase optimisée.
+ * L'ajout de l'appId est CRITIQUE pour Firebase Messaging et Installations.
+ */
 const firebaseConfig = {
-    apiKey: 'AIzaSyBg7rhZeL217FPxcKRUqgNj_85Ujm11pQI',
-    authDomain: "mysupstack.firebaseapp.com",
-    projectId: "mysupstack", 
-    storageBucket: "mysupstack.firebasestorage.app"
+    apiKey: getEnvVar('VITE_FIREBASE_API_KEY') || 'AIzaSyBg7rhZeL217FPxcKRUqgNj_85Ujm11pQI',
+    authDomain: getEnvVar('VITE_FIREBASE_AUTH_DOMAIN') || "mysupstack.firebaseapp.com",
+    projectId: getEnvVar('VITE_FIREBASE_PROJECT_ID') || "mysupstack", 
+    storageBucket: getEnvVar('VITE_FIREBASE_STORAGE_BUCKET') || "mysupstack.firebasestorage.app",
+    messagingSenderId: getEnvVar('VITE_FIREBASE_MESSAGING_SENDER_ID') || "951910603732",
+    // Michael : Identifiant préservé pour le Cloud Messaging
+    appId: getEnvVar('VITE_FIREBASE_APP_ID') || "1:1072483547940:web:b5bdba593e8b74372e11b1", 
+    measurementId: getEnvVar('VITE_FIREBASE_MEASUREMENT_ID')
 };
 
 const app = initializeApp(firebaseConfig);
 
-// 2. Initialisation des Services
-export const db = getFirestore(app);
-
 /**
- * Michael : Activation du mode Offline First pour Firestore.
- * Permet la consultation des sessions et secteurs sans réseau.
+ * 2. Initialisation des Services
+ * Michael : Migration vers initializeFirestore pour supprimer l'avertissement de dépréciation.
+ * On active la persistance multi-onglets (Offline First) directement ici.
  */
-enableMultiTabIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-        console.warn("La persistance échoue (multiples onglets ouverts)");
-    } else if (err.code === 'unimplemented') {
-        console.warn("Le navigateur actuel ne supporte pas la persistance");
-    }
+export const db = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+    })
 });
 
 export const storage = getStorage(app);
 export const auth = getAuth(app); 
 export const googleProvider = new GoogleAuthProvider(); 
 export const functions = getFunctions(app, "europe-west1");
+
+// Michael : Initialisation de l'antenne de messagerie (uniquement côté client)
+export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 
 // --- CHEMINS D'ACCÈS AUX COLLECTIONS (PRÉSERVÉS) ---
 export const sessionsCollection = collection(db, 'sessions'); 
@@ -86,12 +96,13 @@ export const clearChatHistory = async (userId: string) => {
     console.log(`Historique effacé pour ${userId}`);
 };
 
-// Exports des méthodes d'authentification pour l'usage dans les composants (Michael, c'est ici qu'on ouvre la porte à l'email)
+// Exports des méthodes pour l'usage dans les composants
 export { 
     signInWithEmailAndPassword, 
     createUserWithEmailAndPassword, 
     signOut, 
-    onAuthStateChanged 
+    onAuthStateChanged,
+    getToken // Michael : On exporte getToken pour récupérer la clé du téléphone
 };
 
 export { app };

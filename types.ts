@@ -246,6 +246,10 @@ export interface UserProfile {
   xpTotal?: number;      // Ajouté pour la persistance
   levelReached?: number; // Ajouté pour la persistance
   pendingLevelUp?: boolean; // Le "Drapeau" de notification
+  themePreference?: 'light' | 'night' | 'auto'; // Michael : Pour la gestion visuelle
+  notificationsEnabled?: boolean;              // Michael : État des alertes push
+  fcmToken?: string;                           // Michael : Le jeton unique du téléphone
+  lastTokenUpdate?: string;                    // Michael : Date de dernière mise à jour
 }
 
 export interface BioConditions {
