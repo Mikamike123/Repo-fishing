@@ -1,4 +1,4 @@
-// components/FeedView.tsx - Version 13.5.1 (Vibration Type Fix)
+// components/FeedView.tsx - Version 13.5.2 (Monthly Relay Fix)
 import React, { useState, useEffect, useMemo } from 'react';
 import { Zap, Swords, Target, History, Trophy, Sparkles } from 'lucide-react';
 import { Session, UserProfile } from '../types';
@@ -77,7 +77,7 @@ const FeedView: React.FC<FeedViewProps> = (props) => {
     const [activeSubTab, setActiveSubTab] = useState<'events' | 'duel'>('events');
     const [displayPoints, setDisplayPoints] = useState(0);
 
-    // Michael : Signature corrigée pour accepter patterns ou durées simples
+    // Michael : Signature haptique préservée [cite: 51, 124]
     const triggerHaptic = (pattern: number | number[] = 10) => {
         if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(pattern);
     };
@@ -86,7 +86,7 @@ const FeedView: React.FC<FeedViewProps> = (props) => {
         injectOracleStyles();
     }, []);
 
-    // --- LOGIQUE "BANDE DE POTES" CALENDAIRE ---
+    // --- LOGIQUE "BANDE DE POTES" CALENDAIRE CORRIGÉE ---
     const communityStats = useMemo(() => {
         if (!props.sessions.length) return null;
 
@@ -95,20 +95,24 @@ const FeedView: React.FC<FeedViewProps> = (props) => {
         const curY = now.getFullYear();
         const monthLabel = new Intl.DateTimeFormat('fr-FR', { month: 'long' }).format(now);
 
-        const lastSession = props.sessions[0]; 
-        const lastHero = {
-            pseudo: lastSession.userPseudo || "Pêcheur",
-            date: lastSession.date
-        };
-
-        // Calcul des points (Taille totale des captures du mois)
-        const totalMonthPts = props.sessions.reduce((total, s) => {
+        // Michael : On isole les sessions du mois courant pour tout le bloc
+        const currentMonthSessions = props.sessions.filter(s => {
             const sDate = new Date(s.date as string);
-            if (sDate.getMonth() === curM && sDate.getFullYear() === curY) {
-                const sessionPts = s.catches.reduce((sum, c) => sum + (c.size || 0), 0);
-                return total + sessionPts;
-            }
-            return total;
+            return sDate.getMonth() === curM && sDate.getFullYear() === curY;
+        });
+
+        // "Dernier Relais" ne prend désormais que la session la plus récente DU MOIS
+        const lastHero = currentMonthSessions.length > 0
+            ? {
+                pseudo: currentMonthSessions[0].userPseudo || "Pêcheur",
+                date: currentMonthSessions[0].date
+              }
+            : null;
+
+        // Calcul des points basé sur le filtre mensuel strict
+        const totalMonthPts = currentMonthSessions.reduce((total, s) => {
+            const sessionPts = s.catches.reduce((sum, c) => sum + (c.size || 0), 0);
+            return total + sessionPts;
         }, 0);
 
         const GOAL = 200; 
@@ -117,7 +121,7 @@ const FeedView: React.FC<FeedViewProps> = (props) => {
         return { lastHero, totalMonthPts, goal: GOAL, monthLabel, isVictory };
     }, [props.sessions]);
 
-    // Michael : L'animation du Ticker au montage
+    // Michael : Ticker d'animation [cite: 79, 166]
     useEffect(() => {
         if (communityStats) {
             let start = 0;
@@ -139,6 +143,7 @@ const FeedView: React.FC<FeedViewProps> = (props) => {
         }
     }, [communityStats?.totalMonthPts]);
 
+    // Thème Night Ops anthracite [cite: 115, 607]
     const cardClass = props.isActuallyNight ? "bg-stone-900 border-stone-800" : "bg-white border-stone-100 shadow-xl";
     const textTitle = props.isActuallyNight ? "text-stone-100" : "text-stone-800";
 
@@ -157,7 +162,7 @@ const FeedView: React.FC<FeedViewProps> = (props) => {
                     </div>
                 )}
 
-                {/* Dernier Relais */}
+                {/* Dernier Relais - Michael : Ajout d'une condition si pas de session ce mois-ci */}
                 {communityStats && (
                     <div className="flex items-center gap-4 relative z-10">
                         <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-500 shrink-0 shadow-inner">
@@ -165,9 +170,13 @@ const FeedView: React.FC<FeedViewProps> = (props) => {
                         </div>
                         <div className="flex-1 min-w-0">
                             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-stone-500 mb-0.5">Dernier relais</p>
-                            <p className={`text-sm font-black italic truncate ${textTitle}`}>
-                                {communityStats.lastHero.pseudo} <span className="font-medium text-stone-500 not-italic">au bord de l'eau le {new Date(communityStats.lastHero.date as string).toLocaleDateString('fr-FR', {day: 'numeric', month: 'short'})}</span>
-                            </p>
+                            {communityStats.lastHero ? (
+                                <p className={`text-sm font-black italic truncate ${textTitle}`}>
+                                    {communityStats.lastHero.pseudo} <span className="font-medium text-stone-500 not-italic">au bord de l'eau le {new Date(communityStats.lastHero.date as string).toLocaleDateString('fr-FR', {day: 'numeric', month: 'short'})}</span>
+                                </p>
+                            ) : (
+                                <p className="text-sm font-bold text-stone-400 italic">En attente de la première sortie de {communityStats.monthLabel}...</p>
+                            )}
                         </div>
                     </div>
                 )}

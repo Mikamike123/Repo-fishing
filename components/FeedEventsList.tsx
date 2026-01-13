@@ -118,7 +118,7 @@ const FeedEventsList: React.FC<FeedEventsListProps> = ({
                                     <p className={`text-[15px] leading-relaxed font-bold italic transition-colors ${isActuallyNight ? 'text-stone-100' : 'text-stone-800'}`}>"{log.text}"</p>
                                     <div className="flex items-center gap-2 mt-1.5">
                                         <span className="text-[10px] opacity-40 font-black uppercase flex items-center gap-1.5 tracking-tighter">
-                                            <Clock size={12} /> {new Date(getTime(log.date)).toLocaleDateString('fr-FR', {day:'numeric', month:'short'})}
+                                            <Clock size={12} /> {new Date(getTime(log.date)).toLocaleDateString('fr-FR', {day:'numeric', month:'short', year: 'numeric'})}
                                         </span>
                                         {isRead && <span className="flex items-center gap-1 text-[10px] font-black uppercase text-sky-500 tracking-tighter animate-in fade-in"><CheckCheck size={14} /> LU</span>}
                                     </div>
