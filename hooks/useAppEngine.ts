@@ -1,8 +1,8 @@
-// hooks/useAppEngine.ts - Version 14.1.0 (Strict Social Sorting & Emoji Persistence)
+// hooks/useAppEngine.ts - Version 14.2.0 (Toggle Restoration Logic)
 import { useState, useEffect, useMemo } from 'react';
 import { 
     onSnapshot, query, orderBy, 
-    addDoc, deleteDoc, doc, Timestamp, updateDoc, collection, getDoc, arrayUnion 
+    addDoc, deleteDoc, doc, Timestamp, updateDoc, collection, getDoc, arrayUnion, arrayRemove 
 } from 'firebase/firestore'; 
 import { 
     onAuthStateChanged, 
@@ -75,7 +75,7 @@ export const useAppEngine = () => {
     // --- LOGIQUE DE NOTIFICATION STATELESS ---
     const unreadFeedCount = useMemo(() => {
         if (!sessions.length || currentUserId === "guest") return 0;
-         
+          
         return sessions.filter(s => {
             const isRead = s.readBy?.includes(currentUserId);
             const isHidden = s.hiddenBy?.includes(currentUserId);
@@ -84,31 +84,43 @@ export const useAppEngine = () => {
     }, [sessions, currentUserId]);
 
     /**
-     * Michael : Marquer comme lu - Version Sécurisée
-     * Si l'event est déjà marqué comme lu par l'user, on n'envoie pas de requête à Firestore.
-     * Cela évite d'écraser une sauvegarde d'emoji qui se passerait au même moment.
+     * Michael : Marquer comme lu / Restaurer - VERSION TOGGLE
+     * Si l'event est déjà lu, arrayRemove le retire (restauration).
+     * Sinon, arrayUnion l'ajoute (lecture).
      */
     const handleMarkSessionAsRead = async (sessionId: string) => {
         if (currentUserId === "guest") return;
         
         const session = sessions.find(s => s.id === sessionId);
-        if (session?.readBy?.includes(currentUserId)) return; // On ignore si déjà lu
+        if (!session) return;
+
+        const isAlreadyRead = session.readBy?.includes(currentUserId);
 
         try {
             const sessionRef = doc(db, 'sessions', sessionId);
             await updateDoc(sessionRef, {
-                readBy: arrayUnion(currentUserId)
+                readBy: isAlreadyRead ? arrayRemove(currentUserId) : arrayUnion(currentUserId)
             });
+            if (isAlreadyRead) triggerHaptic([10, 30]); // Vibration subtile pour la restauration
         } catch (e) { console.error("Erreur lecture session Firestore:", e); }
     };
 
+    /**
+     * Michael : Cacher / Restaurer du flux - VERSION TOGGLE
+     */
     const handleHideSessionFromFeed = async (sessionId: string) => {
         if (currentUserId === "guest") return;
+        
+        const session = sessions.find(s => s.id === sessionId);
+        if (!session) return;
+
+        const isAlreadyHidden = session.hiddenBy?.includes(currentUserId);
+
         try {
             triggerHaptic([40]);
             const sessionRef = doc(db, 'sessions', sessionId);
             await updateDoc(sessionRef, {
-                hiddenBy: arrayUnion(currentUserId)
+                hiddenBy: isAlreadyHidden ? arrayRemove(currentUserId) : arrayUnion(currentUserId)
             });
         } catch (e) { console.error("Erreur purge session Firestore:", e); }
     };
