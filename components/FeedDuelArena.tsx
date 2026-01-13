@@ -1,4 +1,4 @@
-// components/FeedDuelArena.tsx - Version 1.0.0
+// components/FeedDuelArena.tsx - Version 1.1.0 (Current Season Focus & Zero-Catch Safety)
 import React, { useState, useMemo } from 'react';
 import { Calendar, ChevronDown, ChevronUp, Fish, Medal, Trophy, ListFilter } from 'lucide-react';
 import { Session, UserProfile, SpeciesType } from '../types';
@@ -16,7 +16,10 @@ interface FeedDuelArenaProps {
 const FeedDuelArena: React.FC<FeedDuelArenaProps> = ({ 
     sessions, currentUserId, userProfile, usersRegistry, isActuallyNight, onNavigateToSession, onMarkAsRead 
 }) => {
-    const [expandedYears, setExpandedYears] = useState<Record<number, boolean>>({ [new Date().getFullYear()]: true });
+    const curY = new Date().getFullYear();
+    // Michael : On initialise l'expansion uniquement sur l'année en cours
+    const [expandedYears, setExpandedYears] = useState<Record<number, boolean>>({ [curY]: true });
+    
     const speciesHierarchy: SpeciesType[] = ['Brochet', 'Sandre', 'Perche', 'Black-Bass'];
     const currentMonthLabel = new Intl.DateTimeFormat('fr-FR', { month: 'long' }).format(new Date()).toUpperCase();
 
@@ -33,6 +36,9 @@ const FeedDuelArena: React.FC<FeedDuelArenaProps> = ({
         const now = new Date();
         const curM = now.getMonth();
         const curY = now.getFullYear();
+
+        // Michael : On s'assure que l'année en cours existe TOUJOURS, même à 0 prises
+        years[curY] = { users: {}, seasonPodium: {} };
 
         sessions.forEach(s => {
             const ts = getTime(s.date);
@@ -61,8 +67,10 @@ const FeedDuelArena: React.FC<FeedDuelArenaProps> = ({
                 if (stat) {
                     stat.count += 1;
                     stat.totalSize += c.size;
-                    const avg = stat.totalSize / stat.count;
-                    const currentPts = Math.round(stat.count * avg);
+                    
+                    // Calcul des points basé sur la somme des tailles (TotalSize)
+                    // car pts = count * (totalSize / count) = totalSize
+                    const currentPts = Math.round(stat.totalSize);
 
                     if (!podium[sp]) podium[sp] = [];
                     const existingUserIdx = podium[sp].findIndex((p: any) => p.pseudo === users[s.userId].pseudo);
@@ -94,24 +102,35 @@ const FeedDuelArena: React.FC<FeedDuelArenaProps> = ({
         <div className="space-y-10">
             {Object.keys(leaderboardData).sort((a, b) => Number(b) - Number(a)).map(yearStr => {
                 const y = Number(yearStr);
+                const isCurrentSeason = y === curY;
                 const isExp = expandedYears[y];
                 const podium = leaderboardData[y].seasonPodium;
 
                 return (
                     <div key={y} className="space-y-6">
+                        {/* BOUTON DE SAISON */}
                         <button 
-                            onClick={() => setExpandedYears(p => ({...p, [y]: !p[y]}))} 
-                            className={`w-full flex flex-col p-8 rounded-[2.5rem] border transition-all ${cardClass} ${isExp ? 'ring-2 ring-amber-500/30' : ''}`}
+                            onClick={() => {
+                                // Michael : On n'autorise le dépliage QUE pour l'année en cours
+                                if (isCurrentSeason) {
+                                    setExpandedYears(p => ({...p, [y]: !p[y]}));
+                                }
+                            }} 
+                            className={`w-full flex flex-col p-8 rounded-[2.5rem] border transition-all cursor-default ${cardClass} ${isExp && isCurrentSeason ? 'ring-2 ring-amber-500/30' : ''} ${!isCurrentSeason ? 'opacity-80' : ''}`}
                         >
                             <div className="w-full flex justify-between items-center mb-6">
                                 <div className="flex items-center gap-5">
-                                    <div className="p-4 bg-amber-500/10 rounded-2xl text-amber-500 shadow-inner"><Calendar size={24} /></div>
+                                    <div className="p-4 bg-amber-500/10 rounded-2xl text-amber-500 shadow-inner">
+                                        <Calendar size={24} />
+                                    </div>
                                     <span className="font-black text-xl tracking-[0.2em] uppercase italic">SAISON {y}</span>
                                 </div>
-                                {isExp ? <ChevronUp size={28}/> : <ChevronDown size={28}/>}
+                                {isCurrentSeason && (isExp ? <ChevronUp size={28}/> : <ChevronDown size={28}/>)}
                             </div>
+                            
+                            {/* Résumé Podium (Visible sur toutes les années) */}
                             <div className="flex flex-col gap-3 w-full text-left">
-                                {speciesHierarchy.map(sp => podium[sp] && podium[sp].length > 0 && (
+                                {speciesHierarchy.map(sp => podium[sp] && podium[sp].length > 0 ? (
                                     <div key={sp} className="flex flex-col gap-2 p-4 bg-stone-500/5 rounded-2xl border border-white/5">
                                         <div className="flex items-center gap-2">
                                             <Fish size={14} className="text-amber-500" />
@@ -129,28 +148,40 @@ const FeedDuelArena: React.FC<FeedDuelArenaProps> = ({
                                             ))}
                                         </div>
                                     </div>
+                                ) : isCurrentSeason && (
+                                    /* Michael : On affiche l'espèce même si vide pour l'année en cours */
+                                    <div key={sp} className="flex items-center justify-between p-4 bg-stone-500/5 rounded-2xl border border-dashed border-stone-700 opacity-30">
+                                        <div className="flex items-center gap-2">
+                                            <Fish size={14} className="text-stone-500" />
+                                            <span className="text-[10px] font-black uppercase tracking-widest">{sp}</span>
+                                        </div>
+                                        <span className="text-[9px] font-black uppercase">En attente...</span>
+                                    </div>
                                 ))}
                             </div>
                         </button>
 
-                        {isExp && (
+                        {/* Michael : LA DÉCLINAISON PAR ESPÈCE - Uniquement pour l'année en cours et si étendu */}
+                        {isExp && isCurrentSeason && (
                             <div className="grid grid-cols-1 gap-8 animate-in slide-in-from-top-6 duration-500">
-                                {speciesHierarchy.filter(sp => podium[sp] && podium[sp].length > 0).map(sp => {
+                                {speciesHierarchy.map(sp => {
                                     const users = Object.values(leaderboardData[y].users);
+                                    const speciesHasData = users.some((u:any) => u.species[sp].count > 0);
+
+                                    if (!speciesHasData) return null;
+
                                     return (
                                         <div key={sp} className={`${cardClass} rounded-[3rem] p-10 border relative overflow-hidden group`}>
                                             <div className="absolute -right-6 -top-6 opacity-[0.02] rotate-12 text-stone-500"><Fish size={200} /></div>
                                             <h4 className="text-[14px] font-black uppercase tracking-[0.4em] mb-10 flex gap-4 items-center text-amber-500"><Medal size={20}/> CLASSEMENT {sp}</h4>
                                             <div className="space-y-12">
                                                 {users.filter((u:any) => u.species[sp].count > 0).sort((a:any, b:any) => {
-                                                    const ptsA = a.species[sp].count * (a.species[sp].totalSize / a.species[sp].count);
-                                                    const ptsB = b.species[sp].count * (b.species[sp].totalSize / b.species[sp].count);
-                                                    return ptsB - ptsA;
+                                                    return b.species[sp].totalSize - a.species[sp].totalSize;
                                                 }).map((u: any, idx: number) => {
                                                     const s = u.species[sp];
                                                     const avgSize = s.count ? (s.totalSize / s.count) : 0;
-                                                    const ptsY = Math.round(s.count * avgSize);
-                                                    const ptsM = Math.round(s.monthCount * (s.monthCount ? (s.monthSize / s.monthCount) : 0));
+                                                    const ptsY = Math.round(s.totalSize);
+                                                    const ptsM = Math.round(s.monthSize);
                                                     const mPassed = new Date().getMonth() + 1;
                                                     const projection = Math.round(s.count + ( (s.count / mPassed) * (12 - mPassed) ));
                                                     const sortedMonthCatches = [...s.monthCatches].sort((a,b) => b.size - a.size);
@@ -180,7 +211,7 @@ const FeedDuelArena: React.FC<FeedDuelArenaProps> = ({
                                                             </div>
                                                             <div className="space-y-4">
                                                                 <div className="h-3.5 w-full bg-stone-500/10 rounded-full overflow-hidden border border-white/5 shadow-inner">
-                                                                    <div className="h-full bg-gradient-to-r from-amber-600 via-amber-400 to-orange-500 transition-all duration-1500 ease-out shadow-[0_0_20px_rgba(245,158,11,0.4)]" style={{ width: `${Math.min(100, (ptsY / 5000) * 100)}%` }} />
+                                                                    <div className="h-full bg-gradient-to-r from-amber-600 via-amber-400 to-orange-500 transition-all duration-1500 ease-out" style={{ width: `${Math.min(100, (ptsY / 5000) * 100)}%` }} />
                                                                 </div>
                                                                 {sortedMonthCatches.length > 0 && (
                                                                     <div className="bg-stone-500/5 rounded-2xl p-4 border border-stone-500/10">
@@ -195,9 +226,7 @@ const FeedDuelArena: React.FC<FeedDuelArenaProps> = ({
                                                                         </div>
                                                                     </div>
                                                                 )}
-                                                                {y === new Date().getFullYear() && s.count > 0 && (
-                                                                    <div className="flex justify-end pr-2"><span className="text-[10px] font-black italic text-amber-500/70 uppercase tracking-[0.2em]">Oracle Math : {projection} captures projetées</span></div>
-                                                                )}
+                                                                <div className="flex justify-end pr-2"><span className="text-[10px] font-black italic text-amber-500/70 uppercase tracking-[0.2em]">Oracle Math : {projection} captures projetées</span></div>
                                                             </div>
                                                         </div>
                                                     );

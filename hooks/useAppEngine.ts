@@ -1,4 +1,4 @@
-// hooks/useAppEngine.ts - Version 13.0.0 (Fishing Vibes & Interaction Engine)
+// hooks/useAppEngine.ts - Version 14.1.0 (Strict Social Sorting & Emoji Persistence)
 import { useState, useEffect, useMemo } from 'react';
 import { 
     onSnapshot, query, orderBy, 
@@ -66,12 +66,7 @@ export const useAppEngine = () => {
 
         const unsubscribe = onMessage(messaging, (payload) => {
             console.log("🚨 [Oracle Push] Message reçu alors que l'app est OUVERTE :", payload);
-            
-            // Michael : Optionnel - On peut déclencher une vibration ou une petite alerte custom
             triggerHaptic([100, 50, 100]);
-            
-            // Si tu as une librairie de toast, c'est ici qu'il faut l'appeler.
-            // Sinon, l'arrivée de la session dans le flux Firestore mettra l'UI à jour.
         });
 
         return () => unsubscribe();
@@ -84,13 +79,21 @@ export const useAppEngine = () => {
         return sessions.filter(s => {
             const isRead = s.readBy?.includes(currentUserId);
             const isHidden = s.hiddenBy?.includes(currentUserId);
-            // Michael : On compte tout ce qui n'est pas lu, y compris nos propres envois
             return !isRead && !isHidden;
         }).length;
     }, [sessions, currentUserId]);
 
+    /**
+     * Michael : Marquer comme lu - Version Sécurisée
+     * Si l'event est déjà marqué comme lu par l'user, on n'envoie pas de requête à Firestore.
+     * Cela évite d'écraser une sauvegarde d'emoji qui se passerait au même moment.
+     */
     const handleMarkSessionAsRead = async (sessionId: string) => {
         if (currentUserId === "guest") return;
+        
+        const session = sessions.find(s => s.id === sessionId);
+        if (session?.readBy?.includes(currentUserId)) return; // On ignore si déjà lu
+
         try {
             const sessionRef = doc(db, 'sessions', sessionId);
             await updateDoc(sessionRef, {
@@ -111,29 +114,34 @@ export const useAppEngine = () => {
     };
 
     /**
-     * Michael : Moteur des Fishing Vibes (Reactions)
-     * Permet de liker (Net), saler (Salt) ou enflammer (Fire) un événement.
+     * Michael : Moteur des Fishing Vibes (Reactions) - VERSION ATOMIQUE
+     * Clés supportées : 'love' (❤️), 'laugh' (😂), 'like' (👍)
      */
     const handleToggleReaction = async (sessionId: string, reactionKey: string) => {
         if (currentUserId === "guest") return;
+        
         const session = sessions.find(s => s.id === sessionId);
         if (!session) return;
 
-        const currentReactions = session.reactions?.[reactionKey] || [];
-        const hasReacted = currentReactions.includes(currentUserId);
+        const reactions = session.reactions || {};
+        const currentUids = reactions[reactionKey] || [];
+        const hasReacted = currentUids.includes(currentUserId);
         
-        const newReactions = hasReacted 
-            ? currentReactions.filter(id => id !== currentUserId)
-            : [...currentReactions, currentUserId];
+        const newUids = hasReacted 
+            ? currentUids.filter(id => id !== currentUserId)
+            : [...currentUids, currentUserId];
 
         try {
             triggerHaptic([20]);
             const sessionRef = doc(db, 'sessions', sessionId);
-            // On utilise la notation pointée pour mettre à jour uniquement la clé spécifique de la Map Firestore
+            
+            // On met à jour uniquement la clé spécifique de l'objet reactions
             await updateDoc(sessionRef, {
-                [`reactions.${reactionKey}`]: newReactions
+                [`reactions.${reactionKey}`]: newUids
             });
-        } catch (e) { console.error("Erreur Reaction Michael :", e); }
+        } catch (e) { 
+            console.error("Erreur Vibe Michael :", e); 
+        }
     };
 
     // --- AUTH : CONNEXION EMAIL ---
@@ -166,7 +174,7 @@ export const useAppEngine = () => {
             let hasUpdates = false;
             for (const id of missingIds) {
                 try {
-                    const profile = await getUserProfile(id); //
+                    const profile = await getUserProfile(id); 
                     if (profile) { fetchedEntries[id] = profile; hasUpdates = true; }
                 } catch (e) { console.error(`Erreur registre ID ${id}:`, e); }
             }
@@ -228,10 +236,10 @@ export const useAppEngine = () => {
 
     const { arsenalData, handleAddItem, handleDeleteItem, handleEditItem, handleMoveItem, handleToggleLocationFavorite } = useArsenal(currentUserId);
 
-    // --- LOGIQUE DE RESET (Michael : Version Multi-User Ready) ---
+    // --- LOGIQUE DE RESET ---
     const handleResetCollection = async (collectionName: string, defaultItems: any[], currentItems: any[]) => {
         try {
-            const deletePromises = currentItems.map(item => deleteDoc(doc(db, collectionName, item.id))); //
+            const deletePromises = currentItems.map(item => deleteDoc(doc(db, collectionName, item.id)));
             await Promise.all(deletePromises);
             
             for (const item of defaultItems) {
@@ -366,9 +374,6 @@ export const useAppEngine = () => {
         } catch (e) { console.error("Erreur création profil Michael :", e); }
     };
 
-    /**
-     * Michael : Nouvelle fonction pour ancrer Seb sur la carte du monde.
-     */
     const handleUpdateUserAnchor = async (anchor: { lat: number; lng: number }) => {
         if (!user) return;
         try {
@@ -377,10 +382,11 @@ export const useAppEngine = () => {
         } catch (e) { console.error("Erreur mise à jour ancre Michael :", e); }
     };
 
-    // --- SESSIONS SNAPSHOT ---
+    // --- SESSIONS SNAPSHOT (Real-time Feed) ---
+    // Michael : Le tri passe par createdAt pour un flux social type "WhatsApp"
     useEffect(() => {
         if (!user || !isWhitelisted) return;
-        const q = query(sessionsCollection, orderBy('date', 'desc')); 
+        const q = query(sessionsCollection, orderBy('createdAt', 'desc')); 
         const unsubscribeSessions = onSnapshot(q, (snapshot) => {
             const fetched = snapshot.docs.map(doc => {
                 const data = doc.data();
@@ -440,7 +446,7 @@ export const useAppEngine = () => {
         isOnline, triggerHaptic, isWhitelisted, firestoreError, handleCreateProfile,
         usersRegistry, lastSavedSessionId, setLastSavedSessionId,
         unreadFeedCount,
-        hasNewFeed: unreadFeedCount > 0, // Michael : Câblage pour AppLayout
+        hasNewFeed: unreadFeedCount > 0, 
         hasNewMenuContent: false,
         handleLogin: () => signInWithPopup(auth, googleProvider),
         handleEmailLogin, 
@@ -452,7 +458,7 @@ export const useAppEngine = () => {
         targetLocationId, setTargetLocationId, lastCatchDefaults, currentLiveSnapshot, handleConsumeLevelUp, 
         navigateFromMenu, handleResetCollection,
         handleMarkSessionAsRead, handleHideSessionFromFeed,
-        handleToggleReaction, // Michael : Nouveau câble pour les vibes !
+        handleToggleReaction, 
         onResetTechniques: (defaults: any[], current: any[]) => handleResetCollection('techniques', defaults, current),
         onResetLureTypes: (defaults: any[], current: any[]) => handleResetCollection('ref_lure_types', defaults, current), 
         onResetColors: (defaults: any[], current: any[]) => handleResetCollection('ref_colors', defaults, current),
