@@ -1,8 +1,7 @@
-// components/CoachView.tsx - Version 4.8.26 (User Identity Fix)
+// components/CoachView.tsx - Version 4.10.0 (Anti-ISO & Scrutiny Logic)
 import React, { useState, useEffect, useRef } from 'react';
 import { Bot, Send, Loader, CornerDownLeft } from 'lucide-react';
-// Michael : Import des nouvelles fonctions dynamiques
-import { getChatHistoryCollection, clearChatHistory } from '../lib/firebase';
+import { getChatHistoryCollection } from '../lib/firebase';
 import { onSnapshot, query, orderBy } from 'firebase/firestore'; 
 import { askFishingCoach } from '../lib/ai-service'; 
 import { Session, AppData } from '../types'; 
@@ -15,7 +14,7 @@ interface CoachViewProps {
     liveSnapshot: any; 
     currentUserId: string;
     userPseudo: string;
-    isActuallyNight?: boolean; // Michael : Nouveau pour Night Ops
+    isActuallyNight?: boolean;
 }
 
 const CoachView: React.FC<CoachViewProps> = ({ 
@@ -25,11 +24,8 @@ const CoachView: React.FC<CoachViewProps> = ({
     const [messages, setMessages] = useState<any[]>([]);
     const [isCoachTyping, setIsCoachTyping] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    
-    // Michael : VERROU PHYSIQUE SYNCHRONE (Bloque le double-clic instantanément)
     const isProcessingRef = useRef(false);
 
-    // Michael : Rendu propre du Markdown (Gras et Puces) - Adapté au thème
     const formatMessage = (text: string) => {
         return text.split('\n').map((line, i) => {
             let content = line;
@@ -57,24 +53,19 @@ const CoachView: React.FC<CoachViewProps> = ({
         });
     };
 
-    // Michael : SYNCHRONISATION DU CHAT (On ne reset plus au mount pour garder l'historique)
     useEffect(() => {
         if (!currentUserId) return;
-
         const chatCol = getChatHistoryCollection(currentUserId);
         const q = query(chatCol, orderBy('timestamp', 'asc')); 
-        
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const fetched = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data(),
                 timestamp: doc.data().timestamp?.toDate() || new Date()
             }));
-
-            // Si vide, on met le message d'accueil, sinon on affiche l'historique persistant
             setMessages(fetched.length ? fetched : [{ 
                 id: 'init', 
-                content: `Salut **${userPseudo || 'Pêcheur'}** ! Je suis branché sur ton secteur **${liveSnapshot?.locationName || 'en cours...'}**. Prêt pour l'analyse ?`, 
+                content: `Salut **${userPseudo || 'Pêcheur'}** ! Je suis branché sur ton secteur **${liveSnapshot?.locationName || 'en cours...'}**. Prêt pour une analyse tactique approfondie ?`, 
                 role: 'model', 
                 timestamp: new Date() 
             }]);
@@ -86,65 +77,45 @@ const CoachView: React.FC<CoachViewProps> = ({
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
-        
-        // Michael : Double-Check de sécurité (State + Ref synchrone)
         if (!input.trim() || isCoachTyping || isProcessingRef.current) return;
 
         const msg = input;
         setInput('');
-        
-        // Verrouillage immédiat
         isProcessingRef.current = true;
         setIsCoachTyping(true);
 
         try {
-            // 1. Filtrage des données de l'utilisateur actuel
             const userSessions = sessions.filter(s => s.userId === currentUserId);
             const narrative = generateFishingNarrative(userSessions, arsenalData);
             const insights = calculateDeepKPIs(userSessions, currentUserId, arsenalData);
             
-            // 2. Michael : Identification des espèces autorisées pour ce secteur spécifique
             const currentLocation = arsenalData.locations.find(l => l.label === liveSnapshot?.locationName);
             const allowedSpecies = currentLocation?.speciesIds || []; 
-
             const env = liveSnapshot?.env;
             const scores = liveSnapshot?.scores || {};
 
-            // 3. Michael : Construction dynamique de la chaîne des scores filtrés
             const filteredScoresText = allowedSpecies
                 .map(sp => {
                     const key = sp.toLowerCase().replace('-', ''); 
                     const score = scores[key];
-                    return score !== undefined ? `${sp}: ${score.toFixed(0)}` : null;
+                    return score !== undefined ? `${sp}: ${score.toFixed(0)}/100` : null;
                 })
                 .filter(Boolean)
                 .join(', ');
 
-            /**
-             * Michael : Injection du contexte Live et de l'identité du pêcheur.
-             * On ajoute explicitement l'identité pour écraser tout biais "Michael".
-             */
             const liveText = `
-                --- IDENTITÉ DU PÊCHEUR ---
-                NOM DE L'UTILISATEUR: ${userPseudo}
+                CONTEXTE POUR ${userPseudo} :
+                Secteur : ${liveSnapshot?.locationName || 'Inconnu'}. 
+                Air : ${env?.weather?.temperature?.toFixed(1)}°C, Pression : ${env?.weather?.pressure}hPa. 
+                Eau : ${env?.hydro?.waterTemp?.toFixed(1) || 'N/A'}°C, Courant : ${env?.hydro?.flowRaw || 0}%. 
+                Turbidité : ${env?.hydro?.turbidityNTU || 'N/A'} NTU, Oxygène : ${env?.hydro?.dissolvedOxygen || 'N/A'}mg/L. 
                 
-                --- SITUATION LIVE (PRÉSENT) ---
-                LIEU: ${liveSnapshot?.locationName || 'Inconnu'}
+                BioScores (${allowedSpecies.join(', ')}) : ${filteredScoresText}.
                 
-                ATMOSPHÈRE: Air ${env?.weather?.temperature?.toFixed(1)}°C, Pres. ${env?.weather?.pressure}hPa, Vent ${env?.weather?.windSpeed}km/h (${env?.weather?.windDirection}°), Nuages ${env?.weather?.clouds}%, Précip. ${env?.weather?.precip || 0}mm (Code: ${env?.weather?.conditionCode})
-                
-                HYDROLOGIE: Eau ${env?.hydro?.waterTemp?.toFixed(1) || 'N/A'}°C, Courant ${env?.hydro?.flowRaw || 0}%, Turb. ${env?.hydro?.turbidityIdx?.toFixed(2) || 'N/A'} (NTU: ${env?.hydro?.turbidityNTU || 'N/A'}), O2 ${env?.hydro?.dissolvedOxygen || 'N/A'}mg/L, Vagues ${env?.hydro?.waveHeight || 'N/A'}cm
-                
-                CONTEXTE: Tendance ${env?.metadata?.flowStatus || 'Stable'}, Morpho ${env?.metadata?.morphologyType || 'Inconnue'}
-                
-                BIOSCORES ACTIFS (FILTRÉS): ${filteredScoresText || 'Aucun score disponible'}
-
-                --- CONSIGNES DE STYLE ET STRATÉGIE ---
-                1. FORMAT DES DATES : Interdiction d'utiliser YYYY-MM-DD. Utilise "le 12 novembre 2025".
-                2. FILTRE ESPÈCES : Tu n'as le droit de parler QUE des espèces suivantes : ${allowedSpecies.join(', ')}. 
-                3. INTERDICTION : Ne mentionne jamais le Black-Bass ou toute autre espèce absente de cette liste pour ce secteur.
-                4. TON : Direct et tactique.
-                5. IDENTITÉ : Tu t'adresses à ${userPseudo}. Ne l'appelle JAMAIS "Michael".
+                CONSIGNES CRITIQUES DE RÉPONSE :
+                1. DATES : Toutes les dates mentionnées dans l'historique doivent être reformulées en texte (ex: "le 3 novembre 2024"). Ne cite JAMAIS le format ISO présent dans les données brutes.
+                2. PRÉCISION : Si le message de ${userPseudo} comporte un flou technique sur le matériel, pose une question avant de trancher.
+                3. PÉDAGOGIE : Le "Coin Pédago" doit être exclusivement biologique. Pourquoi le poisson se comporte ainsi physiologiquement ?
             `;
 
             const locationCoords = liveSnapshot?.coordinates || { lat: 48.8566, lng: 2.3522 }; 
@@ -159,13 +130,11 @@ const CoachView: React.FC<CoachViewProps> = ({
                 currentUserId 
             );
         } finally {
-            // Libération des verrous
             setIsCoachTyping(false);
             isProcessingRef.current = false;
         }
     };
 
-    // Michael : Styles pour mode Soft Night
     const containerBg = isActuallyNight ? 'bg-[#1c1917] border-stone-800 shadow-none' : 'bg-stone-50 border-stone-100 shadow-inner';
     const coachBubble = isActuallyNight ? 'bg-stone-800 border-stone-700 text-stone-200' : 'bg-white text-stone-700 border-stone-100';
     const inputBg = isActuallyNight ? 'bg-[#292524] border-stone-800 text-stone-100' : 'bg-white border-stone-200 text-stone-900';
