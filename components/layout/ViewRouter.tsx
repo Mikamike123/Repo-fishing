@@ -129,14 +129,14 @@ export const ViewRouter = ({ engine }: { engine: any }) => {
                     userId={currentUserId} 
                     userProfile={userProfile} 
                     onUpdateUserAnchor={handleUpdateUserAnchor} 
-                    onAddLocation={(label, coords) => handleAddItem('locations', { label, ...coords, active: true })} 
                     onEditLocation={(id, label, data) => handleEditItem('locations', id, label, data)} 
                     onDeleteLocation={(id) => handleDeleteItem('locations', id)} 
                     onToggleFavorite={handleToggleLocationFavorite} 
                     onMoveLocation={(id, dir) => handleMoveItem('locations', id, dir)} 
-                    onAddSpot={(label, locId) => handleAddItem('spots', { label, locationId: locId, active: true })} 
-                    onDeleteSpot={(id) => handleDeleteItem('spots', id)} 
-                    onEditSpot={(id, label) => handleEditItem('spots', id, label)} 
+                    onAddLocation={(label, coords) => handleAddItem('locations', label, { ...coords, active: true })} 
+                    onAddSpot={(label, locId) => handleAddItem('zones', label, { locationId: locId, active: true })}
+                    onDeleteSpot={(id) => handleDeleteItem('zones', id)} 
+                    onEditSpot={(id, label) => handleEditItem('zones', id, label)}
                     onBack={() => setCurrentView('dashboard')} 
                     initialOpenLocationId={targetLocationId} 
                     isActuallyNight={isActuallyNight} 

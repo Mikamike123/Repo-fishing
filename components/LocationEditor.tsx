@@ -172,7 +172,13 @@ const LocationEditor: React.FC<LocationEditorProps> = (props) => {
                     <div className={`${cardClass} rounded-[2.5rem] p-5 border`}>
                         <form onSubmit={(e: React.FormEvent) => { e.preventDefault(); if(editingSpotId) props.onEditSpot(editingSpotId, spotInput); else props.onAddSpot(spotInput, props.location.id); setSpotInput(""); setEditingSpotId(null); }} className="flex gap-2 mb-4">
                             <input type="text" value={spotInput} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSpotInput(e.target.value)} placeholder="Nom du spot..." className={`flex-1 px-4 py-3 rounded-xl text-sm font-bold outline-none ${inputBg}`} />
-                            <button type="submit" disabled={!spotInput.trim()} className="p-3 bg-stone-800 text-white rounded-xl shadow-lg transition-all oracle-btn-press">{editingSpotId ? <Check size={18}/> : <Plus size={18}/>}</button>
+                            <button 
+                                type="submit" 
+                                disabled={!spotInput || typeof spotInput !== 'string' || !spotInput.trim()} 
+                                className="p-3 bg-stone-800 text-white rounded-xl shadow-lg transition-all oracle-btn-press"
+                            >
+                                {editingSpotId ? <Check size={18}/> : <Plus size={18}/>}
+                            </button>
                         </form>
                         <div className="space-y-2">
                             {props.spots.length === 0 && (
@@ -180,7 +186,7 @@ const LocationEditor: React.FC<LocationEditorProps> = (props) => {
                             )}
                             {props.spots.map((s: Spot) => (
                                 <div key={s.id} className={`flex justify-between items-center p-3 rounded-xl border ${props.isActuallyNight ? 'bg-stone-900 border-stone-800' : 'bg-stone-50 border-stone-100'}`}>
-                                    <span className={`text-sm font-bold ${props.isActuallyNight ? 'text-stone-300' : 'text-stone-700'}`}>{s.label}</span>
+                                    <span className={`text-sm font-bold whitespace-normal break-words pr-2 ${props.isActuallyNight ? 'text-stone-300' : 'text-stone-700'}`}>{s.label}</span>
                                     <div className="flex gap-1">
                                         <button onClick={() => { setEditingSpotId(s.id); setSpotInput(s.label); }} className="p-2 text-stone-500 transition-all oracle-btn-press"><Edit2 size={14}/></button>
                                         <button onClick={() => props.onDeleteSpot(s.id, s.label)} className="p-2 text-stone-500 transition-all oracle-btn-press"><Trash2 size={14}/></button>
