@@ -1,4 +1,4 @@
-// components/LocationListView.tsx - Version 1.0.1
+// components/LocationListView.tsx - Version 1.0.2
 import React, { useState, useMemo } from 'react';
 import { MapPin, Star, Plus, ArrowLeft, Anchor, Map as MapIcon, Edit2, Trash2, ChevronRight, ChevronUp, ChevronDown, X, Check } from 'lucide-react';
 import { Location, UserProfile } from '../types';
@@ -80,8 +80,32 @@ const LocationListView: React.FC<LocationListViewProps> = (props) => {
                     <div className="flex justify-between items-center mb-4"><span className="text-xs font-black uppercase text-stone-500">Nouveau Secteur</span><button onClick={() => setIsCreating(false)} className="text-stone-500"><X size={16}/></button></div>
                     <div className="flex gap-2">
                          <div className={`aspect-square w-[58px] rounded-2xl flex items-center justify-center border ${props.isActuallyNight ? 'bg-emerald-950/20 border-emerald-800 text-emerald-400' : 'bg-emerald-50 border-emerald-200 text-emerald-600'}`}><MapIcon size={24} /></div>
-                         <input type="text" value={newLocLabel} onChange={(e) => setNewLocLabel(e.target.value)} placeholder="Nom du secteur..." autoFocus className={`flex-1 px-4 rounded-2xl font-bold outline-none ${inputBg}`} />
-                         <button onClick={() => { props.onAddLocation(newLocLabel, newLocCoords); setIsCreating(false); setNewLocLabel(""); }} disabled={!newLocLabel.trim()} className="aspect-square w-[58px] rounded-2xl flex items-center justify-center shadow-lg bg-emerald-500 text-white disabled:bg-stone-800 transition-all oracle-btn-press"><Check size={24} /></button>
+                         <input 
+                            type="text" 
+                            value={newLocLabel} 
+                            onChange={(e) => setNewLocLabel(e.target.value)} 
+                            placeholder="Nom du secteur..." 
+                            autoFocus 
+                            className={`flex-1 px-4 rounded-2xl font-bold outline-none ${inputBg}`} 
+                         />
+                         <button 
+                                type="button"
+                                onClick={async () => { 
+                                    const cleanLabel = newLocLabel.trim();
+                                    if (!cleanLabel) return;
+                                    try {
+                                        await props.onAddLocation(cleanLabel, newLocCoords); 
+                                        setIsCreating(false); 
+                                        setNewLocLabel(""); 
+                                    } catch (e) {
+                                        console.error("Erreur lors de la création du secteur:", e);
+                                    }
+                                }} 
+                                disabled={!newLocLabel.trim()} 
+                                className="aspect-square w-[58px] shrink-0 rounded-2xl flex items-center justify-center shadow-lg bg-emerald-500 text-white disabled:bg-stone-800 transition-all oracle-btn-press"
+                            >
+                                <Check size={24} />
+                            </button>
                     </div>
                 </div>
             )}

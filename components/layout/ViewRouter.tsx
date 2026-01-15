@@ -1,4 +1,4 @@
-// components/layout/ViewRouter.tsx - Version 11.0.0 (Fishing Vibes Wiring)
+// components/layout/ViewRouter.tsx - Version 11.0.1 (Fixed Wiring)
 import React, { useEffect } from 'react';
 import Dashboard from '../Dashboard';
 import HistoryView from '../HistoryView';
@@ -98,7 +98,7 @@ export const ViewRouter = ({ engine }: { engine: any }) => {
         user, authLoading, isWhitelisted, firestoreError, handleCreateProfile,
         usersRegistry,
         lastSavedSessionId, setLastSavedSessionId,
-        unreadFeedCount, handleMarkSessionAsRead, handleHideSessionFromFeed // Michael : Les nouveaux câbles
+        unreadFeedCount, handleMarkSessionAsRead, handleHideSessionFromFeed 
     } = engine;
 
     if (authLoading || (!userProfile && currentUserId !== "guest" && firestoreError !== "DOC_NOT_FOUND")) {
@@ -121,11 +121,31 @@ export const ViewRouter = ({ engine }: { engine: any }) => {
 
     switch (currentView) {
         case 'locations':
-            return withTransition(<LocationsManager locations={arsenalData.locations} spots={arsenalData.spots} userId={currentUserId} userProfile={userProfile} onUpdateUserAnchor={handleUpdateUserAnchor} onAddLocation={handleAddItem('locations')} onEditLocation={handleEditItem('locations')} onDeleteLocation={handleDeleteItem('locations')} onToggleFavorite={handleToggleLocationFavorite} onMoveLocation={handleMoveItem('locations')} onAddSpot={(label, locId) => handleAddItem('spots')(label, { locationId: locId })} onDeleteSpot={handleDeleteItem('spots')} onEditSpot={handleEditItem('spots')} onBack={() => setCurrentView('dashboard')} initialOpenLocationId={targetLocationId} isActuallyNight={isActuallyNight} />);
+            return withTransition(
+                <LocationsManager 
+                    locations={arsenalData.locations} 
+                    spots={arsenalData.spots} 
+                    userId={currentUserId} 
+                    userProfile={userProfile} 
+                    onUpdateUserAnchor={handleUpdateUserAnchor} 
+                    onAddLocation={(label, coords) => handleAddItem('locations', { label, ...coords, active: true })} 
+                    onEditLocation={(id, label, data) => handleEditItem('locations', id, label, data)} 
+                    onDeleteLocation={(id) => handleDeleteItem('locations', id)} 
+                    onToggleFavorite={handleToggleLocationFavorite} 
+                    onMoveLocation={(id, dir) => handleMoveItem('locations', id, dir)} 
+                    onAddSpot={(label, locId) => handleAddItem('spots', { label, locationId: locId, active: true })} 
+                    onDeleteSpot={(id) => handleDeleteItem('spots', id)} 
+                    onEditSpot={(id, label) => handleEditItem('spots', id, label)} 
+                    onBack={() => setCurrentView('dashboard')} 
+                    initialOpenLocationId={targetLocationId} 
+                    isActuallyNight={isActuallyNight} 
+                />
+            );
+
         case 'dashboard':
             return withTransition(<Dashboard userProfile={userProfile} usersRegistry={usersRegistry} activeTab={activeDashboardTab} onTabChange={setActiveDashboardTab} userName={userProfile?.pseudo || 'Pêcheur'} currentUserId={currentUserId} sessions={sessions} oracleData={oraclePoints} isOracleLoading={isOracleLoading} activeLocationLabel={activeLocation?.label || "Sélectionner"} activeLocationId={activeLocationId} availableLocations={arsenalData.locations.filter((l: any) => l.active && l.isFavorite)} onLocationClick={() => { if (activeLocationId) setTargetLocationId(activeLocationId); setCurrentView('locations'); }} onLocationSelect={setActiveLocationId} setActiveLocationId={setActiveLocationId} onEditSession={handleEditRequest} onDeleteSession={handleDeleteSession} onMagicDiscovery={handleMagicDiscovery} lureTypes={arsenalData.lureTypes} colors={arsenalData.colors} locations={arsenalData.locations} arsenalData={arsenalData} displayedWeather={displayedWeather} lastSyncTimestamp={lastSyncTimestamp} isActuallyNight={isActuallyNight} />);
 
-        case 'feed': // Michael : Nouvelle entrée royale pour la War Room
+        case 'feed':
             return withTransition(
                 <FeedView 
                     sessions={sessions} 
@@ -133,18 +153,16 @@ export const ViewRouter = ({ engine }: { engine: any }) => {
                     userProfile={userProfile} 
                     usersRegistry={usersRegistry} 
                     isActuallyNight={isActuallyNight}
-                    unreadFeedCount={unreadFeedCount} // Injection du compteur
-                    onMarkAsRead={handleMarkSessionAsRead} // Connexion de la lecture
-                    onHideSession={handleHideSessionFromFeed} // Connexion de la poubelle
-                    onToggleReaction={handleToggleReaction} // Michael : Connexion des Fishing Vibes
+                    unreadFeedCount={unreadFeedCount} 
+                    onMarkAsRead={handleMarkSessionAsRead} 
+                    onHideSession={handleHideSessionFromFeed} 
+                    onToggleReaction={handleToggleReaction} 
                     onNavigateToSession={(id) => {
-                        // Michael : Double action - on change de vue ET on focus la session
                         setLastSavedSessionId(id);
                         setCurrentView('history');
                     }}
                 />
             );
-
 
         case 'history':
             return withTransition(<HistoryView sessions={sessions} onDeleteSession={handleDeleteSession} onEditSession={handleEditRequest} currentUserId={currentUserId} userProfile={userProfile} usersRegistry={usersRegistry} isActuallyNight={isActuallyNight} highlightSessionId={lastSavedSessionId} onClearHighlight={() => setLastSavedSessionId(null)} />);

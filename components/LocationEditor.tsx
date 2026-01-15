@@ -1,4 +1,4 @@
-// components/LocationEditor.tsx - Version 1.0.1
+// components/LocationEditor.tsx - Version 1.1.0 (Restoration Edition)
 import React, { useState, useMemo } from 'react';
 import { ArrowLeft, Map as MapIcon, Settings, Anchor, Activity, Info, Save, Edit2, Trash2, Plus, Check, Fish, MapPin } from 'lucide-react';
 import { Location, Spot, MorphologyID, DepthCategoryID, BassinType, SpeciesType, SCHEMA_VERSION } from '../types';
@@ -25,7 +25,10 @@ const BASSIN_OPTIONS: { value: BassinType; label: string }[] = [
 ];
 
 const TARGET_SPECIES: { id: SpeciesType; label: string }[] = [
-    { id: 'Brochet', label: 'Brochet' }, { id: 'Sandre', label: 'Sandre' }, { id: 'Perche', label: 'Perche' }, { id: 'Black-Bass', label: 'Black-Bass' }
+    { id: 'Brochet', label: 'Brochet' }, 
+    { id: 'Sandre', label: 'Sandre' }, 
+    { id: 'Perche', label: 'Perche' }, 
+    { id: 'Black-Bass', label: 'Black-Bass' }
 ];
 
 interface LocationEditorProps {
@@ -85,6 +88,7 @@ const LocationEditor: React.FC<LocationEditorProps> = (props) => {
     };
 
     const textTitle = props.isActuallyNight ? "text-stone-100" : "text-stone-800";
+    const textMuted = props.isActuallyNight ? "text-stone-500" : "text-stone-400";
     const cardClass = props.isActuallyNight ? "bg-[#1c1917] border-stone-800" : "bg-white border-stone-100 shadow-sm";
     const inputBg = props.isActuallyNight ? "bg-stone-900 border-stone-800 text-stone-200" : "bg-stone-50 border-stone-200 text-stone-800";
 
@@ -122,8 +126,40 @@ const LocationEditor: React.FC<LocationEditorProps> = (props) => {
                             </div>
                             <div className={`p-4 rounded-2xl border space-y-4 ${props.isActuallyNight ? 'bg-stone-900/40 border-stone-800' : 'bg-stone-50/80 border-stone-100'}`}>
                                 <div className="flex items-center gap-2 text-stone-500 text-[10px] font-bold uppercase"><Info size={14}/> Paramètres Physiques</div>
-                                <div><label className="text-[9px] font-bold uppercase opacity-50">Prof. Moyenne ({bioForm.meanDepth}m)</label>
+                                
+                                <div><label className={`text-[9px] font-bold uppercase ml-1 ${textMuted}`}>Prof. Moyenne ({bioForm.meanDepth}m)</label>
                                 <input type="range" min={depthLimits.min} max={depthLimits.max} step="0.5" value={bioForm.meanDepth} onChange={e => setBioForm({...bioForm, meanDepth: parseFloat(e.target.value)})} className="w-full h-2 rounded-lg accent-emerald-500 cursor-pointer" /></div>
+
+                                {/* Michael : Restauration des paramètres spécifiques aux milieux fermés (Lacs/Étangs) */}
+                                {bioForm.typeId !== 'Z_RIVER' && bioForm.typeId !== 'Z_MED' && (
+                                    <div className="space-y-4 pt-4 border-t border-stone-800/50 mt-4 animate-in fade-in slide-in-from-top-2">
+                                        <div>
+                                            <label className={`text-[9px] font-bold uppercase ml-1 block mb-1 ${textMuted}`}>Surface (Hectares)</label>
+                                            <div className="flex items-center gap-2">
+                                                <input type="number" value={bioForm.surfaceArea / 10000} onChange={(e) => setBioForm({...bioForm, surfaceArea: Math.round(parseFloat(e.target.value) * 10000)})} className={`w-full text-sm font-bold rounded-lg px-3 py-2 outline-none ${inputBg}`} />
+                                                <span className={`text-xs font-bold ${textMuted}`}>ha</span>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="flex justify-between items-center mb-1">
+                                                <label className={`text-[9px] font-bold uppercase ml-1 ${textMuted}`}>Facteur de forme (Vent)</label>
+                                                <span className={`text-[10px] font-black px-2 rounded ${props.isActuallyNight ? 'bg-blue-950/40 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>{bioForm.shapeFactor.toFixed(1)}</span>
+                                            </div>
+                                            <div className={`flex justify-center py-6 rounded-xl mb-2 border transition-colors ${props.isActuallyNight ? 'bg-stone-900/60 border-stone-800' : 'bg-white/50 border-stone-100'}`}>
+                                                <div 
+                                                    className="bg-blue-400/80 border-4 border-blue-200 shadow-lg transition-all duration-300 rounded-full" 
+                                                    style={{ 
+                                                        width: '50px', 
+                                                        height: '50px', 
+                                                        transform: `scale(${bioForm.shapeFactor}, ${1 / bioForm.shapeFactor})` 
+                                                    }} 
+                                                />
+                                            </div>
+                                            <input type="range" min="1.0" max="2.0" step="0.1" value={bioForm.shapeFactor} onChange={(e) => setBioForm({...bioForm, shapeFactor: parseFloat(e.target.value)})} className={`w-full h-2 rounded-lg appearance-none cursor-pointer transition-all ${props.isActuallyNight ? 'bg-stone-800 accent-blue-400' : 'bg-stone-200 accent-blue-500'}`} />
+                                            <div className={`flex justify-between mt-1 text-[8px] font-bold uppercase ${textMuted}`}><span>Rond (Abrité)</span><span>Allongé (Vagues)</span></div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -136,9 +172,12 @@ const LocationEditor: React.FC<LocationEditorProps> = (props) => {
                     <div className={`${cardClass} rounded-[2.5rem] p-5 border`}>
                         <form onSubmit={(e: React.FormEvent) => { e.preventDefault(); if(editingSpotId) props.onEditSpot(editingSpotId, spotInput); else props.onAddSpot(spotInput, props.location.id); setSpotInput(""); setEditingSpotId(null); }} className="flex gap-2 mb-4">
                             <input type="text" value={spotInput} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSpotInput(e.target.value)} placeholder="Nom du spot..." className={`flex-1 px-4 py-3 rounded-xl text-sm font-bold outline-none ${inputBg}`} />
-                            <button type="submit" className="p-3 bg-stone-800 text-white rounded-xl shadow-lg transition-all oracle-btn-press">{editingSpotId ? <Check size={18}/> : <Plus size={18}/>}</button>
+                            <button type="submit" disabled={!spotInput.trim()} className="p-3 bg-stone-800 text-white rounded-xl shadow-lg transition-all oracle-btn-press">{editingSpotId ? <Check size={18}/> : <Plus size={18}/>}</button>
                         </form>
                         <div className="space-y-2">
+                            {props.spots.length === 0 && (
+                                <div className="text-center py-8 text-stone-500 text-xs italic opacity-60">Aucun spot défini pour ce secteur.</div>
+                            )}
                             {props.spots.map((s: Spot) => (
                                 <div key={s.id} className={`flex justify-between items-center p-3 rounded-xl border ${props.isActuallyNight ? 'bg-stone-900 border-stone-800' : 'bg-stone-50 border-stone-100'}`}>
                                     <span className={`text-sm font-bold ${props.isActuallyNight ? 'text-stone-300' : 'text-stone-700'}`}>{s.label}</span>
