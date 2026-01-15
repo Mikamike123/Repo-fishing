@@ -1,7 +1,7 @@
 // components/layout/AppLayout.tsx - Version 11.0.0 (FEED Hub & Sidebar Migration)
 import React, { useState } from 'react';
 import { 
-    Home, ScrollText, PlusCircle, Bot, MapPin, Menu, User, X, 
+    Home, ScrollText, PlusCircle, Bot, MapPin, Menu, User, X, BookOpen,
     Anchor, ChevronRight, Moon, Sun, WifiOff, Sparkles, PartyPopper, Zap 
 } from 'lucide-react';
 import MagicScanButton from '../MagicScanButton';
@@ -118,6 +118,7 @@ const SideMenu = ({ engine }: any) => (
                 <MenuEntry icon={<Anchor size={28} className="text-stone-400 group-hover:text-amber-500"/>} label="Mon Arsenal" onClick={() => { engine.setCurrentView('arsenal'); engine.setIsMenuOpen(false); }} isActuallyNight={engine.isActuallyNight} />
                 {/* Michael : Migration de Secteurs ici */}
                 <MenuEntry icon={<MapPin size={28} className="text-stone-400 group-hover:text-indigo-500"/>} label="Mes Secteurs" onClick={() => { engine.setCurrentView('locations'); engine.setIsMenuOpen(false); }} isActuallyNight={engine.isActuallyNight} />
+                <MenuEntry icon={<BookOpen size={28} className="text-stone-400 group-hover:text-indigo-500"/>} label="Science & Data" onClick={() => { engine.setCurrentView('science'); engine.setIsMenuOpen(false); }} isActuallyNight={engine.isActuallyNight} />
                 <MenuEntry icon={<User size={28} className="text-stone-400 group-hover:text-amber-500"/>} label="Ton Profil" onClick={() => { engine.setCurrentView('profile'); engine.setIsMenuOpen(false); }} isActuallyNight={engine.isActuallyNight} />
             </nav>
 

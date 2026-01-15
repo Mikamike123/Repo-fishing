@@ -8,6 +8,7 @@ import ProfileView from '../ProfileView';
 import SessionForm from '../SessionForm';
 import FeedView from '../FeedView';
 import LocationsManager from '../LocationsManager';
+import ScienceView from '../ScienceView';
 import { Waves } from 'lucide-react';
 
 const DebugOverlay = ({ data }: { data: any }) => (
@@ -179,6 +180,9 @@ export const ViewRouter = ({ engine }: { engine: any }) => {
         case 'session':
             return withTransition(<SessionForm onAddSession={handleSaveSession} onUpdateSession={(id, data) => handleSaveSession({ ...data, id } as any)} onCancel={() => setCurrentView('dashboard')} initialData={editingSession} initialDiscovery={magicDraft} zones={arsenalData.spots} setups={arsenalData.setups} techniques={arsenalData.techniques} lures={arsenalData.lures} lureTypes={arsenalData.lureTypes} colors={arsenalData.colors} sizes={arsenalData.sizes} weights={arsenalData.weights} locations={arsenalData.locations} defaultLocationId={activeLocationId} lastCatchDefaults={lastCatchDefaults} currentUserId={currentUserId} isActuallyNight={isActuallyNight} />);
         
+        case 'science':
+            return withTransition(<ScienceView onBack={() => setCurrentView('dashboard')} isActuallyNight={isActuallyNight} />);
+            
         default:
             return null;
     }
